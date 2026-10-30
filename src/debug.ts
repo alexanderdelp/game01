@@ -13,6 +13,8 @@ export const debugState = {
   mapReady: false,
   teleport: (_tx: number, _ty: number): void => {},
   findShore: (): { tx: number; ty: number } | null => null,
+  npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],
+  dialog: null as { name: string; role: string; text: string } | null,
 };
 
 (globalThis as unknown as { __game: typeof debugState }).__game = debugState;

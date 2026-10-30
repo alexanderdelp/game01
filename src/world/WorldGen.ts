@@ -165,7 +165,7 @@ export class WorldGen {
     return { cx, cy, biomes, decorations };
   }
 
-  private decorationAt(tx: number, ty: number, b: B): Decoration | null {
+  decorationAt(tx: number, ty: number, b: B = this.biomeAt(tx, ty)): Decoration | null {
     const rules = BIOMES[b].decor;
     if (rules.length === 0) return null;
     let r = rand2(this.seed, tx, ty, 77);

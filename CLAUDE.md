@@ -102,6 +102,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-30 – (M2) Figuren aus LPC-Ebenen (Universal LPC Spritesheet Generator, GitHub) mit Laufzeit-Umfärbung über die LPC-Paletten; Import per `tools/import_lpc.py`.
 - 2026-10-30 – (M2) Spielerposition wird pro Seed im `localStorage` gespeichert (casual: jederzeit aufhören). Volle Persistenz folgt in M9.
 - 2026-10-30 – (M2) Touch-Steuerung (Ziehen = Stick, Buttons), weil der Nutzer Zwischenstände auch am Handy anschaut.
+- 2026-10-30 – (M3) NPCs sind seed-basiert pro Chunk „zu Hause“ (Rolle passend zum Biom, Name aus Silben, eines von 16 Aussehen-Archetypen je Welt). Sie existieren vorerst nur, solange ihr Chunk geladen ist; dauerhafte Simulation folgt in M10.
+- 2026-10-30 – (M3) Dialoge sind vorerst feste Sätze je Rolle (Deutsch); Quests (M7) und seed-basierte Geschichten (M8) bauen darauf auf.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - „Welt läuft weiter ohne Spieler“ wird ohne Server über deterministisches Nachrechnen der vergangenen Zeit beim Laden gelöst (M10).

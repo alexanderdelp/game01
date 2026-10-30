@@ -18,13 +18,14 @@ export function preloadCharacter(scene: Phaser.Scene, a: Appearance): void {
  * Setzt die Ebenen pro Animation zu einem Spritesheet zusammen, färbt sie um und legt die
  * Phaser-Animationen an. Gibt den Schlüssel-Präfix zurück, z. B. "char:<key>".
  */
-export function buildCharacter(scene: Phaser.Scene, a: Appearance): string {
+export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string[] = Object.keys(ANIMS)): string {
   const prefix = `char:${appearanceKey(a)}`;
-  if (scene.textures.exists(`${prefix}:walk`)) return prefix;
   const palettes = scene.cache.json.get('lpc-palettes') as Palettes;
   const layers = layersFor(a);
 
-  for (const [anim, def] of Object.entries(ANIMS)) {
+  for (const anim of anims) {
+    const def = ANIMS[anim];
+    if (scene.textures.exists(`${prefix}:${anim}`)) continue;
     const w = def.frames * FRAME;
     const h = def.rows * FRAME;
     const canvas = document.createElement('canvas');

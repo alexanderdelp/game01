@@ -15,8 +15,8 @@ export interface MoveEnv {
   speedAt(x: number, y: number): number;
 }
 
-/** Die Spielfigur: Position = Fußpunkt in Weltpixeln. */
-export class Player {
+/** Eine laufende Figur (Spieler oder NPC): Position = Fußpunkt in Weltpixeln. */
+export class Actor {
   readonly sprite: Phaser.GameObjects.Sprite;
   readonly shadow: Phaser.GameObjects.Ellipse;
   facing: Facing = 'down';
@@ -27,7 +27,7 @@ export class Player {
     scene: Phaser.Scene,
     public x: number,
     public y: number,
-    private readonly prefix: string,
+    readonly prefix: string,
   ) {
     this.shadow = scene.add.ellipse(x, y, 24, 8, 0x0a0814, 0.35);
     this.sprite = scene.add.sprite(x, y, `${prefix}:walk`, 18).setOrigin(0.5, (FRAME - FEET_OFFSET) / FRAME);
@@ -65,6 +65,17 @@ export class Player {
     this.x = x;
     this.y = y;
     this.sync();
+  }
+
+  /** Dreht die Figur zu einem Punkt. */
+  face(x: number, y: number): void {
+    this.facing = facingFrom(x - this.x, y - this.y, this.facing);
+    this.play(`idle:${this.facing}`, 1);
+  }
+
+  destroy(): void {
+    this.sprite.destroy();
+    this.shadow.destroy();
   }
 
   private play(anim: string, timeScale: number): void {

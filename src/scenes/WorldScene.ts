@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { buildCharacter, preloadCharacter } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE } from '../character/lpc';
 import { debugState } from '../debug';
-import { Player } from '../entities/Player';
+import { Actor } from '../entities/Actor';
+import { NpcManager, type Npc } from '../entities/NpcManager';
 import { touchInput } from '../game/input';
 import { load, save } from '../game/save';
 import { ChunkManager } from '../render/ChunkManager';
@@ -21,7 +22,10 @@ interface SavedPlayer {
 export class WorldScene extends Phaser.Scene {
   world!: WorldGen;
   chunks!: ChunkManager;
-  player!: Player;
+  player!: Actor;
+  npcs!: NpcManager;
+  /** NPC, mit dem gerade gesprochen wird. */
+  talkingTo: Npc | null = null;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private zoomIndex = 1;
   private saveTimer = 0;
@@ -36,6 +40,7 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     preloadCharacter(this, DEFAULT_APPEARANCE);
+    for (const a of NpcManager.appearances(this.world)) preloadCharacter(this, a);
   }
 
   create(): void {
@@ -43,11 +48,12 @@ export class WorldScene extends Phaser.Scene {
     this.chunks = new ChunkManager(this, this.world.seedName);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
+    this.npcs = new NpcManager(this, this.world, this.chunks);
     const spawn = this.world.findSpawn();
     const saved = load<SavedPlayer>(this.saveKey);
     const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
     const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
-    this.player = new Player(this, startX, startY, buildCharacter(this, DEFAULT_APPEARANCE));
+    this.player = new Actor(this, startX, startY, buildCharacter(this, DEFAULT_APPEARANCE));
 
     // Startzoom so, dass mindestens ~20 Kacheln in der Breite sichtbar sind (Handy: 1, Desktop: 2).
     this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
@@ -64,6 +70,8 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-NUMPAD_ADD', () => this.zoom(1));
     kb.on('keydown-MINUS', () => this.zoom(-1));
     kb.on('keydown-NUMPAD_SUBTRACT', () => this.zoom(-1));
+    kb.on('keydown-E', () => this.interact());
+    kb.on('keydown-SPACE', () => this.interact());
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
@@ -87,6 +95,27 @@ export class WorldScene extends Phaser.Scene {
       }
       return null;
     };
+  }
+
+  /** Spricht den nächsten NPC an bzw. blättert/schließt den Dialog. */
+  interact(): void {
+    if (this.talkingTo) return this.endTalk();
+    const npc = this.npcs.nearest(this.player);
+    if (!npc) return;
+    npc.talking = true;
+    this.talkingTo = npc;
+    this.player.face(npc.actor.x, npc.actor.y);
+    const line = npc.role.lines[npc.talks % npc.role.lines.length];
+    npc.talks++;
+    this.events.emit('talk', { name: npc.spawn.name, role: npc.role.name, text: line });
+    debugState.dialog = { name: npc.spawn.name, role: npc.role.name, text: line };
+  }
+
+  endTalk(): void {
+    if (this.talkingTo) this.talkingTo.talking = false;
+    this.talkingTo = null;
+    this.events.emit('talk', null);
+    debugState.dialog = null;
   }
 
   private get saveKey(): string {
@@ -114,6 +143,8 @@ export class WorldScene extends Phaser.Scene {
     const dt = Math.min(delta, 50) / 1000;
     this.chunks.update(this.cameras.main.worldView);
     this.player.update(dx, dy, k.SHIFT.isDown, dt, this.chunks);
+    this.npcs.update(dt, this.player);
+    if (this.talkingTo && Math.hypot(this.talkingTo.actor.x - this.player.x, this.talkingTo.actor.y - this.player.y) > 90) this.endTalk();
 
     this.saveTimer += delta;
     if (this.saveTimer > 2000) {
@@ -127,6 +158,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.zoom = this.cameras.main.zoom;
     debugState.chunksLoaded = this.chunks.loadedCount;
     debugState.chunksPending = this.chunks.pendingCount;
+    debugState.npcs = [...this.npcs.npcs.values()].map((n) => ({ id: n.spawn.id, x: n.actor.x, y: n.actor.y, role: n.spawn.role, name: n.spawn.name }));
     debugState.ready = this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0;
   }
 }

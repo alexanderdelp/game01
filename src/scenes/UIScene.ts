@@ -34,7 +34,7 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD/Pfeile: laufen  Shift: rennen  Mausrad/+/−: Zoom  M: Karte  N: neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Shift: rennen  E: reden  Mausrad: Zoom  M: Karte  N: neue Welt', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -51,6 +51,15 @@ export class UIScene extends Phaser.Scene {
     });
 
     this.createTouchControls();
+    this.nameTag = this.add
+      .text(0, 0, '', { ...FONT, fontSize: '12px', backgroundColor: '#0b0b14aa', padding: { x: 4, y: 2 } })
+      .setOrigin(0.5, 1)
+      .setDepth(5)
+      .setVisible(false);
+    const ws = this.scene.get('world') as WorldScene;
+    const onTalk = (d: { name: string; role: string; text: string } | null) => this.showDialog(d);
+    ws.events.on('talk', onTalk);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('talk', onTalk));
 
     // Übersichtskarte im Hintergrund erzeugen.
     this.mapWorker = new Worker(new URL('../render/chunkWorker.ts', import.meta.url), { type: 'module' });
@@ -98,6 +107,7 @@ export class UIScene extends Phaser.Scene {
     const ws = () => this.scene.get('world') as WorldScene;
     const buttons: [string, () => void][] = [
       ['Karte', () => this.toggleMap()],
+      ['Reden', () => ws().interact()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
     ];
@@ -113,6 +123,27 @@ export class UIScene extends Phaser.Scene {
   }
 
   private touchButtons: { b: Phaser.GameObjects.Text; i: number }[] = [];
+  private dialog?: Phaser.GameObjects.Container;
+  private nameTag!: Phaser.GameObjects.Text;
+
+  /** Dialogfenster unten am Bildschirm. */
+  private showDialog(d: { name: string; role: string; text: string } | null): void {
+    this.dialog?.destroy();
+    this.dialog = undefined;
+    if (!d) return;
+    const w = Math.min(this.scale.width - 24, 640);
+    const x = (this.scale.width - w) / 2;
+    const y = this.scale.height - 130;
+    const c = this.add.container(x, y).setDepth(15);
+    const bg = this.add.rectangle(0, 0, w, 96, 0x0b0b14, 0.9).setOrigin(0).setStrokeStyle(2, 0x2fe0d8, 0.8);
+    const title = this.add.text(12, 8, `${d.name} · ${d.role}`, { ...FONT, fontSize: '15px', color: '#2fe0d8' });
+    const text = this.add.text(12, 32, `„${d.text}“`, { ...FONT, fontSize: '15px', wordWrap: { width: w - 24 } });
+    const hint = this.add
+      .text(w - 10, 88, this.sys.game.device.input.touch ? 'Reden: weiter' : 'E: schließen', { ...FONT, fontSize: '11px', color: '#8a8aa0' })
+      .setOrigin(1, 1);
+    c.add([bg, title, text, hint]);
+    this.dialog = c;
+  }
 
   private buildMap(o: OverviewResult): void {
     this.mapWorker?.terminate();
@@ -188,6 +219,18 @@ export class UIScene extends Phaser.Scene {
     for (const { b } of this.touchButtons) {
       b.setPosition(bx, 8);
       bx -= b.width + 8;
+    }
+
+    // Namensschild über dem nächsten ansprechbaren NPC
+    const near = ws.talkingTo ?? ws.npcs.nearest(ws.player, 80);
+    if (near && !this.map) {
+      const cam = ws.cameras.main;
+      const sx = (near.actor.x - cam.worldView.x) * cam.zoom;
+      const sy = (near.actor.y - 52 - cam.worldView.y) * cam.zoom;
+      const hint = ws.talkingTo || this.sys.game.device.input.touch ? '' : '  [E]';
+      this.nameTag.setText(`${near.spawn.name}${hint}`).setPosition(Math.round(sx), Math.round(sy)).setVisible(true);
+    } else {
+      this.nameTag.setVisible(false);
     }
 
     if (this.marker && this.mapImage) {
