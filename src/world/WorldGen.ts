@@ -3,7 +3,7 @@ import { Simplex2 } from './noise';
 import { hashString, rand2 } from './rng';
 
 export const WORLD_TILES = 4096;
-export const CHUNK_TILES = 32;
+export const CHUNK_TILES = 16;
 export const WORLD_CHUNKS = WORLD_TILES / CHUNK_TILES;
 
 export interface Climate {

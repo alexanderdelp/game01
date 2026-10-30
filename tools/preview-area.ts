@@ -1,7 +1,7 @@
 /** Rendert einen Weltausschnitt (Boden + Dekorationen) als PNG: npx vite-node tools/preview-area.ts <seed> <tx> <ty> <chunksW> <chunksH> <out> */
 import { writeFileSync } from 'node:fs';
-import { CHUNK_PX, ChunkPainter, TILE_PX } from '../src/render/chunkPixels';
-import { SPRITES, rasterize } from '../src/render/sprites';
+import { CHUNK_PX, ChunkPainter, decorPos } from '../src/render/chunkPixels';
+import { DECOR_VARIANTS, generateDecor } from '../src/render/procSprites';
 import { CHUNK_TILES, WorldGen } from '../src/world/WorldGen';
 import { encodePng } from './png';
 
@@ -28,12 +28,14 @@ for (let cy = 0; cy < ch; cy++) for (let cx = 0; cx < cw; cx++) {
 }
 console.log('paint ms/chunk', ((performance.now() - t0) / (cw * ch)).toFixed(1));
 decos.sort((a, b) => a.ty - b.ty);
-const cache: Record<string, ReturnType<typeof rasterize>> = {};
+const cache: Record<string, ReturnType<typeof generateDecor>> = {};
 for (const d of decos) {
-  const r = (cache[d.kind] ??= rasterize(SPRITES[d.kind]));
+  const v = (d.variant >> 1) % DECOR_VARIANTS;
+  const r = (cache[`${d.kind}:${v}`] ??= generateDecor(d.kind, v));
   const flip = d.variant & 1;
-  const bx = (d.tx - cx0 * CHUNK_TILES) * TILE_PX + TILE_PX / 2 - Math.floor(r.w / 2) + ((d.variant >> 1) % 5) - 2;
-  const by = (d.ty - cy0 * CHUNK_TILES) * TILE_PX + TILE_PX - r.h + ((d.variant >> 4) % 3) - 2;
+  const p = decorPos(d);
+  const bx = p.x - cx0 * CHUNK_PX - Math.floor(r.w / 2);
+  const by = p.y - cy0 * CHUNK_PX - r.h;
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
     const sx = flip ? r.w - 1 - x : x;
     const s = (y * r.w + sx) * 4;

@@ -2,7 +2,7 @@ import { B, BIOMES } from '../world/biomes';
 import { hash2 } from '../world/rng';
 
 /** Kantenlänge der kachelbaren Bodenmuster in Pixeln. */
-export const PATTERN = 64;
+export const PATTERN = 128;
 
 type Rgb = number;
 
@@ -35,6 +35,7 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
   }
 
   const count = (n: number, fn: (x: number, y: number, i: number) => void) => {
+    n *= (PATTERN / 64) ** 2;
     for (let i = 0; i < n; i++) fn(Math.floor(r(i, 0, 2) * PATTERN), Math.floor(r(i, 0, 3) * PATTERN), i);
   };
 
@@ -94,16 +95,25 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
     case B.ScrapWastes: {
       // Platten mit Nieten und gelegentlichen Leuchtbahnen
       for (let k = 0; k < PATTERN; k++) {
-        set(k, 0, dark); set(0, k, dark); set(k, 32, dark); set(32, k, dark);
+        for (let g = 0; g < PATTERN; g += 32) {
+          set(k, g, dark);
+          set(g, k, dark);
+        }
       }
-      for (const [x, y] of [[3, 3], [29, 3], [3, 29], [29, 29], [35, 35], [61, 35], [35, 61], [61, 61]]) set(x, y, light);
-      let x = 8;
-      let y = 12;
-      for (let k = 0; k < 40; k++) {
-        set(x, y, accent);
-        if (r(k, 0, 9) < 0.5) x++; else y++;
+      for (let gy = 0; gy < PATTERN; gy += 32) {
+        for (let gx = 0; gx < PATTERN; gx += 32) {
+          for (const [x, y] of [[3, 3], [29, 3], [3, 29], [29, 29]]) set(gx + x, gy + y, light);
+        }
       }
-      set(x, y, 0xc8fffa);
+      for (let t = 0; t < 3; t++) {
+        let x = Math.floor(r(t, 1, 10) * PATTERN);
+        let y = Math.floor(r(t, 2, 10) * PATTERN);
+        for (let k = 0; k < 40; k++) {
+          set(x, y, accent);
+          if (r(k, t, 9) < 0.5) x++; else y++;
+        }
+        set(x, y, 0xc8fffa);
+      }
       count(40, (x2, y2) => set(x2, y2, shade(mid, 0.85)));
       break;
     }

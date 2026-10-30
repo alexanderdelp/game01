@@ -19,10 +19,11 @@ npm run build    # Typprüfung + Produktions-Build
 npm run e2e      # Akzeptanztests (Playwright, nutzt den Build)
 ```
 
-Werkzeuge: `npx vite-node tools/preview-map.ts <seed> out.png` (Weltkarte), `tools/preview-area.ts` (Ausschnitt).
+Werkzeuge: `npx vite-node tools/preview-map.ts <seed> out.png` (Weltkarte), `tools/preview-area.ts` (Ausschnitt), `tools/preview-decor.ts` (Sprites), `tools/import_lpc.py` (LPC-Import).
 
 ## Lizenzen & Credits
 
 - Code: MIT (siehe `LICENSE`).
-- Landschaftsgrafiken: prozedural im Code erzeugt bzw. als Pixel-Raster im Code gezeichnet (`src/render/sprites.ts`), Teil des Codes.
+- Landschaftsgrafiken: prozedural im Code erzeugt (`src/render/procSprites.ts`, `src/render/groundPatterns.ts`).
+- Figuren: LPC-Sprites (CC-BY-SA 3.0 / GPL 3.0), siehe [CREDITS.md](CREDITS.md).
 - Externe Assets werden in [CREDITS.md](CREDITS.md) mit Lizenz aufgeführt.

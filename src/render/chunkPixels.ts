@@ -1,9 +1,9 @@
 import { B, BIOMES } from '../world/biomes';
 import { Simplex2 } from '../world/noise';
-import { CHUNK_TILES, type WorldGen } from '../world/WorldGen';
+import { CHUNK_TILES, type Decoration, type WorldGen } from '../world/WorldGen';
 import { PATTERN, groundPattern } from './groundPatterns';
 
-export const TILE_PX = 16;
+export const TILE_PX = 32;
 export const CHUNK_PX = CHUNK_TILES * TILE_PX;
 /** Auflösung der Biomgrenzen in Pixeln (kleiner = feiner, aber teurer). */
 const SUB = 2;
@@ -44,8 +44,8 @@ export class ChunkPainter {
       for (let sx = 0; sx < S; sx++) {
         const wsx = cx * SUBS + sx - 1;
         const wsy = cy * SUBS + sy - 1;
-        const fx = (wsx + 0.5) / perTile + this.jitter.noise(wsx / 12, wsy / 12) * 0.6;
-        const fy = (wsy + 0.5) / perTile + this.jitter.noise(wsx / 12 + 71.3, wsy / 12 - 12.9) * 0.6;
+        const fx = (wsx + 0.5) / perTile + this.jitter.noise(wsx / 20, wsy / 20) * 0.6;
+        const fy = (wsy + 0.5) / perTile + this.jitter.noise(wsx / 20 + 71.3, wsy / 20 - 12.9) * 0.6;
         const gx = Math.min(G - 1, Math.max(0, Math.floor(fx) - ox + 1));
         const gy = Math.min(G - 1, Math.max(0, Math.floor(fy) - oy + 1));
         sub[sy * S + sx] = grid[gy * G + gx];
@@ -98,4 +98,12 @@ function blend(a: number, b: number, t: number): number {
   const g = (((a >> 8) & 255) * (1 - t) + ((b >> 8) & 255) * t) | 0;
   const bl = ((a & 255) * (1 - t) + (b & 255) * t) | 0;
   return (r << 16) | (g << 8) | bl;
+}
+
+/** Fußpunkt einer Dekoration in Weltpixeln (mit leichtem, seed-basiertem Versatz). */
+export function decorPos(d: Decoration): { x: number; y: number } {
+  return {
+    x: d.tx * TILE_PX + TILE_PX / 2 + ((d.variant >> 2) % 9) - 4,
+    y: d.ty * TILE_PX + TILE_PX - 4 + ((d.variant >> 5) % 5),
+  };
 }

@@ -1,52 +1,61 @@
 import Phaser from 'phaser';
-import { SPRITES, rasterize } from './sprites';
+import { DECOR_KINDS, DECOR_VARIANTS, generateDecor, type Pixels } from './procSprites';
 
 export const ATLAS = 'decor';
 
-/** Packt alle Dekorations-Sprites in eine Atlas-Textur (ein Draw-Batch) plus Schatten-Frame. */
+/** Schattengrößen (Breite, Höhe) als eigene Frames. */
+export const SHADOWS = { s: [16, 6], m: [26, 8], l: [36, 10] } as const;
+
+function ellipse(w: number, h: number): Pixels {
+  const data = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = (x + 0.5 - w / 2) / (w / 2);
+      const dy = (y + 0.5 - h / 2) / (h / 2);
+      if (dx * dx + dy * dy > 1) continue;
+      const i = (y * w + x) * 4;
+      data[i] = 10;
+      data[i + 1] = 8;
+      data[i + 2] = 20;
+      data[i + 3] = 90;
+    }
+  }
+  return { w, h, data };
+}
+
+/**
+ * Erzeugt alle Dekorations-Sprites (alle Varianten) prozedural und packt sie in eine
+ * Atlas-Textur, damit sie in einem Draw-Batch gezeichnet werden. Frames heißen "<art>:<variante>".
+ */
 export function createDecorAtlas(scene: Phaser.Scene): void {
   if (scene.textures.exists(ATLAS)) return;
-  const entries = Object.entries(SPRITES).map(([key, def]) => ({ key, img: rasterize(def) }));
+  const entries: { key: string; img: Pixels }[] = [];
+  for (const kind of DECOR_KINDS) for (let v = 0; v < DECOR_VARIANTS; v++) entries.push({ key: `${kind}:${v}`, img: generateDecor(kind, v) });
+  for (const [k, [w, h]] of Object.entries(SHADOWS)) entries.push({ key: `shadow-${k}`, img: ellipse(w, h) });
+
   const pad = 2;
-  const width = 256;
+  const width = 512;
   let x = pad;
   let y = pad;
   let rowH = 0;
-  const placed: { key: string; x: number; y: number; w: number; h: number; data: Uint8ClampedArray }[] = [];
-  for (const { key, img } of entries) {
-    if (x + img.w + pad > width) {
+  const placed: { key: string; x: number; y: number; img: Pixels }[] = [];
+  for (const e of entries) {
+    if (x + e.img.w + pad > width) {
       x = pad;
       y += rowH + pad;
       rowH = 0;
     }
-    placed.push({ key, x, y, w: img.w, h: img.h, data: img.data });
-    x += img.w + pad;
-    rowH = Math.max(rowH, img.h);
+    placed.push({ key: e.key, x, y, img: e.img });
+    x += e.img.w + pad;
+    rowH = Math.max(rowH, e.img.h);
   }
-  // Schatten: flache Ellipse
-  const sw = 14;
-  const sh = 5;
-  if (x + sw + pad > width) {
-    x = pad;
-    y += rowH + pad;
-    rowH = 0;
-  }
-  const shadow = { x, y };
-  const height = y + Math.max(rowH, sh) + pad;
-
   const canvas = document.createElement('canvas');
   canvas.width = width;
-  canvas.height = height;
+  canvas.height = y + rowH + pad;
   const ctx = canvas.getContext('2d')!;
-  for (const p of placed) ctx.putImageData(new ImageData(p.data as unknown as Uint8ClampedArray<ArrayBuffer>, p.w, p.h), p.x, p.y);
-  ctx.fillStyle = 'rgba(10, 8, 20, 0.35)';
-  for (let yy = 0; yy < sh; yy++) {
-    const half = Math.round((sw / 2) * Math.sqrt(1 - ((yy + 0.5 - sh / 2) / (sh / 2)) ** 2));
-    ctx.fillRect(shadow.x + sw / 2 - half, shadow.y + yy, half * 2, 1);
-  }
+  for (const p of placed) ctx.putImageData(new ImageData(p.img.data as Uint8ClampedArray<ArrayBuffer>, p.img.w, p.img.h), p.x, p.y);
 
   const tex = scene.textures.addCanvas(ATLAS, canvas)!;
-  for (const p of placed) tex.add(p.key, 0, p.x, p.y, p.w, p.h);
-  tex.add('shadow', 0, shadow.x, shadow.y, sw, sh);
+  for (const p of placed) tex.add(p.key, 0, p.x, p.y, p.img.w, p.img.h);
   tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
 }

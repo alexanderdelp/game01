@@ -98,6 +98,11 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-30 – Landschaftsgrafik prozedural im Code statt LPC-Terrain (LPC-Terrain braucht aufwendiges Autotiling für Übergänge; im Code erzeugt bekommt jedes Biom eigene Optik und organische Grenzen, ohne Lizenzfragen). LPC bleibt für Figuren (ab M2) gesetzt.
 - 2026-10-30 – Seed als Text (`?seed=...`), ohne Seed wird ein lesbarer Zufalls-Seed erzeugt und in die URL geschrieben (teilbar).
 
+- 2026-10-30 – (M2) Welt auf **32-px-Kacheln** umgestellt (LPC-Maßstab), Chunks 16 × 16 Kacheln. Bäume & Co. werden prozedural im LPC-Maßstab erzeugt.
+- 2026-10-30 – (M2) Figuren aus LPC-Ebenen (Universal LPC Spritesheet Generator, GitHub) mit Laufzeit-Umfärbung über die LPC-Paletten; Import per `tools/import_lpc.py`.
+- 2026-10-30 – (M2) Spielerposition wird pro Seed im `localStorage` gespeichert (casual: jederzeit aufhören). Volle Persistenz folgt in M9.
+- 2026-10-30 – (M2) Touch-Steuerung (Ziehen = Stick, Buttons), weil der Nutzer Zwischenstände auch am Handy anschaut.
+
 ### Ausblick (Annahmen für spätere Meilensteine)
 - „Welt läuft weiter ohne Spieler“ wird ohne Server über deterministisches Nachrechnen der vergangenen Zeit beim Laden gelöst (M10).
 - Gemeinsame Welt / Multiplayer (M11/M12) braucht einen Server-Dienst (z. B. Supabase/Firebase). Ein Konto dort muss der Nutzer anlegen.

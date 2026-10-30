@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { debugState } from '../debug';
 import { TILE_PX } from '../render/chunkPixels';
 import type { ChunkRequest, OverviewResult } from '../render/chunkProtocol';
+import { touchInput } from '../game/input';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -33,7 +34,7 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, 'WASD/Pfeile: bewegen  Shift: schnell  Mausrad/+/−: Zoom  M: Karte  N: neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD/Pfeile: laufen  Shift: rennen  Mausrad/+/−: Zoom  M: Karte  N: neue Welt', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -49,6 +50,8 @@ export class UIScene extends Phaser.Scene {
       location.href = url.toString();
     });
 
+    this.createTouchControls();
+
     // Übersichtskarte im Hintergrund erzeugen.
     this.mapWorker = new Worker(new URL('../render/chunkWorker.ts', import.meta.url), { type: 'module' });
     this.mapWorker.onmessage = (ev: MessageEvent<OverviewResult>) => this.buildMap(ev.data);
@@ -56,6 +59,60 @@ export class UIScene extends Phaser.Scene {
     this.mapWorker.postMessage({ type: 'overview', step: MAP_STEP } satisfies ChunkRequest);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.mapWorker?.terminate());
   }
+
+  /** Virtueller Stick (Ziehen irgendwo auf dem Bildschirm) und Buttons für Touch-Geräte. */
+  private createTouchControls(): void {
+    const base = this.add.circle(0, 0, 34, 0xffffff, 0.12).setStrokeStyle(2, 0xffffff, 0.35).setVisible(false).setDepth(20);
+    const knob = this.add.circle(0, 0, 14, 0xffffff, 0.4).setVisible(false).setDepth(21);
+    let pointerId = -1;
+    const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (pointerId !== -1 || onButton(p) || this.map) return;
+      pointerId = p.id;
+      base.setPosition(p.x, p.y).setVisible(true);
+      knob.setPosition(p.x, p.y).setVisible(true);
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (p.id !== pointerId) return;
+      const dx = p.x - base.x;
+      const dy = p.y - base.y;
+      const len = Math.hypot(dx, dy);
+      const max = 34;
+      const k = len > max ? max / len : 1;
+      knob.setPosition(base.x + dx * k, base.y + dy * k);
+      touchInput.x = len < 6 ? 0 : (dx * k) / max;
+      touchInput.y = len < 6 ? 0 : (dy * k) / max;
+    });
+    const release = (p: Phaser.Input.Pointer) => {
+      if (p.id !== pointerId) return;
+      pointerId = -1;
+      base.setVisible(false);
+      knob.setVisible(false);
+      touchInput.x = 0;
+      touchInput.y = 0;
+    };
+    this.input.on('pointerup', release);
+    this.input.on('pointerupoutside', release);
+
+    if (!this.sys.game.device.input.touch) return;
+    const ws = () => this.scene.get('world') as WorldScene;
+    const buttons: [string, () => void][] = [
+      ['Karte', () => this.toggleMap()],
+      ['+', () => ws().zoom(1)],
+      ['−', () => ws().zoom(-1)],
+    ];
+    buttons.forEach(([label, fn], i) => {
+      const b = this.add
+        .text(0, 0, label, { ...FONT, fontSize: '18px', backgroundColor: '#0b0b14cc', padding: { x: 10, y: 6 } })
+        .setOrigin(1, 0)
+        .setDepth(30)
+        .setInteractive({ useHandCursor: true });
+      b.on('pointerdown', fn);
+      this.touchButtons.push({ b, i });
+    });
+  }
+
+  private touchButtons: { b: Phaser.GameObjects.Text; i: number }[] = [];
 
   private buildMap(o: OverviewResult): void {
     this.mapWorker?.terminate();
@@ -127,6 +184,11 @@ export class UIScene extends Phaser.Scene {
       [`Welt: ${this.seed}`, `Position: ${tx}, ${ty}`, `Gebiet: ${biomeName}`, `FPS: ${Math.round(this.game.loop.actualFps)}`].join('\n'),
     );
     this.help.setY(this.scale.height - 6);
+    let bx = this.scale.width - 8;
+    for (const { b } of this.touchButtons) {
+      b.setPosition(bx, 8);
+      bx -= b.width + 8;
+    }
 
     if (this.marker && this.mapImage) {
       const side = this.mapImage.displayWidth;

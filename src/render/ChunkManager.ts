@@ -1,20 +1,26 @@
 import Phaser from 'phaser';
+import { BIOMES, BIOME_SPEED, DECOR_BLOCK, type DecorKind } from '../world/biomes';
+import { overlaps, type Box } from '../world/collision';
 import { CHUNK_TILES, WORLD_CHUNKS, type Decoration } from '../world/WorldGen';
-import { CHUNK_PX, TILE_PX } from './chunkPixels';
+import { CHUNK_PX, TILE_PX, decorPos } from './chunkPixels';
 import type { ChunkRequest, ChunkResult } from './chunkProtocol';
+import { DECOR_VARIANTS } from './procSprites';
 import { ATLAS } from './textures';
 
-/** Dekorationen, die einen Schatten werfen. */
-const SHADOWED = new Set(['oak', 'pine', 'snowpine', 'palm', 'cactus', 'deadtree', 'boulder', 'crystal', 'pylon', 'scrap', 'bush']);
-/** Flache Dekorationen liegen unter allem anderen (keine Tiefensortierung nötig). */
-const FLAT = new Set(['tuft', 'flowers']);
+/** Schattengröße je Dekorationsart; flache Dekorationen liegen unter allem anderen. */
+const SHADOW: Partial<Record<DecorKind, 's' | 'm' | 'l'>> = {
+  oak: 'l', pine: 'm', snowpine: 'm', palm: 'm', cactus: 's', deadtree: 's', boulder: 'l', crystal: 'm', pylon: 's', scrap: 'l', bush: 'm', rock: 's',
+};
+const FLAT = new Set<DecorKind>(['tuft', 'flowers']);
 
 interface LoadedChunk {
   key: string;
   ground: Phaser.GameObjects.Image;
   objects: Phaser.GameObjects.Image[];
   biomes: Uint8Array;
+  blockers: Box[];
 }
+
 
 /**
  * Lädt Chunks rund um die Kamera über einen Pool von Web Workern nach und entlädt entfernte.
@@ -53,6 +59,36 @@ export class ChunkManager {
     const lx = ((tx % CHUNK_TILES) + CHUNK_TILES) % CHUNK_TILES;
     const ly = ((ty % CHUNK_TILES) + CHUNK_TILES) % CHUNK_TILES;
     return c.biomes[ly * CHUNK_TILES + lx];
+  }
+
+  /** Ist eine Box (in Weltpixeln) blockiert? Nicht geladene Bereiche gelten als blockiert. */
+  blocked(b: Box): boolean {
+    const t0x = Math.floor(b.x / TILE_PX);
+    const t0y = Math.floor(b.y / TILE_PX);
+    const t1x = Math.floor((b.x + b.w - 0.001) / TILE_PX);
+    const t1y = Math.floor((b.y + b.h - 0.001) / TILE_PX);
+    for (let ty = t0y; ty <= t1y; ty++) {
+      for (let tx = t0x; tx <= t1x; tx++) {
+        const biome = this.biomeAt(tx, ty);
+        if (biome === undefined || !BIOMES[biome].walkable) return true;
+      }
+    }
+    const seen = new Set<LoadedChunk>();
+    // Dekorationen am Chunkrand ragen ein paar Pixel über; deshalb mit Rand nachsehen.
+    const m = 8;
+    for (const [px, py] of [[b.x - m, b.y - m], [b.x + b.w + m, b.y - m], [b.x - m, b.y + b.h + m], [b.x + b.w + m, b.y + b.h + m]]) {
+      const c = this.loaded.get(key(Math.floor(px / CHUNK_PX), Math.floor(py / CHUNK_PX)));
+      if (!c || seen.has(c)) continue;
+      seen.add(c);
+      for (const o of c.blockers) if (overlaps(b, o)) return true;
+    }
+    return false;
+  }
+
+  /** Geschwindigkeitsfaktor an einer Pixelposition. */
+  speedAt(x: number, y: number): number {
+    const biome = this.biomeAt(Math.floor(x / TILE_PX), Math.floor(y / TILE_PX));
+    return biome === undefined ? 1 : BIOME_SPEED[biome as keyof typeof BIOME_SPEED];
   }
 
   /** Muss jeden Frame mit dem sichtbaren Weltausschnitt aufgerufen werden. */
@@ -119,16 +155,24 @@ export class ChunkManager {
     this.scene.textures.addCanvas(texKey, canvas);
     const ground = this.scene.add.image(r.cx * CHUNK_PX, r.cy * CHUNK_PX, texKey).setOrigin(0, 0).setDepth(-1_000_000);
     const objects = r.decorations.map((d) => this.decoration(d)).flat();
-    this.loaded.set(k, { key: texKey, ground, objects, biomes: new Uint8Array(r.biomes) });
+    const blockers: Box[] = [];
+    for (const d of r.decorations) {
+      const size = DECOR_BLOCK[d.kind];
+      if (!size) continue;
+      const p = decorPos(d);
+      blockers.push({ x: p.x - size.w / 2, y: p.y - size.h, w: size.w, h: size.h });
+    }
+    this.loaded.set(k, { key: texKey, ground, objects, biomes: new Uint8Array(r.biomes), blockers });
   }
 
   private decoration(d: Decoration): Phaser.GameObjects.Image[] {
-    const x = d.tx * TILE_PX + TILE_PX / 2 + ((d.variant >> 1) % 5) - 2;
-    const y = d.ty * TILE_PX + TILE_PX - 2 + ((d.variant >> 4) % 3);
-    const img = this.scene.add.image(x, y, ATLAS, d.kind).setOrigin(0.5, 1).setFlipX((d.variant & 1) === 1);
+    const { x, y } = decorPos(d);
+    const frame = `${d.kind}:${(d.variant >> 1) % DECOR_VARIANTS}`;
+    const img = this.scene.add.image(x, y, ATLAS, frame).setOrigin(0.5, 1).setFlipX((d.variant & 1) === 1);
     img.setDepth(FLAT.has(d.kind) ? -999_999 : y);
-    if (!SHADOWED.has(d.kind)) return [img];
-    const shadow = this.scene.add.image(x, y - 1, ATLAS, 'shadow').setDepth(-999_998);
+    const size = SHADOW[d.kind];
+    if (!size) return [img];
+    const shadow = this.scene.add.image(x, y - 2, ATLAS, `shadow-${size}`).setDepth(-999_998);
     return [shadow, img];
   }
 

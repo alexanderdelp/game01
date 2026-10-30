@@ -18,17 +18,18 @@ describe('WorldGen', () => {
 
   it('R1: gleicher Seed ergibt identische Chunks, unabhängig von der Reihenfolge', () => {
     const other = new WorldGen('test');
-    other.chunk(70, 61); // andere Reihenfolge
-    const a = w.chunk(64, 64);
-    const b = other.chunk(64, 64);
+    other.chunk(140, 122); // andere Reihenfolge
+    const a = w.chunk(128, 128);
+    const b = other.chunk(128, 128);
     expect(Array.from(a.biomes)).toEqual(Array.from(b.biomes));
     expect(a.decorations).toEqual(b.decorations);
   });
 
   it('R1: Chunk-Daten entsprechen biomeAt (keine Nahtfehler)', () => {
-    const c = w.chunk(63, 64);
-    for (const [x, y] of [[0, 0], [31, 0], [0, 31], [31, 31], [17, 5]]) {
-      expect(c.biomes[y * CHUNK_TILES + x]).toBe(w.biomeAt(63 * CHUNK_TILES + x, 64 * CHUNK_TILES + y));
+    const c = w.chunk(127, 128);
+    const L = CHUNK_TILES - 1;
+    for (const [x, y] of [[0, 0], [L, 0], [0, L], [L, L], [7, 5]]) {
+      expect(c.biomes[y * CHUNK_TILES + x]).toBe(w.biomeAt(127 * CHUNK_TILES + x, 128 * CHUNK_TILES + y));
     }
   });
 
@@ -71,7 +72,7 @@ describe('WorldGen', () => {
   it('R6: ein Chunk ist schnell generiert', () => {
     w.chunk(10, 10); // aufwärmen
     const t0 = performance.now();
-    for (let i = 0; i < 10; i++) w.chunk(60 + i, 70);
+    for (let i = 0; i < 10; i++) w.chunk(120 + i, 140);
     expect((performance.now() - t0) / 10).toBeLessThan(25);
   });
 

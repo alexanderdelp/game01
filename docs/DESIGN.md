@@ -18,7 +18,7 @@ weiter, auch wenn niemand spielt. 1–3 Freunde teilen sich eine Welt.
 | Lebendige Welt | Simulation läuft in groben Weltzeit-Ticks; beim Laden wird die verpasste Zeit deterministisch nachgerechnet. |
 | Relevante Entscheidungen | Spielerhandlungen sind Ereignisse im Weltzustand (später teilbar zwischen Spielern). |
 | Erkundung | Biome, Reiche, Ruinen, Geheimnisse – über die Karte verteilt, seed-basiert. |
-| Pixel-Art | 16-px-Kacheln, 3-fache Vergrößerung, Nearest-Neighbor. |
+| Pixel-Art | 32-px-Kacheln (LPC-Maßstab), 1–4-fache Vergrößerung je nach Bildschirm, Nearest-Neighbor. |
 
 ## Technik
 
@@ -29,7 +29,7 @@ weiter, auch wenn niemand spielt. 1–3 Freunde teilen sich eine Welt.
 
 ## Welt (Stand M1)
 
-- Endliche, sehr große Welt: **4096 × 4096 Kacheln** (≈ 16,7 Mio. Kacheln), aufgeteilt in Chunks zu 32 × 32 Kacheln.
+- Endliche, sehr große Welt: **4096 × 4096 Kacheln** à 32 px (LPC-Maßstab, ≈ 16,7 Mio. Kacheln), aufgeteilt in Chunks zu 16 × 16 Kacheln.
 - Ein Kontinent mit Küsten, Inseln und Ozean am Rand.
 - Felder: **Höhe**, **Feuchtigkeit**, **Temperatur** (Breitengrad + Rauschen + Höhe) → **Biom**.
 - Biome (M1): Tiefsee, Meer, Strand, Grasland, Wald, Dschungel, Sumpf, Savanne, Wüste, Tundra, Schnee, Gebirge, Felsgipfel – plus zwei fantastische Sonderbiome: **Kristallhain** (Magie) und **Schrottödnis** (Cyberpunk-Relikte).
@@ -37,14 +37,14 @@ weiter, auch wenn niemand spielt. 1–3 Freunde teilen sich eine Welt.
 
 ## Grafik
 
-M1 erzeugt Kachel- und Dekorationsgrafiken prozedural im Code (Pixelmuster und handgezeichnete
-ASCII-Pixel-Sprites). Damit gibt es keine Lizenzfragen für die Landschaft, und jedes Biom bekommt
-seinen eigenen Stil. Für Figuren (ab M2) werden LPC-Sprites eingesetzt.
+Boden und Dekorationen (Bäume, Felsen, Kristalle, Schrott, Neon-Masten) werden prozedural im Code
+erzeugt: schattiert von links oben, 1-px-Kontur, geordnetes Dithering, mehrere Varianten pro Art.
+Figuren sind LPC-Sprites (64×64-Frames), aus Ebenen zusammengesetzt und per LPC-Paletten umgefärbt.
 
 ## Steuerung (Zielbild)
 
 | Aktion | Tastatur | Später |
 |---|---|---|
-| Bewegen | WASD / Pfeiltasten | Gamepad, Touch |
+| Bewegen | WASD / Pfeiltasten (Shift: rennen) | Touch: Ziehen = virtueller Stick |
 | Karte | M | |
 | Zoom | Mausrad / + / − | |

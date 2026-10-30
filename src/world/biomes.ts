@@ -89,3 +89,17 @@ export const BIOMES: readonly BiomeDef[] = [
 export function biome(id: number): BiomeDef {
   return BIOMES[id];
 }
+
+/** Geschwindigkeitsfaktor zu Fuß je Biom. */
+export const BIOME_SPEED: Record<B, number> = {
+  [B.DeepOcean]: 0, [B.Ocean]: 0, [B.Beach]: 1, [B.Grassland]: 1, [B.Forest]: 0.95, [B.Jungle]: 0.8,
+  [B.Swamp]: 0.65, [B.Savanna]: 1, [B.Desert]: 0.85, [B.Tundra]: 0.9, [B.Snow]: 0.75, [B.Mountain]: 0.75,
+  [B.Peak]: 0, [B.CrystalGrove]: 1, [B.ScrapWastes]: 0.9,
+};
+
+/** Kollisionsbox (Breite, Höhe in px) am Fuß blockierender Dekorationen. */
+export const DECOR_BLOCK: Partial<Record<DecorKind, { w: number; h: number }>> = {
+  oak: { w: 12, h: 8 }, pine: { w: 10, h: 8 }, snowpine: { w: 10, h: 8 }, palm: { w: 10, h: 7 },
+  cactus: { w: 10, h: 7 }, deadtree: { w: 10, h: 6 }, boulder: { w: 32, h: 14 }, crystal: { w: 20, h: 8 },
+  scrap: { w: 32, h: 10 }, pylon: { w: 10, h: 6 }, bush: { w: 22, h: 8 },
+};

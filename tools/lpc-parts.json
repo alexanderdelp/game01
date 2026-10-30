@@ -1,0 +1,12 @@
+{
+  "animations": ["walk", "idle", "slash", "hurt", "spellcast", "thrust"],
+  "dirs": [
+    "body/bodies/male", "body/bodies/female",
+    "head/heads/human/male", "head/heads/human/female",
+    "hair/plain/adult", "hair/long/adult", "hair/bob/adult", "hair/spiked/adult", "hair/messy1/adult", "hair/pixie/adult",
+    "torso/clothes/longsleeve/longsleeve2/male", "torso/clothes/longsleeve/longsleeve2/female",
+    "torso/armour/leather/male", "torso/armour/leather/female",
+    "legs/pants/male", "legs/pants/thin",
+    "feet/boots/basic/male", "feet/boots/basic/thin"
+  ]
+}
