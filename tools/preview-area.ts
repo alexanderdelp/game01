@@ -2,6 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import { CHUNK_PX, ChunkPainter, decorPos } from '../src/render/chunkPixels';
 import { DECOR_VARIANTS, generateDecor } from '../src/render/procSprites';
+import { BUILT } from '../src/world/biomes';
 import { CHUNK_TILES, WorldGen } from '../src/world/WorldGen';
 import { encodePng } from './png';
 
@@ -32,8 +33,8 @@ const cache: Record<string, ReturnType<typeof generateDecor>> = {};
 for (const d of decos) {
   const v = (d.variant >> 1) % DECOR_VARIANTS;
   const r = (cache[`${d.kind}:${v}`] ??= generateDecor(d.kind, v));
-  const flip = d.variant & 1;
-  const p = decorPos(d);
+  const flip = BUILT.has(d.kind) ? 0 : d.variant & 1;
+  const p = BUILT.has(d.kind) ? { x: d.tx * 32 + 16, y: d.ty * 32 + 32 } : decorPos(d);
   const bx = p.x - cx0 * CHUNK_PX - Math.floor(r.w / 2);
   const by = p.y - cy0 * CHUNK_PX - r.h;
   for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {

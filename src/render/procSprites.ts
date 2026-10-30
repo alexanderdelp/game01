@@ -468,11 +468,20 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
     case 'tuft': return tuft(rnd);
     case 'flowers': return flowers(rnd);
     case 'reeds': return reeds(rnd);
+    case 'house': return house(rnd, variant);
+    case 'tower': return tower(rnd, variant);
+    case 'neonhouse': return neonhouse(rnd, variant);
+    case 'stall': return stall(rnd, variant);
+    case 'well': return well(rnd, variant);
+    case 'chest': return chest(rnd, variant % 2 === 1);
+    case 'shrine': return shrine(rnd);
+    case 'obelisk': return obelisk(rnd);
   }
 }
 
 export const DECOR_KINDS: DecorKind[] = [
   'oak', 'pine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
+  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk',
 ];
 
 /** Kleine Symbole (16×16) für Beute und Inventar. */
@@ -532,4 +541,190 @@ export function generateIcon(kind: IconKind): Pixels {
 function img_shade(pal: number[], x: number, y: number): number {
   const l = 0.9 - (x / 16) * 0.5 - (y / 16) * 0.3;
   return pal[Math.max(0, Math.min(pal.length - 1, Math.round(l * (pal.length - 1))))];
+}
+
+// ---------------------------------------------------------------- Gebäude und Geheimnisse
+
+const WOOD = [0x3a2418, 0x5a3a24, 0x7a5232, 0x9a6e44];
+const PLASTER = [0x9a8a70, 0xc8b898, 0xe4d8bc, 0xf4ecd8];
+const ROOFS = [
+  [0x5a1a14, 0x8a2a1e, 0xb0402c, 0xd0644a],
+  [0x1e3a5a, 0x2a5280, 0x3a6ea8, 0x5a8ec8],
+  [0x2a4a1e, 0x3a6a2a, 0x4e8a38, 0x6aa84c],
+  [0x4a3a2a, 0x6a523a, 0x8a6e4e, 0xa88a64],
+];
+const METAL = [0x1c1c26, 0x2c2c3a, 0x40404e, 0x5c5c6c, 0x8a8a9a];
+const NEONS = [0x2fe0d8, 0xf04ab0, 0xffd84a, 0x9b6af0];
+
+function house(rnd: () => number, v: number): Pixels {
+  const img = new Img(72, 76);
+  const roof = ROOFS[v % ROOFS.length];
+  const wallTop = 36;
+  // Wände (Fachwerk)
+  for (let y = wallTop; y < 74; y++) for (let x = 8; x < 64; x++) img.shade(x, y, 0.75 - (x - 8) / 56 * 0.35, PLASTER);
+  for (const x of [8, 22, 36, 50, 63]) img.rect(x, wallTop, 3, 38, WOOD[1]);
+  img.rect(8, wallTop, 56, 3, WOOD[1]);
+  img.rect(8, 54, 56, 2, WOOD[1]);
+  img.line(11, 54, 21, 38, WOOD[2], 2);
+  img.line(53, 38, 62, 54, WOOD[2], 2);
+  // Tür und Fenster
+  img.rect(31, 56, 10, 18, WOOD[0]);
+  img.rect(32, 57, 8, 17, WOOD[2]);
+  img.set(38, 65, 0xd0a048);
+  for (const wx of [13, 49]) {
+    img.rect(wx, 60, 9, 8, WOOD[0]);
+    img.rect(wx + 1, 61, 7, 6, rnd() < 0.5 ? 0xf4d27a : 0x3a5a7a);
+    img.rect(wx + 4, 61, 1, 6, WOOD[0]);
+  }
+  // Dach
+  img.polygon([[2, 40], [36, 4], [70, 40]], (x, y) => {
+    const row = Math.floor((y - 4) / 4) % 2;
+    const l = 0.85 - (x - 2) / 68 * 0.5 + (row ? -0.1 : 0);
+    return roof[Math.max(0, Math.min(3, Math.round(l * 3)))];
+  });
+  for (let y = 8; y < 40; y += 4) img.line(36 - (y - 4), y, 36 + (y - 4), y, roof[0]);
+  // Schornstein
+  img.rect(50, 10, 6, 14, 0x6a6a74);
+  img.rect(49, 9, 8, 2, 0x4a4a54);
+  img.outline();
+  return img.result();
+}
+
+function tower(rnd: () => number, v: number): Pixels {
+  const img = new Img(52, 104);
+  const roof = ROOFS[v % ROOFS.length];
+  for (let y = 34; y < 102; y++) {
+    for (let x = 8; x < 44; x++) {
+      const brick = ((y >> 2) % 2 === 0 ? x : x + 3) % 7 === 0 || y % 4 === 0;
+      img.shade(x, y, 0.8 - (x - 8) / 36 * 0.5 + (brick ? -0.2 : 0) + (rnd() - 0.5) * 0.06, STONE);
+    }
+  }
+  img.rect(20, 82, 12, 20, WOOD[0]);
+  img.rect(21, 83, 10, 19, WOOD[2]);
+  for (const wy of [44, 62]) {
+    img.rect(23, wy, 6, 10, 0x1a1424);
+    img.rect(24, wy + 1, 4, 8, v % 2 ? 0x9b6af0 : 0xf4d27a);
+  }
+  img.polygon([[2, 38], [26, 0], [50, 38]], (x) => roof[Math.max(0, Math.min(3, Math.round((0.9 - (x - 2) / 48 * 0.6) * 3)))]);
+  img.rect(4, 34, 44, 4, STONE[1]);
+  img.outline();
+  return img.result();
+}
+
+function neonhouse(rnd: () => number, v: number): Pixels {
+  const img = new Img(72, 80);
+  const neon = NEONS[v % NEONS.length];
+  // Kastenbau mit Flachdach und Aufbau
+  for (let y = 22; y < 78; y++) for (let x = 6; x < 66; x++) img.shade(x, y, 0.7 - (x - 6) / 60 * 0.4 + (y % 12 === 0 ? -0.2 : 0), METAL);
+  for (let y = 12; y < 22; y++) for (let x = 36; x < 60; x++) img.shade(x, y, 0.6 - (x - 36) / 24 * 0.3, METAL);
+  img.rect(4, 20, 64, 3, METAL[4]);
+  // Fensterbänder mit Licht
+  for (const wy of [30, 46]) {
+    img.rect(10, wy, 52, 8, 0x0e0e18);
+    for (let x = 12; x < 60; x += 6) if (rnd() < 0.7) img.rect(x, wy + 2, 4, 4, rnd() < 0.5 ? 0xf4d27a : neon);
+  }
+  // Tür
+  img.rect(30, 60, 12, 18, 0x0e0e18);
+  img.rect(31, 61, 10, 2, neon);
+  // Leuchtschild und Kanten
+  img.rect(8, 23, 56, 1, neon);
+  img.rect(14, 4, 18, 10, 0x0e0e18);
+  for (let x = 16; x < 30; x += 2) img.rect(x, 7, 1, 4, neon);
+  img.line(22, 14, 22, 20, METAL[2]);
+  // Antenne
+  img.line(54, 12, 54, 0, METAL[3]);
+  img.set(54, 0, 0xff3a5a);
+  img.outline();
+  for (let y = 0; y < img.h; y++) for (let x = 0; x < img.w; x++) if (!img.opaque(x, y) && y > 20 && y < 26) img.glow(x, y, neon, 60);
+  return img.result();
+}
+
+function stall(rnd: () => number, v: number): Pixels {
+  const img = new Img(52, 44);
+  const cloth = [[0xb0402c, 0xf4ecd8], [0x2a5280, 0xf4ecd8], [0x3a6a2a, 0xe0b030], [0x6a3ab0, 0x2fe0d8]][v % 4];
+  img.rect(6, 16, 3, 26, WOOD[1]);
+  img.rect(43, 16, 3, 26, WOOD[1]);
+  img.rect(4, 28, 44, 6, WOOD[2]);
+  img.rect(4, 34, 44, 6, WOOD[1]);
+  for (let i = 0; i < 6; i++) img.ball(9 + i * 7, 26, 2.5, [0x6a1a1a, 0xc04030, 0xf08a3a, 0xffd84a].map((c) => (rnd() < 0.5 ? c : c ^ 0x204000)), rnd, 0);
+  img.polygon([[0, 18], [6, 4], [46, 4], [52, 18]], (x) => cloth[Math.floor(x / 6) % 2]);
+  img.outline();
+  return img.result();
+}
+
+function well(rnd: () => number, v: number): Pixels {
+  const img = new Img(40, 44);
+  if (v % 2 === 0) {
+    for (let y = 26; y < 42; y++) for (let x = 6; x < 34; x++) img.shade(x, y, 0.8 - (x - 6) / 28 * 0.5 + ((x + (y >> 2)) % 6 === 0 ? -0.2 : 0), STONE);
+    img.rect(9, 26, 22, 4, 0x1a3a6a);
+    img.rect(8, 6, 3, 22, WOOD[1]);
+    img.rect(29, 6, 3, 22, WOOD[1]);
+    img.polygon([[4, 10], [20, 0], [36, 10]], (x) => ROOFS[0][Math.round((0.9 - x / 40 * 0.6) * 3)]);
+    img.line(20, 10, 20, 22, 0x6a6a74);
+    img.rect(18, 22, 5, 4, WOOD[2]);
+  } else {
+    // Holo-Brunnen der Technokratie
+    for (let y = 30; y < 42; y++) for (let x = 4; x < 36; x++) img.shade(x, y, 0.7 - (x - 4) / 32 * 0.4, METAL);
+    img.rect(6, 30, 28, 2, 0x2fe0d8);
+    img.ball(20, 16, 8, [0x0e8a88, 0x2fe0d8, 0xa8fff8, 0xffffff], rnd, 0.1);
+    for (let y = 0; y < 30; y++) for (let x = 0; x < 40; x++) if (Math.hypot(x - 20, y - 16) < 13) img.glow(x, y, 0x2fe0d8, 70);
+  }
+  img.outline();
+  return img.result();
+}
+
+function chest(rnd: () => number, open: boolean): Pixels {
+  const img = new Img(24, 22);
+  const top = open ? 10 : 6;
+  for (let y = top + 4; y < 21; y++) for (let x = 2; x < 22; x++) img.shade(x, y, 0.8 - (x - 2) / 20 * 0.4 + (y % 5 === 0 ? -0.25 : 0), WOOD);
+  if (open) {
+    img.rect(3, 2, 18, 6, WOOD[1]);
+    img.rect(4, 11, 16, 3, 0x1a1424);
+    for (let i = 0; i < 4; i++) img.set(6 + i * 3, 12, 0xffd84a);
+  } else {
+    img.polygon([[2, 10], [4, 4], [20, 4], [22, 10]], (x) => WOOD[x < 12 ? 3 : 2]);
+  }
+  img.rect(2, top + 4, 20, 2, 0xd0a048);
+  img.rect(10, top + 4, 4, 5, 0xe0b030);
+  img.set(11 + Math.floor(rnd() * 2), top + 6, 0x3a2418);
+  img.outline();
+  return img.result();
+}
+
+function shrine(rnd: () => number): Pixels {
+  const img = new Img(36, 44);
+  for (let y = 30; y < 42; y++) for (let x = 4; x < 32; x++) img.shade(x, y, 0.8 - (x - 4) / 28 * 0.5, STONE);
+  for (let y = 22; y < 30; y++) for (let x = 10; x < 26; x++) img.shade(x, y, 0.85 - (x - 10) / 16 * 0.5, STONE);
+  const pal = CRYSTAL_PALS[1];
+  img.polygon([[14, 22], [15, 8], [18, 2], [21, 8], [22, 22]], (x) => pal[x < 18 ? 4 : 2]);
+  img.outline();
+  for (let y = 0; y < 30; y++) for (let x = 0; x < 36; x++) {
+    const d = Math.hypot(x - 18, y - 12);
+    if (d < 14) img.glow(x, y, 0x3fc4d4, Math.max(0, 90 - d * 6));
+  }
+  void rnd;
+  return img.result();
+}
+
+function obelisk(rnd: () => number): Pixels {
+  const img = new Img(28, 72);
+  img.polygon([[6, 70], [8, 12], [14, 2], [20, 12], [22, 70]], (x, y) => {
+    const l = (x < 14 ? 0.55 : 0.3) + (rnd() - 0.5) * 0.08 - y / 72 * 0.1;
+    return [0x14121c, 0x22202e, 0x302c40, 0x423c56][Math.max(0, Math.min(3, Math.round(l * 3)))];
+  });
+  // Leuchtende Runen
+  for (let y = 18; y < 62; y += 7) {
+    const x = 11 + Math.floor(rnd() * 5);
+    img.rect(x, y, 3, 1, 0x9b6af0);
+    img.rect(x + 1, y + 1, 1, 3, 0xd8c4ff);
+  }
+  img.rect(3, 66, 22, 6, STONE[1]);
+  img.outline();
+  for (let y = 0; y < 72; y++) {
+    for (let x = 0; x < 28; x++) {
+      if (img.opaque(x, y) || y < 10 || y > 64) continue;
+      if (img.opaque(x - 2, y) || img.opaque(x + 2, y) || img.opaque(x - 1, y) || img.opaque(x + 1, y)) img.glow(x, y, 0x9b6af0, 70);
+    }
+  }
+  return img.result();
 }

@@ -29,6 +29,11 @@ export interface Hero {
   equipped: Partial<Record<Slot, Item>>;
   inventory: Item[];
   quests?: QuestLog;
+  /** Geöffnete Truhen (IDs) */
+  opened?: string[];
+  /** Gefundene Chronik-Fragmente (Indizes) */
+  chronicle?: number[];
+  title?: string;
 }
 
 export function newHero(): Hero {

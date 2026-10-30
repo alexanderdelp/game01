@@ -47,6 +47,8 @@ export class UIScene extends Phaser.Scene {
     this.attackLabel = undefined;
     this.touchButtons = [];
     this.questLog = undefined;
+    this.chronicle = undefined;
+    this.bannerObj = undefined;
     this.markerTexts = [];
     this.mapSize = 0;
     this.selected = null;
@@ -59,7 +61,7 @@ export class UIScene extends Phaser.Scene {
     debugState.clickPanel = (name: string) => this.clickPanel(name);
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste: angreifen  E: reden  Q: Trank  C: Held  L: Quests  M: Karte  Shift: rennen  N: neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste: angreifen  E: reden/benutzen  Q: Trank  C: Held  L: Quests  B: Chronik  M: Karte  N: neue Welt', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -99,6 +101,15 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-C', () => this.togglePanel());
     kb.on('keydown-L', () => this.toggleQuestLog());
+    kb.on('keydown-B', () => this.toggleChronicle());
+    const onBanner = (b: { title: string; sub: string }) => this.banner(b.title, b.sub, true);
+    const onChron = () => this.chronicle && this.buildChronicle();
+    ws.events.on('banner', onBanner);
+    ws.events.on('chronicle-changed', onChron);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      ws.events.off('banner', onBanner);
+      ws.events.off('chronicle-changed', onChron);
+    });
     const onQuests = () => this.questLog && this.buildQuestLog();
     ws.events.on('quests-changed', onQuests);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('quests-changed', onQuests));
@@ -136,7 +147,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog) return;
+      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -174,6 +185,7 @@ export class UIScene extends Phaser.Scene {
       ['Reden', () => ws().interact()],
       ['Held', () => this.togglePanel()],
       ['Quests', () => this.toggleQuestLog()],
+      ['Chronik', () => this.toggleChronicle()],
       ['Trank', () => ws().hero.drink()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
@@ -206,9 +218,12 @@ export class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: sy - 34, alpha: 0, duration: 750, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
 
-  private banner(title: string, sub: string): void {
-    const c = this.add.container(this.scale.width / 2, this.scale.height * 0.28).setDepth(35);
-    c.add(this.add.text(0, 0, title, { fontFamily: 'monospace', fontSize: '32px', color: '#ffd84a', stroke: '#0b0b14', strokeThickness: 6 }).setOrigin(0.5));
+  private banner(title: string, sub: string, small = false): void {
+    this.bannerObj?.destroy();
+    const c = this.add.container(this.scale.width / 2, this.scale.height * (small ? 0.2 : 0.28)).setDepth(35);
+    this.bannerObj = c;
+    const size = small ? (this.scale.width < 500 ? '18px' : '24px') : '32px';
+    c.add(this.add.text(0, 0, title, { fontFamily: 'monospace', fontSize: size, color: small ? '#f4f0e8' : '#ffd84a', stroke: '#0b0b14', strokeThickness: 6 }).setOrigin(0.5));
     c.add(this.add.text(0, 32, sub, { ...FONT, fontSize: '13px', stroke: '#0b0b14', strokeThickness: 4 }).setOrigin(0.5));
     c.setScale(0.6);
     this.tweens.add({ targets: c, scale: 1, duration: 250, ease: 'Back.easeOut' });
@@ -238,6 +253,55 @@ export class UIScene extends Phaser.Scene {
   }
 
   private xpText?: Phaser.GameObjects.Text;
+  private bannerObj?: Phaser.GameObjects.Container;
+  chronicle?: Phaser.GameObjects.Container;
+
+  toggleChronicle(): void {
+    if (this.chronicle) {
+      this.chronicle.destroy();
+      this.chronicle = undefined;
+      debugState.chronicleOpen = false;
+      return;
+    }
+    if (this.panel) this.togglePanel();
+    if (this.questLog) this.toggleQuestLog();
+    this.buildChronicle();
+  }
+
+  /** Chronik der Welt: gefundene Fragmente in der richtigen Reihenfolge. */
+  buildChronicle(): void {
+    this.chronicle?.destroy();
+    debugState.chronicleOpen = true;
+    const ws = this.scene.get('world') as WorldScene;
+    const lore = ws.world.meta.lore;
+    const found = new Set(ws.hero.hero.chronicle ?? []);
+    const W = Math.min(this.scale.width - 16, 560);
+    const H = this.scale.height - 16;
+    const c = this.add.container(Math.round((this.scale.width - W) / 2), 8).setDepth(50);
+    c.add(this.add.rectangle(0, 0, W, H, 0x0b0b14, 0.95).setOrigin(0).setStrokeStyle(2, 0x9b6af0, 0.9).setInteractive());
+    c.add(this.add.text(12, 10, `Chronik von ${lore.worldName}  ${found.size}/${lore.fragments.length}`, { ...FONT, fontSize: '17px', color: '#c4a8ff' }));
+    const close = this.add.text(W - 34, 8, '✕', { ...FONT, color: '#0b0b14', backgroundColor: '#9b6af0', padding: { x: 6, y: 3 } }).setInteractive({ useHandCursor: true });
+    close.on('pointerdown', () => this.toggleChronicle());
+    c.add(close);
+    let y = 40;
+    const small = this.scale.width < 500;
+    lore.fragments.forEach((f, i) => {
+      const known = found.has(i);
+      const t1 = this.add.text(12, y, known ? f.title : `${'I II III IV V VI VII VIII'.split(' ')[i]}. ???`, { ...FONT, fontSize: '13px', color: known ? '#ffd84a' : '#6a6a7a' });
+      c.add(t1);
+      y += 17;
+      if (known) {
+        const t = this.add.text(12, y, f.text, { ...FONT, fontSize: small ? '11px' : '12px', color: '#c0c0cc', wordWrap: { width: W - 24 } });
+        c.add(t);
+        y += t.height + 6;
+      } else {
+        const t = this.add.text(12, y, 'Ein Obelisk irgendwo in der Welt kennt diesen Teil.', { ...FONT, fontSize: '11px', color: '#4a4a5a' });
+        c.add(t);
+        y += 18;
+      }
+    });
+    this.chronicle = c;
+  }
   panel?: Phaser.GameObjects.Container;
   private selected: string | null = null;
 
@@ -500,9 +564,22 @@ export class UIScene extends Phaser.Scene {
       title.setY(-26);
       text.setY(-2);
       let bx = 12;
+      let by = 92;
+      const rows = d.choices.length > 2 || w < 420;
+      if (rows) {
+        const extra = (d.choices.length - 1) * 30;
+        bg.setSize(w, 96 + 34 + extra);
+        bg.setPosition(0, -34 - extra);
+        title.setY(-26 - extra);
+        text.setY(-2 - extra);
+      }
       d.choices.forEach((label, i) => {
+        if (rows) {
+          bx = 12;
+          by = 92 - (d.choices!.length - 1 - i) * 30;
+        }
         const b = this.add
-          .text(bx, 92, `[${i + 1}] ${label}`, { ...FONT, fontSize: '14px', color: '#0b0b14', backgroundColor: i === 0 ? '#ffd84a' : '#8a8aa0', padding: { x: 8, y: 4 } })
+          .text(bx, by, `[${i + 1}] ${label}`, { ...FONT, fontSize: '14px', color: '#0b0b14', backgroundColor: i === 0 ? '#ffd84a' : '#8a8aa0', padding: { x: 8, y: 4 } })
           .setOrigin(0, 1)
           .setInteractive({ useHandCursor: true })
           .setName(`choice-${i}`);
@@ -523,8 +600,21 @@ export class UIScene extends Phaser.Scene {
     canvas.height = o.size;
     const ctx = canvas.getContext('2d')!;
     const img = ctx.createImageData(o.size, o.size);
+    // Reiche: Land leicht in Reichsfarbe tönen, Grenzen dunkel zeichnen
+    const meta = (this.scene.get('world') as WorldScene).world.meta;
+    const step = WORLD_TILES / o.size;
+    const realm = new Int8Array(biomes.length).fill(-1);
+    for (let y = 0; y < o.size; y++) for (let x = 0; x < o.size; x++) if (biomes[y * o.size + x] > 1) realm[y * o.size + x] = meta.realmAt(x * step + step / 2, y * step + step / 2).id;
     for (let i = 0; i < biomes.length; i++) {
-      const c = BIOMES[biomes[i]].mapColor;
+      let c = BIOMES[biomes[i]].mapColor;
+      const r = realm[i];
+      if (r >= 0) {
+        const rc = meta.realms[r].color;
+        const t = 0.22;
+        c = (Math.round((c >> 16) * (1 - t) + (rc >> 16) * t) << 16) | (Math.round(((c >> 8) & 255) * (1 - t) + ((rc >> 8) & 255) * t) << 8) | Math.round((c & 255) * (1 - t) + (rc & 255) * t);
+        const x = i % o.size;
+        if ((x + 1 < o.size && realm[i + 1] >= 0 && realm[i + 1] !== r) || (realm[i + o.size] !== undefined && realm[i + o.size] >= 0 && realm[i + o.size] !== r)) c = 0x1a1424;
+      }
       img.data[i * 4] = c >> 16;
       img.data[i * 4 + 1] = (c >> 8) & 255;
       img.data[i * 4 + 2] = c & 255;
@@ -560,7 +650,27 @@ export class UIScene extends Phaser.Scene {
     const side = Math.min(width, height) - 80;
     this.mapImage = this.add.image(width / 2, height / 2 + 10, this.mapTex).setDisplaySize(side, side);
     c.add(this.mapImage);
-    c.add(this.add.text(width / 2, height / 2 - side / 2 - 18, `Weltkarte – ${this.seed}`, { ...FONT, fontSize: '16px' }).setOrigin(0.5));
+    const ws = this.scene.get('world') as WorldScene;
+    const meta = ws.world.meta;
+    c.add(this.add.text(width / 2, height / 2 - side / 2 - 18, `${meta.lore.worldName} – Welt „${this.seed}“`, { ...FONT, fontSize: '16px' }).setOrigin(0.5));
+    const k = side / WORLD_TILES;
+    const mx = (tx: number) => this.mapImage!.x - side / 2 + tx * k;
+    const my = (ty: number) => this.mapImage!.y - side / 2 + ty * k;
+    const small = side < 500;
+    for (const r of meta.realms) {
+      c.add(this.add.text(mx(r.tx), my(r.ty) - (small ? 14 : 22), r.name.toUpperCase(), { fontFamily: 'monospace', fontSize: small ? '9px' : '12px', color: '#ffffff', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0.5).setAlpha(0.85));
+    }
+    for (const s of meta.settlements) {
+      const sz = s.capital ? 7 : 4;
+      c.add(this.add.rectangle(mx(s.tx), my(s.ty), sz, sz, s.capital ? 0xffd84a : 0xf4f0e8).setStrokeStyle(1, 0x0b0b14));
+      if (s.capital || !small) c.add(this.add.text(mx(s.tx) + 6, my(s.ty), s.name, { fontFamily: 'monospace', fontSize: small ? '9px' : '11px', color: s.capital ? '#ffd84a' : '#e0e0e8', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0, 0.5));
+    }
+    const found = new Set(ws.hero.hero.chronicle ?? []);
+    for (const o of meta.obelisks) if (found.has(o.fragment ?? -1)) c.add(this.add.star(mx(o.tx), my(o.ty), 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
+    for (const q of ws.hero.quests.active) {
+      const t = questTarget(q);
+      if (t) c.add(this.add.circle(mx(t.tx), my(t.ty), 4, 0xffd84a).setStrokeStyle(1, 0x0b0b14));
+    }
     this.marker = this.add.rectangle(0, 0, 8, 8).setStrokeStyle(2, 0xff3355);
     c.add(this.marker);
     this.map = c;

@@ -31,6 +31,16 @@ export class PlayerCombat {
   ) {}
 
   regenRate = 3;
+  private buffTime = 0;
+
+  /** Schrein-Segen: +25 % Angriff für `seconds`. */
+  buff(seconds: number): void {
+    this.buffTime = seconds;
+  }
+
+  get buffed(): boolean {
+    return this.buffTime > 0;
+  }
 
   /** Übernimmt neue Endwerte (Stufe, Talente, Ausrüstung); LP-Zuwachs wird gutgeschrieben. */
   applyStats(s: { maxHp: number; attack: number; defense: number; regen: number }): void {
@@ -59,7 +69,7 @@ export class PlayerCombat {
       if (!this.alive) return;
       const box = attackBox(this.actor.x, this.actor.y, this.actor.facing);
       for (const e of this.enemies.inBox(box)) {
-        const dmg = rollDamage(this.stats.attack, e.stats.defense, this.rnd);
+        const dmg = rollDamage(this.stats.attack * (this.buffTime > 0 ? 1.25 : 1), e.stats.defense, this.rnd);
         const killed = e.hit(dmg, this.actor.x, this.actor.y);
         this.scene.events.emit('damage', { x: e.x, y: e.body.y, amount: dmg, color: '#ffffff' });
         if (killed) {
@@ -105,6 +115,7 @@ export class PlayerCombat {
 
   update(dt: number): void {
     this.invuln -= dt;
+    this.buffTime -= dt;
     this.sinceHit += dt;
     if (!this.actor.busy) this.cooldown -= dt;
     if (this.knock.t > 0) {

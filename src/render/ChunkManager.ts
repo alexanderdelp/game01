@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BIOMES, BIOME_SPEED, DECOR_BLOCK, type DecorKind } from '../world/biomes';
+import { BIOMES, BIOME_SPEED, BUILT, DECOR_BLOCK, type DecorKind } from '../world/biomes';
 import { overlaps, type Box } from '../world/collision';
 import { CHUNK_TILES, WORLD_CHUNKS, type Decoration } from '../world/WorldGen';
 import { CHUNK_PX, TILE_PX, decorPos } from './chunkPixels';
@@ -10,6 +10,7 @@ import { ATLAS } from './textures';
 /** Schattengröße je Dekorationsart; flache Dekorationen liegen unter allem anderen. */
 const SHADOW: Partial<Record<DecorKind, 's' | 'm' | 'l'>> = {
   oak: 'l', pine: 'm', snowpine: 'm', palm: 'm', cactus: 's', deadtree: 's', boulder: 'l', crystal: 'm', pylon: 's', scrap: 'l', bush: 'm', rock: 's',
+  chest: 's', shrine: 'm', obelisk: 'm', well: 'm',
 };
 const FLAT = new Set<DecorKind>(['tuft', 'flowers']);
 
@@ -34,6 +35,10 @@ export class ChunkManager {
   private destroyed = false;
   /** Wird aufgerufen, wenn ein Chunk fertig geladen bzw. entladen wurde. */
   readonly onLoad: ((cx: number, cy: number) => void)[] = [];
+  /** Erlaubt abweichende Frames (z. B. geöffnete Truhen). */
+  frameHook?: (d: Decoration) => string | undefined;
+  /** Gebaute Objekte nach Kachel, um sie später umzuschalten. */
+  readonly builtImages = new Map<string, Phaser.GameObjects.Image>();
   readonly onUnload: ((cx: number, cy: number) => void)[] = [];
 
   constructor(private readonly scene: Phaser.Scene, seed: string) {
@@ -108,6 +113,7 @@ export class ChunkManager {
       if (cx < x0 - 1 || cx > x1 + 1 || cy < y0 - 1 || cy > y1 + 1) {
         c.ground.destroy();
         c.objects.forEach((o) => o.destroy());
+        for (const [k2, img] of this.builtImages) if (!img.active) this.builtImages.delete(k2);
         this.scene.textures.remove(c.key);
         this.loaded.delete(k);
         this.onUnload.forEach((f) => f(cx, cy));
@@ -167,7 +173,7 @@ export class ChunkManager {
     for (const d of r.decorations) {
       const size = DECOR_BLOCK[d.kind];
       if (!size) continue;
-      const p = decorPos(d);
+      const p = BUILT.has(d.kind) ? { x: d.tx * TILE_PX + TILE_PX / 2, y: d.ty * TILE_PX + TILE_PX } : decorPos(d);
       blockers.push({ x: p.x - size.w / 2, y: p.y - size.h, w: size.w, h: size.h });
     }
     this.loaded.set(k, { key: texKey, ground, objects, biomes: new Uint8Array(r.biomes), blockers });
@@ -176,8 +182,12 @@ export class ChunkManager {
 
   private decoration(d: Decoration): Phaser.GameObjects.Image[] {
     const { x, y } = decorPos(d);
-    const frame = `${d.kind}:${(d.variant >> 1) % DECOR_VARIANTS}`;
-    const img = this.scene.add.image(x, y, ATLAS, frame).setOrigin(0.5, 1).setFlipX((d.variant & 1) === 1);
+    const frame = this.frameHook?.(d) ?? `${d.kind}:${(d.variant >> 1) % DECOR_VARIANTS}`;
+    const built = BUILT.has(d.kind);
+    const img = this.scene.add.image(built ? d.tx * TILE_PX + TILE_PX / 2 : x, built ? d.ty * TILE_PX + TILE_PX : y, ATLAS, frame)
+      .setOrigin(0.5, 1)
+      .setFlipX(!built && (d.variant & 1) === 1);
+    if (built) this.builtImages.set(`${d.tx},${d.ty}`, img);
     img.setDepth(FLAT.has(d.kind) ? -999_999 : y);
     const size = SHADOW[d.kind];
     if (!size) return [img];

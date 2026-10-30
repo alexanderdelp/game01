@@ -1,5 +1,6 @@
 import { B, BIOMES, type DecorKind } from './biomes';
 import { Simplex2 } from './noise';
+import { WorldMeta } from './meta';
 import { hashString, rand2 } from './rng';
 
 export const WORLD_TILES = 4096;
@@ -58,6 +59,13 @@ export class WorldGen {
   private readonly nMoist: Simplex2;
   private readonly nMagic: Simplex2;
   private readonly nTech: Simplex2;
+
+  private metaCache?: WorldMeta;
+
+  /** Reiche, Siedlungen, Geheimnisse, Chronik (lazy, deterministisch). */
+  get meta(): WorldMeta {
+    return (this.metaCache ??= new WorldMeta(this));
+  }
 
   constructor(seedName: string) {
     this.seedName = seedName;
@@ -166,11 +174,19 @@ export class WorldGen {
   }
 
   decorationAt(tx: number, ty: number, b: B = this.biomeAt(tx, ty)): Decoration | null {
+    const meta = this.meta;
+    const building = meta.buildingAt(tx, ty);
+    if (building) return { tx, ty, kind: building.kind, variant: building.variant << 1 };
+    const poi = meta.poiAt(tx, ty);
+    if (poi) return { tx, ty, kind: poi.kind, variant: 0 };
+    const inTown = meta.settlementNear(tx, ty, 2);
+    if (inTown && (meta.isPlaza(tx, ty) || rand2(this.seed, tx, ty, 79) < 0.85)) return null;
     const rules = BIOMES[b].decor;
     if (rules.length === 0) return null;
     let r = rand2(this.seed, tx, ty, 77);
     for (const rule of rules) {
       if (r < rule.density) {
+        if (inTown && rule.kind !== 'flowers' && rule.kind !== 'tuft') return null;
         return { tx, ty, kind: rule.kind, variant: Math.floor(rand2(this.seed, tx, ty, 78) * 256) };
       }
       r -= rule.density;

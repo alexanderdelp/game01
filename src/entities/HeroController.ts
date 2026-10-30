@@ -160,6 +160,15 @@ export class HeroController {
     return true;
   }
 
+  /** Beute einer Truhe: Splitter, Trank und garantiert ein Gegenstand. */
+  lootChest(x: number, y: number): void {
+    const rnd = mulberry32(hash2(Date.now() >>> 0, this.drops++, 77, 5));
+    const lvl = this.hero.level + 1;
+    const drops: Drop[] = [{ type: 'shards', amount: 8 + Math.floor(rnd() * 6 * lvl) }, { type: 'item', item: generateItem(lvl, rnd) }];
+    if (rnd() < 0.5) drops.push({ type: 'potion' });
+    drops.forEach((d, i) => this.spawnPickup(x + (i - 1) * 16, y + (rnd() - 0.5) * 6, d));
+  }
+
   persist(): void {
     save(this.key, this.hero);
     this.dirty = false;

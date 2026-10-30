@@ -15,6 +15,9 @@ import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
 import { enemiesForChunk } from '../combat/enemies';
 import { generateItem, type Slot } from '../rpg/items';
 import { MAX_ACTIVE, accept, isReady, offerFor, onPosition, onTalk, progressText, turnIn, type Quest } from '../quests/quests';
+import { FACTIONS, type Poi } from '../world/meta';
+
+const POTION_PRICE = 10;
 import { addItem } from '../rpg/progression';
 import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
 
@@ -77,6 +80,7 @@ export class WorldScene extends Phaser.Scene {
     const respawn = () => this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
     this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
     this.hero = new HeroController(this, this.world.seedName, this.player, this.combat);
+    this.chunks.frameHook = (d) => (d.kind === 'chest' && this.hero.hero.opened?.includes(`chest:${d.tx},${d.ty}`) ? 'chest:1' : undefined);
     const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
     this.events.on('defeated', onDefeated);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('defeated', onDefeated));
@@ -106,8 +110,9 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-SPACE', () => this.attack());
     kb.on('keydown-J', () => this.attack());
     kb.on('keydown-Q', () => this.hero.drink());
-    kb.on('keydown-ONE', () => this.pendingOffer && this.choose(0));
-    kb.on('keydown-TWO', () => this.pendingOffer && this.choose(1));
+    kb.on('keydown-ONE', () => this.pendingActions.length > 0 && this.choose(0));
+    kb.on('keydown-TWO', () => this.pendingActions.length > 1 && this.choose(1));
+    kb.on('keydown-THREE', () => this.pendingActions.length > 2 && this.choose(2));
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => {
@@ -142,6 +147,11 @@ export class WorldScene extends Phaser.Scene {
       return it.id;
     };
     debugState.choose = (i: number) => this.choose(i);
+    debugState.meta = {
+      settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital })),
+      obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
+      chunkPoi: (cx: number, cy: number) => this.world.meta.chunkPoi(cx, cy),
+    };
     debugState.damagePlayer = (n: number) => this.combat.hurt(n, this.player.x + 1, this.player.y, true);
     debugState.findShore = () => {
       // Nach rechts laufen, bis Wasser kommt: Kachel davor ist begehbar, ihr rechter Nachbar Wasser.
@@ -168,58 +178,171 @@ export class WorldScene extends Phaser.Scene {
 
   /** Spricht den nächsten NPC an bzw. blättert/schließt den Dialog. */
   interact(): void {
-    if (this.talkingTo) return this.endTalk();
+    if (this.dialogOpen) return this.endTalk();
+    const poi = this.nearestPoi();
     const npc = this.npcs.nearest(this.player);
+    if (poi && (!npc || poi.dist < Math.hypot(npc.actor.x - this.player.x, npc.actor.y - this.player.y))) return this.usePoi(poi.poi);
     if (!npc) return;
     npc.talking = true;
     this.talkingTo = npc;
     this.player.face(npc.actor.x, npc.actor.y);
     const log = this.hero.quests;
     const now = Date.now();
-    const say = (text: string, choices?: string[]) => {
-      const d = { name: npc.spawn.name, role: npc.role.name, text, choices };
-      this.events.emit('talk', d);
-      debugState.dialog = d;
-    };
-    this.pendingOffer = null;
+    const say = (text: string, choices?: [string, () => void][]) => this.say(npc.spawn.name, npc.role.name, text, choices);
     // 1. Botengang an diesen NPC
     const delivered = onTalk(log, npc.spawn.id);
     if (delivered) {
       const r = turnIn(log, delivered.id, now);
       return say(`Ein Brief von ${delivered.giverName}? Danke! (${r ? this.hero.reward(r) : ''})`);
     }
-    // 2. Eigene Quest abgeben bzw. daran erinnern
+    // 2. Händler
+    if (npc.spawn.role === 'merchant') return this.trade(npc.spawn.name);
+    // 3. Eigene Quest abgeben bzw. daran erinnern
     const own = log.active.find((q) => q.giverId === npc.spawn.id);
     if (own && isReady(own)) {
       const r = turnIn(log, own.id, now)!;
       return say(`Großartig, du hast es geschafft! Belohnung: ${this.hero.reward(r)}`);
     }
     if (own) return say(`${own.text} (${progressText(own)})`);
-    // 3. Neues Angebot
+    // 4. Neues Angebot
     const offer = offerFor(this.world, log, npc.spawn, this.hero.hero.level, now);
     if (offer && log.active.length < MAX_ACTIVE) {
-      this.pendingOffer = offer;
-      return say(`${offer.title} – ${offer.text}`, ['Annehmen', 'Ablehnen']);
+      return say(`${offer.title} – ${offer.text}`, [
+        ['Annehmen', () => this.acceptOffer(offer)],
+        ['Ablehnen', () => {}],
+      ]);
     }
-    // 4. Plaudern
+    // 5. Plaudern (mit Bezug auf Reich und Ort)
     const line = npc.role.lines[npc.talks % npc.role.lines.length];
     npc.talks++;
-    say(line);
+    say(this.fillLore(line, npc.spawn.tx, npc.spawn.ty));
   }
 
-  /** Auswahl im Dialog (0 = Annehmen, 1 = Ablehnen). */
-  choose(i: number): void {
-    const offer = this.pendingOffer;
-    this.pendingOffer = null;
-    if (offer && i === 0 && accept(this.hero.quests, offer)) {
-      this.events.emit('quests-changed');
-      this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Quest: ${offer.title}`, color: '#ffd84a' });
-      this.hero.persist();
+  /** Setzt Orts- und Reichsnamen in NPC-Sätze ein. */
+  private fillLore(line: string, tx: number, ty: number): string {
+    const m = this.world.meta;
+    const realm = m.realmAt(tx, ty);
+    const town = m.settlementNear(tx, ty, 4);
+    const f = FACTIONS[realm.faction];
+    return line
+      .replace('{town}', town?.name ?? realm.name)
+      .replace('{realm}', realm.name)
+      .replace('{faction}', f.name)
+      .replace('{motto}', f.motto)
+      .replace('{capital}', m.settlements[realm.capital]?.name ?? realm.name)
+      .replace('{world}', m.lore.worldName);
+  }
+
+  private say(name: string, role: string, text: string, choices?: [string, () => void][]): void {
+    this.dialogOpen = true;
+    this.pendingActions = choices?.map((c) => c[1]) ?? [];
+    const d = { name, role, text, choices: choices?.map((c) => c[0]) };
+    this.events.emit('talk', d);
+    debugState.dialog = d;
+  }
+
+  private acceptOffer(offer: Quest): void {
+    if (!accept(this.hero.quests, offer)) return;
+    this.events.emit('quests-changed');
+    this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Quest: ${offer.title}`, color: '#ffd84a' });
+    this.hero.persist();
+  }
+
+  /** Händler: Trank kaufen, gewöhnliche Gegenstände verkaufen. */
+  private trade(name: string, note = ''): void {
+    const h = this.hero.hero;
+    const commons = h.inventory.filter((i) => i.rarity === 'common');
+    const value = commons.reduce((s, i) => s + 3 + i.level * 2, 0);
+    this.say(name, 'Händlerin', `${note}Was darf's sein? Du hast ${h.shards} ◆.`, [
+      [`Heiltrank kaufen (${POTION_PRICE} ◆)`, () => {
+        if (h.shards < POTION_PRICE) return this.trade(name, 'Dafür reicht es leider nicht. ');
+        h.shards -= POTION_PRICE;
+        h.potions++;
+        this.hero.persist();
+        this.events.emit('hero-changed');
+        this.trade(name, 'Bitte sehr! ');
+      }],
+      [commons.length ? `${commons.length} Gewöhnliche verkaufen (+${value} ◆)` : 'Nichts zu verkaufen', () => {
+        if (!commons.length) return;
+        h.inventory = h.inventory.filter((i) => i.rarity !== 'common');
+        h.shards += value;
+        this.hero.persist();
+        this.events.emit('hero-changed');
+        this.trade(name, `Gutes Geschäft! +${value} ◆. `);
+      }],
+      ['Tschüss', () => {}],
+    ]);
+  }
+
+  /** Nächstes Geheimnis (Truhe, Schrein, Obelisk) in Reichweite. */
+  private nearestPoi(): { poi: Poi; dist: number } | null {
+    const { tx, ty } = this.player.tile;
+    let best: { poi: Poi; dist: number } | null = null;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const p = this.world.meta.poiAt(tx + dx, ty + dy);
+        if (!p) continue;
+        const dist = Math.hypot(p.tx * TILE_PX + TILE_PX / 2 - this.player.x, p.ty * TILE_PX + TILE_PX - this.player.y);
+        if (dist < 56 && (!best || dist < best.dist)) best = { poi: p, dist };
+      }
     }
-    this.endTalk();
+    return best;
   }
 
-  pendingOffer: Quest | null = null;
+  private usePoi(p: Poi): void {
+    const h = this.hero.hero;
+    h.opened ??= [];
+    h.chronicle ??= [];
+    if (p.kind === 'chest') {
+      if (h.opened.includes(p.id)) return this.say('Truhe', 'leer', 'Die Truhe ist leer.');
+      h.opened.push(p.id);
+      this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('chest:1');
+      this.hero.lootChest(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
+      this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: 'Truhe geöffnet!', color: '#ffd84a' });
+      this.hero.persist();
+      return;
+    }
+    if (p.kind === 'shrine') {
+      const now = this.time.now;
+      if ((this.shrineCooldown.get(p.id) ?? 0) > now) return this.say('Schrein', 'ruhend', 'Das Licht des Schreins sammelt sich noch.');
+      this.shrineCooldown.set(p.id, now + 5 * 60_000);
+      this.combat.heal(this.combat.stats.maxHp);
+      this.combat.buff(60);
+      return this.say('Schrein', 'Kristall', 'Warmes Licht durchströmt dich. Volle Heilung und +25 % Angriff für eine Minute.');
+    }
+    // Obelisk: Chronik-Fragment
+    const i = p.fragment ?? 0;
+    const frag = this.world.meta.lore.fragments[i];
+    const isNew = !h.chronicle.includes(i);
+    let extra = '';
+    if (isNew) {
+      h.chronicle.push(i);
+      extra = ` (+${this.hero.reward({ xp: 30 + h.level * 5, shards: 0, item: false }).split(',')[0]})`;
+      if (h.chronicle.length === this.world.meta.lore.fragments.length) {
+        h.title = 'Chronist';
+        extra += ` – Du kennst nun die ganze Chronik von ${this.world.meta.lore.worldName}! Titel „Chronist“, +${this.hero.reward({ xp: 200, shards: 200, item: true })}`;
+        this.events.emit('banner', { title: 'Chronik vollständig!', sub: `Titel: Chronist von ${this.world.meta.lore.worldName}` });
+      }
+      this.hero.persist();
+      this.events.emit('chronicle-changed');
+    }
+    this.say(`Obelisk · ${frag.title}`, `${h.chronicle.length}/${this.world.meta.lore.fragments.length}`, `${frag.text}${extra}`);
+  }
+
+  private readonly shrineCooldown = new Map<string, number>();
+  private lastRealm = -1;
+  private lastTown = -1;
+  dialogOpen = false;
+  private pendingActions: (() => void)[] = [];
+
+  /** Auswahl im Dialog. */
+  choose(i: number): void {
+    const action = this.pendingActions[i];
+    this.pendingActions = [];
+    this.endTalk();
+    action?.();
+  }
+
   /** Quest-Markierung je geladenem NPC: "!" Angebot, "?" Abgabe/Ziel. */
   readonly markers = new Map<string, '!' | '?'>();
   private markerTimer = 0;
@@ -237,12 +360,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   attack(): void {
-    if (this.talkingTo) return this.endTalk();
+    if (this.dialogOpen) return this.endTalk();
     this.combat.attack();
   }
 
   endTalk(): void {
-    this.pendingOffer = null;
+    this.dialogOpen = false;
+    this.pendingActions = [];
     if (this.talkingTo) this.talkingTo.talking = false;
     this.talkingTo = null;
     this.events.emit('talk', null);
@@ -287,11 +411,25 @@ export class WorldScene extends Phaser.Scene {
         this.events.emit('quests-changed');
       }
       this.updateMarkers();
+      // Reichs- und Ortswechsel ankündigen
+      const realm = this.world.meta.realmAt(t.tx, t.ty);
+      const town = this.world.meta.settlementNear(t.tx, t.ty, 2);
+      if (realm.id !== this.lastRealm && this.world.biomeAt(t.tx, t.ty) > 1) {
+        if (this.lastRealm !== -1) this.events.emit('banner', { title: `${FACTIONS[realm.faction].name} ${realm.name}`, sub: FACTIONS[realm.faction].motto });
+        this.lastRealm = realm.id;
+      }
+      if ((town?.id ?? -1) !== this.lastTown) {
+        if (town) this.events.emit('banner', { title: town.name, sub: `${town.capital ? 'Hauptstadt' : 'Dorf'} im Reich ${realm.name} · sicherer Ort` });
+        this.lastTown = town?.id ?? -1;
+      }
+      debugState.realm = realm.name;
+      debugState.town = town?.name ?? '';
     }
     this.npcs.update(dt, this.player);
     this.combatCtx.playerAlive = this.combat.alive;
     this.enemies.update(dt, this.combatCtx);
     if (this.talkingTo && Math.hypot(this.talkingTo.actor.x - this.player.x, this.talkingTo.actor.y - this.player.y) > 90) this.endTalk();
+    if (this.dialogOpen && !this.talkingTo && this.player.moving) this.endTalk();
 
     this.saveTimer += delta;
     if (this.saveTimer > 2000) {

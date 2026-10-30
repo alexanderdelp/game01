@@ -123,3 +123,25 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
   if (biome === B.CrystalGrove) count(18, (x, y) => { set(x, y, 0xd8c4ff); set(x + 1, y, accent); });
   return px;
 }
+
+/** Kopfsteinpflaster für Plätze und Wege in Siedlungen. */
+export function cobblePattern(seed = 1): Uint32Array {
+  const px = new Uint32Array(PATTERN * PATTERN).fill(0x5a524a);
+  const stones = [0x8a8278, 0x9a9288, 0x7a7268, 0xa8a094];
+  for (let gy = 0; gy < PATTERN; gy += 8) {
+    const off = (gy / 8) % 2 ? 4 : 0;
+    for (let gx = 0; gx < PATTERN; gx += 8) {
+      const c = stones[hash2(seed, gx, gy, 3) % stones.length];
+      for (let y = 1; y < 7; y++) {
+        for (let x = 1; x < 7; x++) {
+          const corner = (x === 1 || x === 6) && (y === 1 || y === 6);
+          if (corner) continue;
+          const v = y < 3 ? 0x0a0a0a : 0;
+          const col = v ? Math.min(0xffffff, c + 0x101010) : y > 5 ? c - 0x101010 : c;
+          px[(gy + y) * PATTERN + ((gx + x + off) % PATTERN)] = col;
+        }
+      }
+    }
+  }
+  return px;
+}

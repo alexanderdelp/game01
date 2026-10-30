@@ -112,6 +112,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-30 – (M6) Völker: Mensch (+10 % EP), Elf (+8 % Tempo), Ork (+20 LP), Synth (+3 Vert., Cyberpunk). Kleine Boni, damit die Wahl zählt, aber nichts falsch gemacht werden kann.
 - 2026-10-30 – (M6) Erschaffung beim ersten Betreten einer Welt; Aussehen jederzeit über das Heldenfenster änderbar (casual).
 - 2026-10-30 – (M7) Quests seed-basiert pro NPC (Reihe mit Index), 4 Arten (Jagd, Sammeln, Botengang, Erkundung), max. 5 aktiv, jederzeit abbrechbar. Ziele werden mit Himmelsrichtung beschrieben und per Pfeil angezeigt – fördert Erkundung der großen Welt.
+- 2026-10-31 – (M8) Jede Welt hat einen Namen, 6 Reiche mit Fraktionen (Magierzirkel, Technokratie, Klan, Freie Händler, Orden des Lichts), ~20 Siedlungen (sichere Orte ohne Gegner) und eine Chronik in 8 Fragmenten an Obelisken. Die Fraktion bestimmt den Baustil (Fachwerk ↔ Neon).
+- 2026-10-31 – (M8) Geheimnisse: Truhen (5 % der Chunks), Schreine (2 %, Heilung + Angriffs-Segen).
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - „Welt läuft weiter ohne Spieler“ wird ohne Server über deterministisches Nachrechnen der vergangenen Zeit beim Laden gelöst (M10).

@@ -11,6 +11,22 @@ export interface Role {
 }
 
 export const ROLES: Record<string, Role> = {
+  villager: {
+    id: 'villager',
+    name: 'Bewohner',
+    lines: [
+      'Willkommen in {town}! Hier bist du sicher.',
+      '{realm} wird vom {faction} regiert. {motto}',
+      'In {capital} soll es die besten Schmiede geben.',
+      'Draußen stehen Obelisken mit alten Schriften. Kannst du sie lesen?',
+      'Man sagt, ganz {world} hat eine Geschichte, die keiner mehr kennt.',
+    ],
+  },
+  merchant: {
+    id: 'merchant',
+    name: 'Händlerin',
+    lines: ['Splitter gegen Ware, so einfach ist das.'],
+  },
   wanderer: {
     id: 'wanderer',
     name: 'Wanderer',
@@ -122,10 +138,25 @@ export function npcName(rnd: () => number): string {
   return `${FIRST_FANTASY[Math.floor(rnd() * FIRST_FANTASY.length)]} ${LAST[Math.floor(rnd() * LAST.length)]}`;
 }
 
-/** NPCs, die in einem Chunk zu Hause sind (0–3). */
+/** NPCs, die in einem Chunk zu Hause sind (0–3, in Ortsmitten Händler und Bewohner). */
 export function npcsForChunk(world: WorldGen, cx: number, cy: number): NpcSpawn[] {
   const rnd = mulberry32(hash2(world.seed, cx, cy, 4242));
   const out: NpcSpawn[] = [];
+  for (const s of world.meta.settlements) {
+    if (Math.floor(s.tx / CHUNK_TILES) !== cx || Math.floor(s.ty / CHUNK_TILES) !== cy) continue;
+    const srnd = mulberry32(hash2(world.seed, s.tx, s.ty, 4343));
+    out.push({ id: `m${s.id}`, tx: s.tx - 2, ty: s.ty + 2, role: 'merchant', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
+    const n = s.capital ? 7 : 4;
+    for (let i = 0; i < n; i++) {
+      const a = srnd() * Math.PI * 2;
+      const d = 2 + srnd() * (s.radius - 3);
+      const tx = Math.round(s.tx + Math.cos(a) * d);
+      const ty = Math.round(s.ty + Math.sin(a) * d);
+      if (!BIOMES[world.biomeAt(tx, ty)].walkable || world.decorationAt(tx, ty)) continue;
+      out.push({ id: `v${s.id},${i}`, tx, ty, role: 'villager', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
+    }
+  }
+  if (world.meta.settlementNear(cx * CHUNK_TILES + CHUNK_TILES / 2, cy * CHUNK_TILES + CHUNK_TILES / 2, 4)) return out;
   const tries = 3;
   for (let i = 0; i < tries; i++) {
     const tx = cx * CHUNK_TILES + Math.floor(rnd() * CHUNK_TILES);

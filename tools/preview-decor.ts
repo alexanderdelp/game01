@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs';
 import { DECOR_KINDS, DECOR_VARIANTS, generateDecor } from '../src/render/procSprites';
 import { encodePng } from './png';
 
-const S = 3, CW = 50, CH = 66;
+const S = 2, CW = 76, CH = 108;
 const W = DECOR_VARIANTS * CW * S, H = DECOR_KINDS.length * CH * S;
 const rgb = new Uint8Array(W * H * 3).fill(0);
 for (let i = 0; i < W * H; i++) { rgb[i * 3] = 0x5c; rgb[i * 3 + 1] = 0xab; rgb[i * 3 + 2] = 0x44; }

@@ -1,7 +1,7 @@
 import { B, BIOMES } from '../world/biomes';
 import { Simplex2 } from '../world/noise';
 import { CHUNK_TILES, type Decoration, type WorldGen } from '../world/WorldGen';
-import { PATTERN, groundPattern } from './groundPatterns';
+import { PATTERN, cobblePattern, groundPattern } from './groundPatterns';
 
 export const TILE_PX = 32;
 export const CHUNK_PX = CHUNK_TILES * TILE_PX;
@@ -9,6 +9,8 @@ export const CHUNK_PX = CHUNK_TILES * TILE_PX;
 const SUB = 2;
 const SUBS = CHUNK_PX / SUB;
 
+/** Pseudo-Biom für gepflasterte Flächen (nur im Renderer). */
+const PLAZA = 255;
 const isWater = (b: number) => b === B.DeepOcean || b === B.Ocean;
 const isHigh = (b: number) => b === B.Mountain || b === B.Peak;
 
@@ -20,9 +22,11 @@ const isHigh = (b: number) => b === B.Mountain || b === B.Peak;
 export class ChunkPainter {
   private readonly patterns: Uint32Array[];
   private readonly jitter: Simplex2;
+  private readonly cobble: Uint32Array;
 
   constructor(private readonly world: WorldGen) {
     this.patterns = BIOMES.map((b) => groundPattern(b.id, world.seed));
+    this.cobble = cobblePattern(world.seed);
     this.jitter = new Simplex2(world.seed ^ 0xabcdef);
   }
 
@@ -35,6 +39,11 @@ export class ChunkPainter {
     const G = T + 2;
     const grid = new Uint8Array(G * G);
     for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) grid[y * G + x] = this.world.biomeAt(ox + x - 1, oy + y - 1);
+    // Pflaster: Kennzeichnung als Pseudo-Biom 255 (nur wenn begehbar)
+    const meta = this.world.meta;
+    if (meta.settlements.some((s) => Math.abs(s.tx - (ox + T / 2)) < s.radius + T && Math.abs(s.ty - (oy + T / 2)) < s.radius + T)) {
+      for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) if (meta.isPlaza(ox + x - 1, oy + y - 1) && BIOMES[grid[y * G + x]].walkable) grid[y * G + x] = PLAZA;
+    }
 
     // Verwirbelte Biome auf dem Sub-Raster inkl. 1 Sub-Zelle Rand.
     const S = SUBS + 2;
@@ -60,12 +69,27 @@ export class ChunkPainter {
         const down = sub[i + S];
         const left = sub[i - 1];
         const right = sub[i + 1];
+        if (b === PLAZA) {
+          for (let py = 0; py < SUB; py++) {
+            const wy = cy * CHUNK_PX + sy * SUB + py;
+            for (let px = 0; px < SUB; px++) {
+              const wx = cx * CHUNK_PX + sx * SUB + px;
+              const c = this.cobble[(wy & (PATTERN - 1)) * PATTERN + (wx & (PATTERN - 1))];
+              const o = ((sy * SUB + py) * CHUNK_PX + sx * SUB + px) * 4;
+              out[o] = c >> 16;
+              out[o + 1] = (c >> 8) & 255;
+              out[o + 2] = c & 255;
+              out[o + 3] = 255;
+            }
+          }
+          continue;
+        }
         let mode = 0; // 0 normal, 1 Gischt, 2 nasser Rand, 3 Klippenschatten, 4 Klippenkante
         if (isWater(b)) {
           if (!isWater(up) || !isWater(down) || !isWater(left) || !isWater(right)) mode = 1;
         } else if (isWater(down) || isWater(left) || isWater(right) || isWater(up)) {
           mode = 2;
-        } else if (isHigh(b) && !isHigh(down)) {
+        } else if (isHigh(b) && !isHigh(down) && down !== PLAZA) {
           mode = 3;
         } else if (isHigh(b) && !isHigh(up)) {
           mode = 4;

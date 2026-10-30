@@ -74,6 +74,7 @@ export function enemiesForChunk(world: WorldGen, cx: number, cy: number, spawn: 
     const ty = ty0 + Math.floor(rnd() * 5) - 2;
     const dist = Math.hypot(tx - spawn.tx, ty - spawn.ty);
     if (dist < SAFE_RADIUS) continue;
+    if (world.meta.settlementNear(tx, ty, 10)) continue;
     const tb = world.biomeAt(tx, ty);
     if (!BIOMES[tb].walkable && !ENEMIES[kind].flying) continue;
     const deco = world.decorationAt(tx, ty, tb);
