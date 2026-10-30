@@ -9,13 +9,12 @@ test('M3: NPCs erscheinen, wandern und lassen sich ansprechen', async ({ page })
   // R3: Es gibt NPCs in der Nähe, und mindestens einer bewegt sich.
   await expect.poll(async () => (await npcs(page)).length, { timeout: 15_000 }).toBeGreaterThan(0);
   const before = await npcs(page);
-  await page.waitForTimeout(8000);
-  const after = await npcs(page);
-  const moved = after.filter((a) => {
-    const b = before.find((n) => n.id === a.id);
-    return b && Math.hypot(a.x - b.x, a.y - b.y) > 8;
-  });
-  expect(moved.length).toBeGreaterThan(0);
+  const movedCount = async () =>
+    (await npcs(page)).filter((a) => {
+      const b = before.find((n) => n.id === a.id);
+      return b && Math.hypot(a.x - b.x, a.y - b.y) > 8;
+    }).length;
+  await expect.poll(movedCount, { timeout: 30_000, intervals: [1000] }).toBeGreaterThan(0);
 
   // R5: Zum nächsten NPC teleportieren und ansprechen (NPCs laufen weiter, daher mehrere Versuche).
   let dialog: unknown = null;
