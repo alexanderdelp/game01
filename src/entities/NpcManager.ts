@@ -40,10 +40,9 @@ export class Npc {
 
   update(dt: number, chunks: ChunkManager, world: WorldGen, player: Actor): void {
     const a = this.actor;
-    const nearPlayer = Math.hypot(player.x - a.x, player.y - a.y) < TALK_RANGE;
-    if (this.talking || (nearPlayer && player.moving === false && this.state === 'idle')) {
+    if (this.talking) {
       a.update(0, 0, false, dt, chunks);
-      if (this.talking) a.face(player.x, player.y);
+      a.face(player.x, player.y);
       return;
     }
     this.timer -= dt * 1000;

@@ -15,7 +15,7 @@ Kristallhain, Schrottsammler in der Ödnis …). Man kann sie ansprechen und erf
   Kleidung, Farben). NPCs nutzen einen davon → abwechslungsreich, aber speicherschonend.
 - **Namen:** seed-basiert aus Silben (Fantasy- und Cyber-Anteile, z. B. „Kael Voss“, „Mira-7“).
 - **Verhalten (Wandern):** Zustandsautomat Stehen ↔ Gehen. Ziel: zufällige begehbare Stelle im Umkreis von 6 Kacheln um das Zuhause.
-  Gleiche Kollision wie der Spieler. Wird ein NPC angesprochen oder steht der Spieler nah davor, bleibt er stehen und schaut ihn an.
+  Gleiche Kollision wie der Spieler. Wird ein NPC angesprochen, bleibt er stehen und schaut den Spieler an.
 - **Lebenszyklus:** NPCs erscheinen mit ihrem Chunk und verschwinden, wenn er entladen wird (dauerhafte Simulation: M10).
 - **Ansprechen:** E / Leertaste (oder antippen) in der Nähe → Dialogfenster mit Name, Rolle und einem Satz. Nochmal drücken → nächster Satz / schließen.
 

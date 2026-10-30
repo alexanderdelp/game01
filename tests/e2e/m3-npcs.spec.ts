@@ -17,17 +17,20 @@ test('M3: NPCs erscheinen, wandern und lassen sich ansprechen', async ({ page })
   });
   expect(moved.length).toBeGreaterThan(0);
 
-  // R5: Zum nächsten NPC teleportieren und ansprechen.
-  const p = (await state(page)).player;
-  const target = after.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
-  await page.evaluate(([x, y]) => {
-    const g = (window as unknown as { __game: { teleport(tx: number, ty: number): void } }).__game;
-    g.teleport(Math.floor(x / 32), Math.floor(y / 32) + 1);
-  }, [target.x, target.y]);
-  await waitReady(page);
-  await page.waitForTimeout(200);
-  await page.keyboard.press('e');
-  const dialog = await page.evaluate(() => (window as unknown as { __game: { dialog: unknown } }).__game.dialog);
+  // R5: Zum nächsten NPC teleportieren und ansprechen (NPCs laufen weiter, daher mehrere Versuche).
+  let dialog: unknown = null;
+  for (let attempt = 0; attempt < 6 && !dialog; attempt++) {
+    const p = (await state(page)).player;
+    const list = await npcs(page);
+    const target = list.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
+    await page.evaluate(([x, y]) => {
+      const g = (window as unknown as { __game: { teleport(tx: number, ty: number): void } }).__game;
+      g.teleport(Math.floor(x / 32), Math.floor(y / 32));
+    }, [target.x, target.y]);
+    await page.keyboard.press('e');
+    dialog = await page.evaluate(() => (window as unknown as { __game: { dialog: unknown } }).__game.dialog);
+    if (!dialog) await page.waitForTimeout(500);
+  }
   expect(dialog).not.toBeNull();
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'screenshots/m3-dialog.png' });
