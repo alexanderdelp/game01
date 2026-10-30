@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { load } from './game/save';
+import type { Hero } from './rpg/progression';
+import { CreateScene } from './scenes/CreateScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
 import { randomSeedName } from './world/rng';
@@ -21,5 +24,7 @@ const game = new Phaser.Game({
   scene: [],
 });
 
-game.scene.add('world', WorldScene, true, { seed });
+const hasHero = !!load<Hero>(`hero:${seed}`)?.appearance;
+game.scene.add('world', WorldScene, hasHero, { seed });
 game.scene.add('ui', UIScene, false);
+game.scene.add('create', CreateScene, !hasHero, { seed });

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ANIMS, FRAME, ROWS, appearanceKey, layersFor, recolor, type Appearance, type Palettes } from './lpc';
+import { ANIMS, DEFAULT_APPEARANCE, FRAME, HAIR_STYLES, ROWS, appearanceKey, layersFor, recolor, type Appearance, type Palettes } from './lpc';
 
 const BASE = 'assets/lpc/';
 
@@ -10,6 +10,17 @@ export function preloadCharacter(scene: Phaser.Scene, a: Appearance): void {
     for (const anim of layer.anims ?? Object.keys(ANIMS)) {
       const key = `lpc:${layer.dir}/${anim}`;
       if (!scene.textures.exists(key)) scene.load.image(key, `${BASE}${layer.dir}/${anim}.png`);
+    }
+  }
+}
+
+/** Lädt alle Ebenen, die im Erschaffungsbildschirm wählbar sind. */
+export function preloadAllParts(scene: Phaser.Scene): void {
+  for (const race of ['human', 'elf', 'orc'] as const) {
+    for (const body of ['male', 'female'] as const) {
+      for (const hair of HAIR_STYLES) {
+        for (const torso of ['longsleeve', 'leather'] as const) preloadCharacter(scene, { ...DEFAULT_APPEARANCE, race, body, hair, torso });
+      }
     }
   }
 }
@@ -51,7 +62,7 @@ export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string
       }
       if (layer.material) {
         const img = tctx.getImageData(0, 0, w, h);
-        recolor(img.data, palettes, layer.material, layer.color);
+        recolor(img.data, palettes, layer.material, layer.color, layer.base);
         tctx.putImageData(img, 0, 0);
       }
       ctx.drawImage(tmp, 0, 0);

@@ -25,7 +25,10 @@
     "legs/pants/male",
     "legs/pants/thin",
     "feet/boots/basic/male",
-    "feet/boots/basic/thin"
+    "feet/boots/basic/thin",
+    "head/heads/orc/male",
+    "head/heads/orc/female",
+    "head/ears/elven/adult"
   ],
   "files": [
     {

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { buildCharacter, preloadCharacter } from '../character/CharacterFactory';
-import { DEFAULT_APPEARANCE } from '../character/lpc';
+import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
 import { debugState } from '../debug';
 import { Actor } from '../entities/Actor';
 import { BANDIT_LOOKS, EnemyManager, type CombatCtx } from '../entities/Enemy';
@@ -49,13 +49,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   preload(): void {
-    preloadCharacter(this, DEFAULT_APPEARANCE);
-    preloadCharacter(this, { ...DEFAULT_APPEARANCE, torso: 'leather' });
+    const look = { ...DEFAULT_APPEARANCE, ...load<{ appearance?: Appearance }>(`hero:${this.world.seedName}`)?.appearance };
+    preloadCharacter(this, { ...look, torso: 'longsleeve' });
+    preloadCharacter(this, { ...look, torso: 'leather' });
     for (const a of NpcManager.appearances(this.world)) preloadCharacter(this, a);
     for (const a of BANDIT_LOOKS) preloadCharacter(this, a);
   }
 
   create(): void {
+    debugState.scene = 'world';
     createDecorAtlas(this);
     createCreatureAtlas(this);
     this.chunks = new ChunkManager(this, this.world.seedName);
@@ -67,14 +69,16 @@ export class WorldScene extends Phaser.Scene {
     const saved = load<SavedPlayer>(this.saveKey);
     const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
     const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
-    this.player = new Actor(this, startX, startY, buildCharacter(this, DEFAULT_APPEARANCE));
+    this.player = new Actor(this, startX, startY, buildCharacter(this, { ...DEFAULT_APPEARANCE, ...load<{ appearance?: Appearance }>(`hero:${this.world.seedName}`)?.appearance }));
 
     // Startzoom so, dass mindestens ~20 Kacheln in der Breite sichtbar sind (Handy: 1, Desktop: 2).
     this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
     const respawn = () => this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
     this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
     this.hero = new HeroController(this, this.world.seedName, this.player, this.combat);
-    this.events.on('defeated', (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e));
+    const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
+    this.events.on('defeated', onDefeated);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('defeated', onDefeated));
     this.combatCtx = {
       chunks: this.chunks,
       world: this.world,
@@ -148,6 +152,14 @@ export class WorldScene extends Phaser.Scene {
       }
       return null;
     };
+  }
+
+  /** Öffnet den Erschaffungsbildschirm zum Ändern des Aussehens (Fortschritt bleibt). */
+  editAppearance(): void {
+    save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+    this.hero.persist();
+    this.scene.stop('ui');
+    this.scene.start('create', { seed: this.world.seedName, edit: true });
   }
 
   /** Spricht den nächsten NPC an bzw. blättert/schließt den Dialog. */

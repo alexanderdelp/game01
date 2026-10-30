@@ -28,7 +28,10 @@ export const HAIR_STYLES = ['plain', 'long', 'bob', 'spiked', 'messy1', 'pixie']
 export type HairStyle = (typeof HAIR_STYLES)[number] | 'none';
 export type TorsoStyle = 'longsleeve' | 'leather';
 
+export type Race = 'human' | 'elf' | 'orc' | 'synth';
+
 export interface Appearance {
+  race?: Race;
   body: BodyType;
   skin: string;
   hair: HairStyle;
@@ -57,6 +60,8 @@ export interface Layer {
   dir: string;
   material: Material;
   color: string;
+  /** Palette, in der das Quellbild gezeichnet ist (Standard: BASE_PALETTE des Materials). */
+  base?: string;
   /** Vorhandene Animationen, falls nicht alle (fehlendes "idle" wird aus Geh-Frame 0 gebildet). */
   anims?: string[];
 }
@@ -74,9 +79,12 @@ export function layersFor(a: Appearance): Layer[] {
     a.torso === 'leather'
       ? { dir: `torso/armour/leather/${a.body}`, material: null, color: '' }
       : { dir: `torso/clothes/longsleeve/longsleeve2/${a.body}`, material: 'cloth', color: a.torsoColor },
-    { dir: `head/heads/human/${a.body}`, material: 'body', color: a.skin },
+    a.race === 'orc'
+      ? { dir: `head/heads/orc/${a.body}`, material: 'body', color: a.skin, base: 'green' }
+      : { dir: `head/heads/human/${a.body}`, material: 'body', color: a.skin },
   );
   if (a.hair !== 'none') layers.push({ dir: `hair/${a.hair}/adult`, material: 'hair', color: a.hairColor });
+  if (a.race === 'elf') layers.push({ dir: 'head/ears/elven/adult', material: 'body', color: a.skin });
   if (weapon) layers.push({ dir: `weapon/${a.weapon}/fg`, material: null, color: '', anims: ['slash', 'thrust', 'walk', 'hurt'] });
   return layers;
 }
@@ -89,10 +97,10 @@ export const BASE_PALETTE = { body: 'light', hair: 'orange', cloth: 'white' } as
 const hex = (s: string) => parseInt(s.slice(1), 16);
 
 /** Färbt RGBA-Pixel in-place von der Basis- auf die Zielpalette um. */
-export function recolor(px: Uint8ClampedArray, palettes: Palettes, material: Exclude<Material, null>, target: string): void {
-  const from = palettes[material][BASE_PALETTE[material]];
+export function recolor(px: Uint8ClampedArray, palettes: Palettes, material: Exclude<Material, null>, target: string, base: string = BASE_PALETTE[material]): void {
+  const from = palettes[material][base];
   const to = palettes[material][target];
-  if (!from || !to || target === BASE_PALETTE[material]) return;
+  if (!from || !to || target === base) return;
   const map = new Map<number, number>();
   from.forEach((c, i) => map.set(hex(c), hex(to[Math.min(i, to.length - 1)])));
   for (let i = 0; i < px.length; i += 4) {

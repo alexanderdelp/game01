@@ -7,6 +7,7 @@ import { iconFor } from '../entities/HeroController';
 import { ATLAS } from '../render/textures';
 import { RARITY_COLOR, RARITY_NAME, describeBonus, type Slot } from '../rpg/items';
 import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
+import { RACES } from '../rpg/races';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -33,6 +34,22 @@ export class UIScene extends Phaser.Scene {
 
   init(data: { seed: string }): void {
     this.seed = data.seed;
+    // Szene kann neu gestartet werden: Verweise auf alte (zerstörte) Objekte verwerfen.
+    this.hpText = undefined;
+    this.xpText = undefined;
+    this.panel = undefined;
+    this.map = undefined;
+    this.mapImage = undefined;
+    this.marker = undefined;
+    this.dialog = undefined;
+    this.attackButton = undefined;
+    this.attackLabel = undefined;
+    this.touchButtons = [];
+    this.mapSize = 0;
+    this.selected = null;
+    debugState.mapOpen = false;
+    debugState.mapReady = false;
+    debugState.panelOpen = false;
   }
 
   create(): void {
@@ -259,8 +276,9 @@ export class UIScene extends Phaser.Scene {
       return b;
     };
     let y = 10;
-    txt(12, y, `Held · Stufe ${h.level}`, '#2fe0d8', 17);
+    txt(12, y, `${h.name ?? 'Held'} · ${RACES[h.race ?? 'human'].name} · Stufe ${h.level}`, '#2fe0d8', 17);
     button(W - 34, 8, '✕', () => this.togglePanel(), true, 'close');
+    button(W - 104, 8, 'Aussehen', () => ws.editAppearance(), true, 'appearance');
     y += 26;
     txt(12, y, `EP ${h.xp}/${xpToNext(h.level)}   ◆ ${h.shards} Splitter   Tränke ${h.potions}`, '#ffd84a');
     y += 22;
@@ -424,7 +442,7 @@ export class UIScene extends Phaser.Scene {
     const biomeName = b === undefined ? '…' : BIOMES[b].name;
     debugState.biome = biomeName;
     this.hud.setText(
-      [`Welt: ${this.seed}`, `Position: ${tx}, ${ty}`, `Gebiet: ${biomeName}`, `FPS: ${Math.round(this.game.loop.actualFps)}`].join('\n'),
+      [`${ws.hero.hero.name ?? 'Held'} · Welt: ${this.seed}`, `Position: ${tx}, ${ty}`, `Gebiet: ${biomeName}`, `FPS: ${Math.round(this.game.loop.actualFps)}`].join('\n'),
     );
     this.help.setY(this.scale.height - 6);
     this.drawHp();

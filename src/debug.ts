@@ -1,5 +1,9 @@
 /** Zustand für Akzeptanztests und Fehlersuche, erreichbar als `window.__game`. */
 export const debugState = {
+  scene: '',
+  createChange: (_row: number, _dir: number): void => {},
+  createConfirm: (_name?: string): void => {},
+  createLook: (): unknown => null,
   seed: '',
   ready: false,
   spawn: { tx: 0, ty: 0 },

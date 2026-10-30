@@ -1,6 +1,8 @@
 /** Stufen, Erfahrung, Talente, Inventar und Endwerte des Helden. Rein, ohne Phaser. */
 import type { EnemyKind } from '../combat/enemies';
+import type { Appearance, Race } from '../character/lpc';
 import type { Bonus, Item, Slot } from './items';
+import { RACES } from './races';
 
 export type Talent = 'strength' | 'toughness' | 'agility';
 
@@ -13,6 +15,10 @@ export const TALENTS: Record<Talent, { name: string; desc: string }> = {
 export const INVENTORY_SIZE = 24;
 
 export interface Hero {
+  name?: string;
+  race?: Race;
+  /** Gewähltes Aussehen (Oberteil und Waffe bestimmt die Ausrüstung). */
+  appearance?: Appearance;
   level: number;
   xp: number;
   talentPoints: number;
@@ -34,8 +40,8 @@ export function xpToNext(level: number): number {
 
 const XP_BASE: Record<EnemyKind, number> = { slime: 6, wisp: 9, drone: 10, bandit: 12 };
 
-export function xpForKill(kind: EnemyKind, level: number): number {
-  return Math.round(XP_BASE[kind] * (1 + 0.5 * (level - 1)));
+export function xpForKill(kind: EnemyKind, level: number, race: Race = 'human'): number {
+  return Math.round(XP_BASE[kind] * (1 + 0.5 * (level - 1)) * (1 + (RACES[race].bonus.xp ?? 0)));
 }
 
 /** Fügt EP hinzu; gibt die Anzahl der Aufstiege zurück. */
@@ -68,6 +74,10 @@ export function finalStats(h: Hero): FinalStats {
     speed: 1 + h.talents.agility * 0.06,
     regen: 3,
   };
+  const rb = RACES[h.race ?? 'human'].bonus;
+  s.maxHp += rb.hp ?? 0;
+  s.defense += rb.defense ?? 0;
+  s.speed += rb.speed ?? 0;
   for (const it of Object.values(h.equipped)) {
     if (!it) continue;
     const b: Bonus = it.bonus;

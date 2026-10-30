@@ -17,8 +17,17 @@ export async function open(page: Page, seed: string) {
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
   await page.goto(`/?seed=${seed}`);
+  await skipCreation(page);
   await waitReady(page);
   return errors;
+}
+
+/** Bestätigt den Erschaffungsbildschirm mit Standardwerten, falls er erscheint. */
+export async function skipCreation(page: Page) {
+  const sceneOf = () => page.evaluate(() => (window as unknown as { __game?: { scene: string } }).__game?.scene ?? '');
+  await expect.poll(sceneOf, { timeout: 30_000 }).not.toBe('');
+  const scene = await page.evaluate(() => (window as unknown as { __game: { scene: string } }).__game.scene);
+  if (scene === 'create') await page.evaluate(() => (window as unknown as { __game: { createConfirm(n?: string): void } }).__game.createConfirm('Testheld'));
 }
 
 export async function waitReady(page: Page) {

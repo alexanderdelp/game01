@@ -48,7 +48,7 @@ export class HeroController {
   /** Aussehen der Figur abhängig von der Rüstung. */
   appearance(): Appearance {
     const armor = this.hero.equipped.armor;
-    return { ...DEFAULT_APPEARANCE, torso: armor?.base === 'leather' ? 'leather' : 'longsleeve' };
+    return { ...DEFAULT_APPEARANCE, ...this.hero.appearance, weapon: 'dagger', torso: armor?.base === 'leather' ? 'leather' : 'longsleeve' };
   }
 
   /** Endwerte und Aussehen neu anwenden. */
@@ -63,7 +63,7 @@ export class HeroController {
   }
 
   onDefeated(e: Enemy): void {
-    const xp = xpForKill(e.def.kind, e.spawn.level);
+    const xp = xpForKill(e.def.kind, e.spawn.level, this.hero.race);
     const ups = gainXp(this.hero, xp);
     this.scene.events.emit('float', { x: e.x, y: e.body.y - 10, text: `+${xp} EP`, color: '#ffd84a' });
     if (ups > 0) {
