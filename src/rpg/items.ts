@@ -91,7 +91,7 @@ export type Drop = { type: 'shards'; amount: number } | { type: 'potion' } | { t
 /** Beute eines besiegten Gegners. */
 export function rollDrops(level: number, rnd: () => number): Drop[] {
   const drops: Drop[] = [];
-  if (rnd() < 0.9) drops.push({ type: 'shards', amount: 1 + Math.floor(rnd() * (2 + level * 2)) });
+  drops.push({ type: 'shards', amount: 1 + Math.floor(rnd() * (2 + level * 2)) });
   if (rnd() < 0.15) drops.push({ type: 'potion' });
   if (rnd() < 0.25) drops.push({ type: 'item', item: generateItem(level, rnd) });
   return drops;

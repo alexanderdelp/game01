@@ -13,11 +13,15 @@ export const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && a.x + a.w > b.x &
  * Dadurch gleitet man an Hindernissen entlang statt hängenzubleiben.
  * Große Schritte werden unterteilt, damit nichts durchtunnelt.
  */
-export function moveBox(box: Box, dx: number, dy: number, blocked: (b: Box) => boolean): Box {
+export function moveBox(box: Box, dx: number, dy: number, blocked: (b: Box) => boolean, terrainBlocked?: (b: Box) => boolean): Box {
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 4));
   let cur = { ...box };
-  // Steckt die Box schon fest (z. B. Erscheinen auf einem Hindernis), darf sie sich frei herausbewegen.
-  if (blocked(cur)) return { ...cur, x: cur.x + dx, y: cur.y + dy };
+  // Steckt die Box schon fest (z. B. Erscheinen auf einem Hindernis), darf sie sich herausbewegen –
+  // aber nie in unbegehbares Gelände (Wasser, Gipfel).
+  if (blocked(cur)) {
+    const next = { ...cur, x: cur.x + dx, y: cur.y + dy };
+    return terrainBlocked?.(next) ? cur : next;
+  }
   for (let i = 0; i < steps; i++) {
     const nx = { ...cur, x: cur.x + dx / steps };
     if (!blocked(nx)) cur = nx;

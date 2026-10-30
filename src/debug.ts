@@ -1,5 +1,7 @@
 /** Zustand für Akzeptanztests und Fehlersuche, erreichbar als `window.__game`. */
 export const debugState = {
+  /** Versatz der Weltzeit in ms (Tests, Vorschau). */
+  timeOffset: 0,
   scene: '',
   createChange: (_row: number, _dir: number): void => {},
   createConfirm: (_name?: string): void => {},
@@ -17,6 +19,7 @@ export const debugState = {
   panelOpen: false,
   questLogOpen: false,
   chronicleOpen: false,
+  newsOpen: false,
   mapReady: false,
   teleport: (_tx: number, _ty: number): void => {},
   findShore: (): { tx: number; ty: number } | null => null,
@@ -35,6 +38,11 @@ export const debugState = {
   enemies: [] as { id: string; kind: string; x: number; y: number; hp: number; state: string }[],
   quests: null as unknown,
   realm: '',
+  weather: '',
+  invasion: null as unknown,
+  caravans: [] as string[],
+  caravanAt: (_i: number): { tx: number; ty: number } | null => null,
+  news: [] as string[],
   town: '',
   meta: null as unknown,
   state: (): unknown => null,

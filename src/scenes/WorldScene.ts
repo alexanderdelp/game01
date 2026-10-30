@@ -18,6 +18,8 @@ import { MAX_ACTIVE, accept, isReady, offerFor, onPosition, onTalk, progressText
 import { FACTIONS, type Poi } from '../world/meta';
 import { LocalWorldStore, WorldState, isDefeated, reputationRank } from '../state/worldState';
 import { TownDecor } from '../render/TownDecor';
+import { LiveWorld, worldNow } from '../sim/LiveWorld';
+import { TICK_MS, caravanPos, newsBetween, type News } from '../sim/simulation';
 
 const POTION_PRICE = 10;
 import { addItem } from '../rpg/progression';
@@ -40,6 +42,7 @@ export class WorldScene extends Phaser.Scene {
   combat!: PlayerCombat;
   state!: WorldState;
   towns!: TownDecor;
+  live!: LiveWorld;
   hero!: HeroController;
   private combatCtx!: CombatCtx;
   /** NPC, mit dem gerade gesprochen wird. */
@@ -91,7 +94,9 @@ export class WorldScene extends Phaser.Scene {
     for (const id of this.hero.hero.opened ?? []) if (!this.state.d.chests.has(id)) this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id });
     delete this.hero.hero.opened;
     this.chunks.frameHook = (d) => (d.kind === 'chest' && this.state.d.chests.has(`chest:${d.tx},${d.ty}`) ? 'chest:1' : undefined);
-    this.towns = new TownDecor(this, this.world, this.chunks, this.state, () => this.heroName);
+    this.live = new LiveWorld(this.world, this.chunks, this.npcs, this.state);
+    this.enemies.invasion = this.live.invasion;
+    this.towns = new TownDecor(this, this.world, this.chunks, this.state, () => this.heroName, (id) => this.live.drift(id));
     const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
     this.events.on('defeated', onDefeated);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('defeated', onDefeated));
@@ -130,11 +135,23 @@ export class WorldScene extends Phaser.Scene {
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
       this.hero.persist();
       this.state.flush();
+      save(`seen:${this.world.seedName}`, worldNow());
     };
     window.addEventListener('pagehide', persist);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('pagehide', persist));
 
     this.scene.launch('ui', { seed: this.world.seedName });
+
+    // Was ist passiert, während niemand gespielt hat?
+    const now = worldNow();
+    const lastSeen = load<number>(`seen:${this.world.seedName}`);
+    this.news = newsBetween(this.world.meta, this.world.seed, now - 24 * TICK_MS, now, this.live.caravans);
+    debugState.news = this.news.map((n) => n.text);
+    if (lastSeen && now - lastSeen > TICK_MS) {
+      const missed = newsBetween(this.world.meta, this.world.seed, lastSeen, now, this.live.caravans);
+      if (missed.length) this.time.delayedCall(800, () => this.events.emit('news-summary', { hours: Math.round((now - lastSeen) / TICK_MS), news: missed }));
+    }
+    save(`seen:${this.world.seedName}`, now);
     debugState.seed = this.world.seedName;
     debugState.spawn = spawn;
     debugState.teleport = (tx: number, ty: number) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
@@ -168,6 +185,10 @@ export class WorldScene extends Phaser.Scene {
     });
     debugState.recordQuest = (tx: number, ty: number) => this.recordQuest(tx, ty);
     debugState.travel = (id: number) => this.travel(id);
+    debugState.caravanAt = (i: number) => {
+      const c = this.live.caravans[i];
+      return c ? caravanPos(c, worldNow()) : null;
+    };
     debugState.meta = {
       settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital })),
       obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
@@ -397,6 +418,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private readonly shrineCooldown = new Map<string, number>();
+  news: News[] = [];
   private lastRealm = -1;
   private lastTown = -1;
   dialogOpen = false;
@@ -482,7 +504,9 @@ export class WorldScene extends Phaser.Scene {
       const realm = this.world.meta.realmAt(t.tx, t.ty);
       const town = this.world.meta.settlementNear(t.tx, t.ty, 2);
       if (realm.id !== this.lastRealm && this.world.biomeAt(t.tx, t.ty) > 1) {
-        if (this.lastRealm !== -1) this.events.emit('banner', { title: `${FACTIONS[realm.faction].name} ${realm.name}`, sub: FACTIONS[realm.faction].motto });
+        const inv = this.live.invasion?.realm === realm.id ? this.live.invasion : null;
+        const invText = inv ? `⚠ Invasion: ${({ slime: 'Schleime', wisp: 'Irrlichter', drone: 'Drohnen', bandit: 'Räuberbanden' } as const)[inv.kind]}!` : FACTIONS[realm.faction].motto;
+        if (this.lastRealm !== -1 || inv) this.events.emit('banner', { title: `${FACTIONS[realm.faction].name} ${realm.name}`, sub: invText });
         this.lastRealm = realm.id;
       }
       if ((town?.id ?? -1) !== this.lastTown) {
@@ -496,6 +520,8 @@ export class WorldScene extends Phaser.Scene {
       debugState.realm = realm.name;
       debugState.town = town?.name ?? '';
     }
+    this.live.update(dt, this.player);
+    if (this.enemies.invasion !== this.live.invasion) this.enemies.invasion = this.live.invasion;
     this.npcs.update(dt, this.player);
     this.combatCtx.playerAlive = this.combat.alive;
     this.enemies.update(dt, this.combatCtx);
@@ -506,6 +532,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.saveTimer > 2000) {
       this.saveTimer = 0;
       this.state.flush();
+      save(`seen:${this.world.seedName}`, worldNow());
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
     }
 
@@ -517,6 +544,9 @@ export class WorldScene extends Phaser.Scene {
     debugState.chunksPending = this.chunks.pendingCount;
     debugState.npcs = [...this.npcs.npcs.values()].map((n) => ({ id: n.spawn.id, x: n.actor.x, y: n.actor.y, role: n.spawn.role, name: n.spawn.name }));
     debugState.hp = this.combat.stats.hp;
+    debugState.weather = this.live.weather;
+    debugState.invasion = this.live.invasion;
+    debugState.caravans = this.live.caravans.map((c) => c.name);
     debugState.attacks = this.combat.attacks;
     debugState.hero = this.hero.hero;
     debugState.pickups = this.hero.pickupCount;

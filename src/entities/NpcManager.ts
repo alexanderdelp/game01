@@ -22,6 +22,8 @@ export class Npc {
   /** Wie oft bereits gesprochen wurde (wählt den nächsten Satz). */
   talks = 0;
   talking = false;
+  /** Von außen gesteuert (Karawane): keine eigene Wander-KI. */
+  scripted = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -40,6 +42,10 @@ export class Npc {
 
   update(dt: number, chunks: ChunkManager, world: WorldGen, player: Actor): void {
     const a = this.actor;
+    if (this.scripted) {
+      if (this.talking) a.face(player.x, player.y);
+      return;
+    }
     if (this.talking) {
       a.update(0, 0, false, dt, chunks);
       a.face(player.x, player.y);
@@ -135,6 +141,19 @@ export class NpcManager {
 
   update(dt: number, player: Actor): void {
     for (const n of this.npcs.values()) n.update(dt, this.chunks, this.world, player);
+  }
+
+  /** Fügt einen von außen gesteuerten NPC hinzu (z. B. Karawane). */
+  addScripted(spawn: NpcSpawn): Npc {
+    const npc = new Npc(this.scene, spawn, this.prefix(spawn.archetype), () => 0.5);
+    npc.scripted = true;
+    this.npcs.set(spawn.id, npc);
+    return npc;
+  }
+
+  remove(id: string): void {
+    this.npcs.get(id)?.destroy();
+    this.npcs.delete(id);
   }
 
   /** Nächster NPC in Sprechweite oder null. */

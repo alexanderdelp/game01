@@ -58,7 +58,13 @@ export interface EnemySpawn {
   look: number;
 }
 
-export function enemiesForChunk(world: WorldGen, cx: number, cy: number, spawn: { tx: number; ty: number }): EnemySpawn[] {
+export function enemiesForChunk(
+  world: WorldGen,
+  cx: number,
+  cy: number,
+  spawn: { tx: number; ty: number },
+  invasion?: { realm: number; kind: EnemyKind } | null,
+): EnemySpawn[] {
   const rnd = mulberry32(hash2(world.seed, cx, cy, 777));
   const out: EnemySpawn[] = [];
   const groupRoll = rnd();
@@ -66,8 +72,10 @@ export function enemiesForChunk(world: WorldGen, cx: number, cy: number, spawn: 
   const ty0 = cy * CHUNK_TILES + Math.floor(rnd() * CHUNK_TILES);
   const b = world.biomeAt(tx0, ty0);
   const cfg = BIOME_ENEMIES[b];
-  if (!cfg || groupRoll > cfg.chance) return out;
-  const kind = cfg.kinds[Math.floor(rnd() * cfg.kinds.length)];
+  const invaded = !!invasion && !!cfg && world.meta.realmAt(tx0, ty0).id === invasion.realm && (BIOMES[b].walkable || ENEMIES[invasion.kind].flying);
+  if (!cfg || groupRoll > (invaded ? Math.min(0.95, cfg.chance * 2) : cfg.chance)) return out;
+  const picked = cfg.kinds[Math.floor(rnd() * cfg.kinds.length)];
+  const kind = invaded ? invasion!.kind : picked;
   const count = 1 + Math.floor(rnd() * (kind === 'bandit' ? 2 : 3));
   for (let i = 0; i < count; i++) {
     const tx = tx0 + Math.floor(rnd() * 5) - 2;

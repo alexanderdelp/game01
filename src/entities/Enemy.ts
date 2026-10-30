@@ -124,7 +124,7 @@ export class Enemy {
       this.y += dy;
       return;
     }
-    const m = moveBox(this.foot, dx, dy, (b) => ctx.chunks.blocked(b));
+    const m = moveBox(this.foot, dx, dy, (b) => ctx.chunks.blocked(b), (b) => ctx.chunks.terrainBlocked(b));
     this.x = m.x + 7;
     this.y = m.y + 6;
   }
@@ -322,6 +322,8 @@ export class EnemyManager {
   private readonly bolts: Bolt[] = [];
   /** Vom Weltzustand gesetzt: ist ein Gegner (noch) besiegt? / Besiegen protokollieren. */
   isDefeated: (id: string) => boolean = () => false;
+  /** Aktuelle Invasion (aus der Simulation). */
+  invasion: { realm: number; kind: import('../combat/enemies').EnemyKind } | null = null;
   onKilled: (e: Enemy) => void = () => {};
   private readonly bars: Phaser.GameObjects.Graphics;
 
@@ -338,7 +340,7 @@ export class EnemyManager {
 
   private spawnChunk(cx: number, cy: number): void {
     const ids: string[] = [];
-    for (const s of enemiesForChunk(this.world, cx, cy, this.spawnTile)) {
+    for (const s of enemiesForChunk(this.world, cx, cy, this.spawnTile, this.invasion)) {
       if (this.enemies.has(s.id) || this.isDefeated(s.id)) continue;
       this.enemies.set(s.id, new Enemy(this.scene, s, this.world.seed));
       ids.push(s.id);

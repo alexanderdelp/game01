@@ -116,8 +116,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M8) Geheimnisse: Truhen (5 % der Chunks), Schreine (2 %, Heilung + Angriffs-Segen).
 - 2026-10-31 – (M9) Trennung **Weltzustand** (Ereignisprotokoll, gehört allen) ↔ **Held** (gehört dem Spieler). Persistente Folgen: Truhen, Kills (20 min), Entdeckungen/Wegsteine, Wohlstand der Orte (sichtbar bis zur Heldenstatue), Ansehen je Reich (Rabatt, Titel).
 - 2026-10-31 – (M9) Schnellreise zwischen entdeckten Orten (große Welt + casual).
+- 2026-10-31 – (M10) Lebendige Welt als **reine Funktion von Seed + echter Uhrzeit** (statt Tick-für-Tick-Nachrechnen, wie ursprünglich angenommen): kein Server nötig, keine Wartezeit nach langer Pause, und alle Spieler sehen dieselbe Welt (Basis für M11). 1 Spieltag = 24 min, 1 Simulationsschritt = 1 h. Spielerhandlungen (M9) fließen als Einfluss ein.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
-- „Welt läuft weiter ohne Spieler“ wird ohne Server über deterministisches Nachrechnen der vergangenen Zeit beim Laden gelöst (M10).
 - Gemeinsame Welt / Multiplayer (M11/M12) braucht einen Server-Dienst (z. B. Supabase/Firebase). Ein Konto dort muss der Nutzer anlegen.
 

@@ -10,6 +10,8 @@ import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../r
 import { RACES } from '../rpg/races';
 import { MAX_ACTIVE, abandon, isReady, progressText, questTarget } from '../quests/quests';
 import { reputationRank } from '../state/worldState';
+import { worldNow } from '../sim/LiveWorld';
+import { caravanPos, clockText, daylight, type News } from '../sim/simulation';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -49,6 +51,8 @@ export class UIScene extends Phaser.Scene {
     this.touchButtons = [];
     this.questLog = undefined;
     this.chronicle = undefined;
+    this.newsPanel = undefined;
+    this.drops = [];
     this.bannerObj = undefined;
     this.markerTexts = [];
     this.mapSize = 0;
@@ -60,9 +64,10 @@ export class UIScene extends Phaser.Scene {
 
   create(): void {
     debugState.clickPanel = (name: string) => this.clickPanel(name);
+    this.createAtmosphere();
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste: angreifen  E: reden/benutzen  Q: Trank  C: Held  L: Quests  B: Chronik  M: Karte  N: neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · E reden · Q Trank · C Held · L Quests · B Chronik · U News · M Karte · N neue Welt', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -103,6 +108,10 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-C', () => this.togglePanel());
     kb.on('keydown-L', () => this.toggleQuestLog());
     kb.on('keydown-B', () => this.toggleChronicle());
+    kb.on('keydown-U', () => this.toggleNews());
+    const onSummary = (d: { hours: number; news: News[] }) => this.showNews(`Während du weg warst (${d.hours} Std.) …`, d.news);
+    ws.events.on('news-summary', onSummary);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('news-summary', onSummary));
     const onBanner = (b: { title: string; sub: string }) => this.banner(b.title, b.sub, true);
     const onChron = () => this.chronicle && this.buildChronicle();
     ws.events.on('banner', onBanner);
@@ -148,7 +157,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle) return;
+      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle || this.newsPanel) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -187,6 +196,7 @@ export class UIScene extends Phaser.Scene {
       ['Held', () => this.togglePanel()],
       ['Quests', () => this.toggleQuestLog()],
       ['Chronik', () => this.toggleChronicle()],
+      ['News', () => this.toggleNews()],
       ['Trank', () => ws().hero.drink()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
@@ -254,6 +264,109 @@ export class UIScene extends Phaser.Scene {
   }
 
   private xpText?: Phaser.GameObjects.Text;
+  newsPanel?: Phaser.GameObjects.Container;
+  private nightRect!: Phaser.GameObjects.Rectangle;
+  private fogRect!: Phaser.GameObjects.Rectangle;
+  private lightImg!: Phaser.GameObjects.Image;
+  private weatherG!: Phaser.GameObjects.Graphics;
+  private drops: { x: number; y: number; s: number }[] = [];
+  private flash = 0;
+
+  /** Nachtdunkel, Lichtschein um die Figur, Wetter-Ebene (unter allen Anzeigen). */
+  private createAtmosphere(): void {
+    if (!this.textures.exists('light')) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 256;
+      const g = c.getContext('2d')!;
+      const grd = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+      grd.addColorStop(0, 'rgba(255,220,150,0.55)');
+      grd.addColorStop(0.5, 'rgba(255,200,120,0.18)');
+      grd.addColorStop(1, 'rgba(255,200,120,0)');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, 256, 256);
+      this.textures.addCanvas('light', c);
+    }
+    this.nightRect = this.add.rectangle(0, 0, 10, 10, 0x0a0a32, 0).setOrigin(0).setDepth(-20);
+    this.lightImg = this.add.image(0, 0, 'light').setBlendMode(Phaser.BlendModes.ADD).setDepth(-19).setAlpha(0);
+    this.fogRect = this.add.rectangle(0, 0, 10, 10, 0xd8e0e8, 0).setOrigin(0).setDepth(-18);
+    this.weatherG = this.add.graphics().setDepth(-17);
+  }
+
+  private drawAtmosphere(ws: WorldScene, dt: number): void {
+    const { width, height } = this.scale;
+    const light = daylight(worldNow());
+    const weather = ws.live.weather;
+    const dark = (1 - light) * 0.55 + (weather === 'sturm' ? 0.15 : weather === 'regen' ? 0.06 : 0);
+    this.nightRect.setSize(width, height).setFillStyle(0x0a0a32, dark);
+    this.lightImg.setPosition(width / 2, height / 2 - 20).setScale((ws.cameras.main.zoom * 2.2) / 2).setAlpha((1 - light) * 0.9);
+    this.fogRect.setSize(width, height).setFillStyle(0xd8e0e8, weather === 'nebel' ? 0.22 + Math.sin(this.time.now / 1500) * 0.04 : 0);
+    const g = this.weatherG.clear();
+    const want = weather === 'regen' ? 140 : weather === 'sturm' ? 260 : weather === 'schnee' ? 110 : 0;
+    while (this.drops.length < want) this.drops.push({ x: Math.random() * width, y: Math.random() * height, s: 0.6 + Math.random() * 0.6 });
+    if (this.drops.length > want) this.drops.length = want;
+    const snow = weather === 'schnee';
+    g.lineStyle(1, 0xb8d0f0, 0.55);
+    g.fillStyle(0xffffff, 0.85);
+    const wind = weather === 'sturm' ? 7 : 2;
+    for (const d of this.drops) {
+      if (snow) {
+        d.y += 40 * d.s * dt;
+        d.x += Math.sin((this.time.now / 600 + d.s * 10)) * 12 * dt;
+        g.fillRect(d.x, d.y, 2, 2);
+      } else {
+        d.y += 600 * d.s * dt;
+        d.x += wind * 40 * dt;
+        g.lineBetween(d.x, d.y, d.x - wind, d.y - 10 * d.s);
+      }
+      if (d.y > height) {
+        d.y = -10;
+        d.x = Math.random() * width;
+      }
+      if (d.x > width) d.x = 0;
+    }
+    if (weather === 'sturm') {
+      this.flash -= dt;
+      if (this.flash < -4 - Math.random() * 6) this.flash = 0.12;
+      if (this.flash > 0) g.fillStyle(0xffffff, 0.35).fillRect(0, 0, width, height);
+    }
+  }
+
+  toggleNews(): void {
+    if (this.newsPanel) {
+      this.newsPanel.destroy();
+      this.newsPanel = undefined;
+      debugState.newsOpen = false;
+      return;
+    }
+    const ws = this.scene.get('world') as WorldScene;
+    this.showNews('Neuigkeiten der letzten 24 Stunden', ws.news);
+  }
+
+  /** Nachrichtenfenster (auch für „Während du weg warst …“). */
+  showNews(title: string, news: News[]): void {
+    this.newsPanel?.destroy();
+    debugState.newsOpen = true;
+    const W = Math.min(this.scale.width - 16, 520);
+    const H = Math.min(this.scale.height - 16, 420);
+    const c = this.add.container(Math.round((this.scale.width - W) / 2), 40).setDepth(55);
+    const bg = this.add.rectangle(0, 0, W, H, 0x0b0b14, 0.95).setOrigin(0).setStrokeStyle(2, 0x2fe0d8, 0.9).setInteractive();
+    c.add(bg);
+    c.add(this.add.text(12, 10, title, { ...FONT, fontSize: '16px', color: '#2fe0d8' }));
+    const close = this.add.text(W - 34, 8, '✕', { ...FONT, color: '#0b0b14', backgroundColor: '#2fe0d8', padding: { x: 6, y: 3 } }).setInteractive({ useHandCursor: true });
+    close.on('pointerdown', () => this.toggleNews());
+    c.add(close);
+    let y = 40;
+    const shown = news.slice(-14).reverse();
+    if (!shown.length) c.add(this.add.text(12, y, 'Ruhige Zeiten – nichts Besonderes ist geschehen.', { ...FONT, fontSize: '13px', color: '#8a8aa0' }));
+    for (const n of shown) {
+      const t = this.add.text(12, y, `• ${n.text}`, { ...FONT, fontSize: '12px', color: '#c0c0cc', wordWrap: { width: W - 24 } });
+      c.add(t);
+      y += t.height + 4;
+      if (y > H - 20) break;
+    }
+    bg.setSize(W, Math.min(H, Math.max(80, y + 10)));
+    this.newsPanel = c;
+  }
   private bannerObj?: Phaser.GameObjects.Container;
   chronicle?: Phaser.GameObjects.Container;
 
@@ -688,6 +801,10 @@ export class UIScene extends Phaser.Scene {
       const t = questTarget(q);
       if (t) c.add(this.add.circle(mx(t.tx), my(t.ty), 4, 0xffd84a).setStrokeStyle(1, 0x0b0b14));
     }
+    for (const car of ws.live.caravans) {
+      const p = caravanPos(car, worldNow());
+      c.add(this.add.triangle(mx(p.tx), my(p.ty), 0, 6, 3, 0, 6, 6, 0xf08a3a).setStrokeStyle(1, 0x0b0b14));
+    }
     c.add(this.add.text(width / 2, height / 2 + side / 2 + 16, 'Türkise Orte: Wegstein aktiv – antippen für Schnellreise', { ...FONT, fontSize: '12px', color: '#2fe0d8' }).setOrigin(0.5));
     this.marker = this.add.rectangle(0, 0, 8, 8).setStrokeStyle(2, 0xff3355);
     c.add(this.marker);
@@ -709,9 +826,10 @@ export class UIScene extends Phaser.Scene {
     const biomeName = b === undefined ? '…' : BIOMES[b].name;
     debugState.biome = biomeName;
     this.hud.setText(
-      [`${ws.hero.hero.name ?? 'Held'} · Welt: ${this.seed}`, `Position: ${tx}, ${ty}`, `Gebiet: ${biomeName}`, `FPS: ${Math.round(this.game.loop.actualFps)}`].join('\n'),
+      [`${ws.hero.hero.name ?? 'Held'} · Welt: ${this.seed}`, `${clockText(worldNow())} Uhr · ${ws.live.weather}`, `Position: ${tx}, ${ty}`, `Gebiet: ${biomeName}`, `FPS: ${Math.round(this.game.loop.actualFps)}`].join('\n'),
     );
     this.help.setY(this.scale.height - 6);
+    this.drawAtmosphere(ws, Math.min(0.05, this.game.loop.delta / 1000));
     this.drawHp();
     this.drawQuests(ws);
     if (this.attackButton) {

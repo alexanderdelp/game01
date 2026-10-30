@@ -11,6 +11,7 @@ const FEET_OFFSET = 4;
 
 export interface MoveEnv {
   blocked(b: Box): boolean;
+  terrainBlocked?(b: Box): boolean;
   /** Geschwindigkeitsfaktor des Geländes an einer Pixelposition. */
   speedAt(x: number, y: number): number;
 }
@@ -55,7 +56,7 @@ export class Actor {
       const nx = dirX / Math.max(1, len);
       const ny = dirY / Math.max(1, len);
       const speed = this.baseSpeed * (sprint ? 1.6 : 1) * Math.max(0.3, env.speedAt(this.x, this.y - 2));
-      const moved = moveBox(this.box, nx * speed * dt, ny * speed * dt, (b) => env.blocked(b));
+      const moved = moveBox(this.box, nx * speed * dt, ny * speed * dt, (b) => env.blocked(b), env.terrainBlocked && ((b) => env.terrainBlocked!(b)));
       this.x = moved.x + FOOT_W / 2;
       this.y = moved.y + FOOT_H;
       this.facing = facingFrom(nx, ny, this.facing);
@@ -95,7 +96,7 @@ export class Actor {
 
   /** Verschiebt die Figur mit Kollision (Rückstoß). */
   push(dx: number, dy: number, env: MoveEnv): void {
-    const moved = moveBox(this.box, dx, dy, (b) => env.blocked(b));
+    const moved = moveBox(this.box, dx, dy, (b) => env.blocked(b), env.terrainBlocked && ((b) => env.terrainBlocked!(b)));
     this.x = moved.x + FOOT_W / 2;
     this.y = moved.y + FOOT_H;
     this.sync();

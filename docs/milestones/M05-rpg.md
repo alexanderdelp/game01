@@ -14,7 +14,7 @@ Bewusst einfach (casual), aber mit echten Entscheidungen.
 - **Talente (je Punkt):** *Kraft* (+3 Angriff), *Zähigkeit* (+15 LP), *Flinkheit* (+6 % Tempo). Frei verteilbar im Heldenfenster.
 
 ### Beute & Währung
-- **Splitter** (Kristallsplitter, die Währung zwischen Magie und Maschine) fallen fast immer.
+- **Splitter** (Kristallsplitter, die Währung zwischen Magie und Maschine) fallen immer.
 - **Gegenstände** fallen mit ~25 % Chance, **Heiltränke** mit ~15 %. Liegen am Boden, Aufheben durch Drüberlaufen.
 - **Seltenheit:** gewöhnlich (weiß), selten (blau), episch (lila) → mehr Bonuswerte und ein Beiname.
 - **Namen:** Grundtyp + Präfix + Beiname, Fantasy/Cyber gemischt (z. B. „Neon-Klinge des Fuchses“, „Runen-Harnisch“).

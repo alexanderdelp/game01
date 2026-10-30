@@ -132,14 +132,18 @@ export class WorldMeta {
     }
   }
 
-  /** Reich einer Kachel (nächstes Zentrum, Grenzen verwirbelt). */
+  /** Aktuelle Macht je Reich (aus der Simulation, M10); gewichtet die Grenzen. */
+  powers: number[] | null = null;
+
+  /** Reich einer Kachel (nächstes Zentrum, nach Macht gewichtet, Grenzen verwirbelt). */
   realmAt(tx: number, ty: number): Realm {
     const wx = tx + this.warp.noise(tx / 180, ty / 180) * 70;
     const wy = ty + this.warp.noise(tx / 180 + 40, ty / 180 - 40) * 70;
     let best = this.realms[0];
     let bd = Infinity;
     for (const r of this.realms) {
-      const d = (r.tx - wx) ** 2 + (r.ty - wy) ** 2;
+      const p = this.powers?.[r.id] ?? 1;
+      const d = ((r.tx - wx) ** 2 + (r.ty - wy) ** 2) / (p * p);
       if (d < bd) {
         bd = d;
         best = r;

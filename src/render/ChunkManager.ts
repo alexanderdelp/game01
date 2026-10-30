@@ -71,6 +71,21 @@ export class ChunkManager {
     return c.biomes[ly * CHUNK_TILES + lx];
   }
 
+  /** Nur Gelände (Wasser, Gipfel, nicht geladen) – ohne Dekorationen. */
+  terrainBlocked(b: Box): boolean {
+    const t0x = Math.floor(b.x / TILE_PX);
+    const t0y = Math.floor(b.y / TILE_PX);
+    const t1x = Math.floor((b.x + b.w - 0.001) / TILE_PX);
+    const t1y = Math.floor((b.y + b.h - 0.001) / TILE_PX);
+    for (let ty = t0y; ty <= t1y; ty++) {
+      for (let tx = t0x; tx <= t1x; tx++) {
+        const biome = this.biomeAt(tx, ty);
+        if (biome === undefined || !BIOMES[biome].walkable) return true;
+      }
+    }
+    return false;
+  }
+
   /** Ist eine Box (in Weltpixeln) blockiert? Nicht geladene Bereiche gelten als blockiert. */
   blocked(b: Box): boolean {
     const t0x = Math.floor(b.x / TILE_PX);

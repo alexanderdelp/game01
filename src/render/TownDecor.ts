@@ -21,6 +21,8 @@ export class TownDecor {
     private readonly chunks: ChunkManager,
     private readonly state: WorldState,
     private readonly heroName: () => string,
+    /** Selbstständige Schwankung des Wohlstands (Simulation, M10). */
+    private readonly drift: (id: number) => number = () => 0,
   ) {
     chunks.onLoad.push((cx, cy) => this.forChunk(cx, cy, true));
     chunks.onUnload.push((cx, cy) => this.forChunk(cx, cy, false));
@@ -48,7 +50,7 @@ export class TownDecor {
   }
 
   level(id: number): number {
-    return prosperityLevel(this.state.d.prosperity.get(id) ?? 0);
+    return prosperityLevel(Math.max(0, (this.state.d.prosperity.get(id) ?? 0) + this.drift(id)));
   }
 
   private build(id: number): void {

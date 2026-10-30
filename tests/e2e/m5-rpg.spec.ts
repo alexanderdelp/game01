@@ -34,21 +34,25 @@ test('M5: Gegner besiegen gibt EP und Beute, Beute lässt sich aufheben (R4)', a
   await page.evaluate(([tx, ty]) => (window as unknown as { __game: G }).__game.teleport(tx - 3, ty), [e.tx, e.ty]);
   await waitReady(page);
   const loot0 = await G<number>(page, 'g.hero.shards + g.hero.potions + g.hero.inventory.length');
-  for (let i = 0; i < 60; i++) {
-    const xp = await G<number>(page, 'g.hero.xp + (g.hero.level - 1) * 1000');
-    if (xp > 0) break;
-    const t = await G<{ x: number; y: number } | null>(page, `(() => { const p = g.player; const e = [...g.enemies].sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]; return e ? { x: e.x, y: e.y } : null; })()`);
-    if (t) await walkTo(page, t.x - 20, t.y);
-    await page.keyboard.press('Space');
-    await page.waitForTimeout(200);
-  }
-  expect(await G<number>(page, 'g.hero.xp + (g.hero.level - 1) * 1000')).toBeGreaterThan(0);
-  // Beute einsammeln (ein Teil wurde evtl. schon im Kampf aufgehoben)
-  for (let i = 0; i < 6; i++) {
-    const pos = await G<{ x: number; y: number }[]>(page, 'g.pickupPos.map((p) => ({ ...p }))');
-    if (!pos.length) break;
-    await walkTo(page, pos[0].x, pos[0].y);
-    await page.waitForTimeout(400);
+  const score = () => G<number>(page, 'g.hero.xp + (g.hero.level - 1) * 1000');
+  // Beute ist zufällig (selten fällt nichts) – notfalls weitere Gegner besiegen
+  for (let round = 0; round < 4; round++) {
+    const xp0 = await score();
+    for (let i = 0; i < 60; i++) {
+      if ((await score()) > xp0) break;
+      const t = await G<{ x: number; y: number } | null>(page, `(() => { const p = g.player; const e = [...g.enemies].sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]; return e ? { x: e.x, y: e.y } : null; })()`);
+      if (t) await walkTo(page, t.x - 20, t.y);
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(200);
+    }
+    expect(await score()).toBeGreaterThan(xp0);
+    for (let i = 0; i < 6; i++) {
+      const pos = await G<{ x: number; y: number }[]>(page, 'g.pickupPos.map((p) => ({ ...p }))');
+      if (!pos.length) break;
+      await walkTo(page, pos[0].x, pos[0].y);
+      await page.waitForTimeout(400);
+    }
+    if ((await G<number>(page, 'g.hero.shards + g.hero.potions + g.hero.inventory.length')) > loot0) break;
   }
   expect(await G<number>(page, 'g.hero.shards + g.hero.potions + g.hero.inventory.length')).toBeGreaterThan(loot0);
   expect(errors).toEqual([]);
