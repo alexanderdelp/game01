@@ -3,7 +3,8 @@ import { buildCharacter } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
 import { load, save } from '../game/save';
 import { ATLAS } from '../render/textures';
-import { rollDrops, type Drop, type Item, type Slot } from '../rpg/items';
+import { generateItem, rollDrops, type Drop, type Item, type Slot } from '../rpg/items';
+import { newQuestLog, onCollect, onKill, questDropFor, type Quest, type QuestLog } from '../quests/quests';
 import {
   addItem, discard, drinkPotion, equip, finalStats, gainXp, newHero, spendTalent, unequip, xpForKill,
   type Hero, type Talent,
@@ -38,11 +39,36 @@ export class HeroController {
     private readonly combat: PlayerCombat,
   ) {
     this.hero = load<Hero>(this.key) ?? newHero();
+    this.hero.quests ??= newQuestLog();
     this.refresh(true);
   }
 
   private get key(): string {
     return `hero:${this.seedName}`;
+  }
+
+  get quests(): QuestLog {
+    return this.hero.quests!;
+  }
+
+  /** Belohnung einer Quest auszahlen. */
+  reward(r: Quest['reward']): string {
+    const ups = gainXp(this.hero, r.xp);
+    this.hero.shards += r.shards;
+    let text = `+${r.xp} EP, +${r.shards} Splitter`;
+    if (r.item) {
+      const it = generateItem(this.hero.level, Math.random);
+      if (addItem(this.hero, it)) text += `, ${it.name}`;
+    }
+    if (ups > 0) {
+      this.refresh();
+      this.combat.heal(this.combat.stats.maxHp);
+      this.scene.events.emit('level-up', this.hero.level);
+    }
+    this.dirty = true;
+    this.scene.events.emit('hero-changed');
+    this.scene.events.emit('quests-changed');
+    return text;
   }
 
   /** Aussehen der Figur abhängig von der Rüstung. */
@@ -72,12 +98,16 @@ export class HeroController {
       this.scene.events.emit('level-up', this.hero.level);
     }
     const rnd = mulberry32(hash2(Date.now() >>> 0, this.drops++, e.spawn.level, 5));
-    rollDrops(e.spawn.level, rnd).forEach((d, i) => this.spawnPickup(e.x + (i - 1) * 14 + (rnd() - 0.5) * 8, e.y - 2 + (rnd() - 0.5) * 8, d));
+    const drops = rollDrops(e.spawn.level, rnd);
+    if (onKill(this.quests, e.def.kind).length) this.scene.events.emit('quests-changed');
+    const qd = questDropFor(this.quests, e.def.kind, rnd());
+    if (qd && qd.objective.type === 'collect') drops.push({ type: 'quest', questId: qd.id, name: qd.objective.item });
+    drops.forEach((d, i) => this.spawnPickup(e.x + (i - 1) * 14 + (rnd() - 0.5) * 8, e.y - 2 + (rnd() - 0.5) * 8, d));
     this.dirty = true;
   }
 
   private spawnPickup(x: number, y: number, drop: Drop): void {
-    const icon = drop.type === 'shards' ? 'shards' : drop.type === 'potion' ? 'potion' : iconFor(drop.item);
+    const icon = drop.type === 'shards' ? 'shards' : drop.type === 'potion' ? 'potion' : drop.type === 'quest' ? 'questitem' : iconFor(drop.item);
     const sprite = this.scene.add.image(x, y, ATLAS, `icon:${icon}`).setOrigin(0.5, 1).setDepth(y);
     this.scene.tweens.add({ targets: sprite, y: y - 10, duration: 180, yoyo: true, ease: 'Quad.easeOut' });
     this.pickups.push({ sprite, x, y, drop, age: 0 });
@@ -114,6 +144,11 @@ export class HeroController {
       this.hero.potions++;
       text = '+1 Heiltrank';
       color = '#ff7080';
+    } else if (d.type === 'quest') {
+      const q = onCollect(this.quests, d.questId);
+      text = q ? `${d.name} (${q.objective.done}/${q.objective.count})` : d.name;
+      color = '#ffd84a';
+      this.scene.events.emit('quests-changed');
     } else {
       if (!addItem(this.hero, d.item)) return false;
       text = d.item.name;

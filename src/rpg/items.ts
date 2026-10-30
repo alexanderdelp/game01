@@ -86,7 +86,7 @@ export function describeBonus(b: Bonus): string {
   return parts.join(', ');
 }
 
-export type Drop = { type: 'shards'; amount: number } | { type: 'potion' } | { type: 'item'; item: Item };
+export type Drop = { type: 'shards'; amount: number } | { type: 'potion' } | { type: 'item'; item: Item } | { type: 'quest'; questId: string; name: string };
 
 /** Beute eines besiegten Gegners. */
 export function rollDrops(level: number, rnd: () => number): Drop[] {

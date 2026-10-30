@@ -476,7 +476,7 @@ export const DECOR_KINDS: DecorKind[] = [
 ];
 
 /** Kleine Symbole (16×16) für Beute und Inventar. */
-export const ICON_KINDS = ['shards', 'potion', 'dagger', 'tunic', 'leather', 'amulet'] as const;
+export const ICON_KINDS = ['shards', 'potion', 'dagger', 'tunic', 'leather', 'amulet', 'questitem'] as const;
 export type IconKind = (typeof ICON_KINDS)[number];
 
 export function generateIcon(kind: IconKind): Pixels {
@@ -508,6 +508,14 @@ export function generateIcon(kind: IconKind): Pixels {
       const pal = kind === 'tunic' ? [0x14566e, 0x1c8aa0, 0x3fc4d4, 0xa8f4f8] : [0x4a2a14, 0x6e4a30, 0x8a6240, 0xb08a5a];
       img.polygon([[2, 5], [5, 2], [11, 2], [14, 5], [12, 8], [11, 7], [11, 14], [5, 14], [5, 7], [4, 8]], (x, y) => img_shade(pal, x, y));
       if (kind === 'leather') img.rect(5, 10, 6, 1, 0xd0a048);
+      break;
+    }
+    case 'questitem': {
+      // Leuchtendes Bündel mit Fragezeichen-Glanz
+      img.ball(8, 9, 5.5, [0x6a4a10, 0xa07a20, 0xe0b030, 0xffe890], rnd, 0.05);
+      img.rect(7, 5, 2, 1, 0xffffff);
+      img.rect(8, 6, 1, 3, 0xffffff);
+      img.set(8, 11, 0xffffff);
       break;
     }
     case 'amulet': {

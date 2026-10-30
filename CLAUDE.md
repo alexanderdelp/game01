@@ -111,6 +111,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-30 – (M5) Heldenfortschritt (Stufe, Talente, Inventar) wird schon jetzt pro Welt lokal gespeichert, weil Verlust beim Neuladen dem Wunsch „casual“ widerspräche. Weltzustand bleibt M9.
 - 2026-10-30 – (M6) Völker: Mensch (+10 % EP), Elf (+8 % Tempo), Ork (+20 LP), Synth (+3 Vert., Cyberpunk). Kleine Boni, damit die Wahl zählt, aber nichts falsch gemacht werden kann.
 - 2026-10-30 – (M6) Erschaffung beim ersten Betreten einer Welt; Aussehen jederzeit über das Heldenfenster änderbar (casual).
+- 2026-10-30 – (M7) Quests seed-basiert pro NPC (Reihe mit Index), 4 Arten (Jagd, Sammeln, Botengang, Erkundung), max. 5 aktiv, jederzeit abbrechbar. Ziele werden mit Himmelsrichtung beschrieben und per Pfeil angezeigt – fördert Erkundung der großen Welt.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - „Welt läuft weiter ohne Spieler“ wird ohne Server über deterministisches Nachrechnen der vergangenen Zeit beim Laden gelöst (M10).

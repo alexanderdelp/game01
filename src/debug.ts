@@ -15,6 +15,7 @@ export const debugState = {
   chunksPending: 0,
   mapOpen: false,
   panelOpen: false,
+  questLogOpen: false,
   mapReady: false,
   teleport: (_tx: number, _ty: number): void => {},
   findShore: (): { tx: number; ty: number } | null => null,
@@ -31,7 +32,10 @@ export const debugState = {
   damagePlayer: (_n: number): void => {},
   alive: true,
   enemies: [] as { id: string; kind: string; x: number; y: number; hp: number; state: string }[],
-  dialog: null as { name: string; role: string; text: string } | null,
+  quests: null as unknown,
+  markers: {} as Record<string, string>,
+  choose: (_i: number): void => {},
+  dialog: null as { name: string; role: string; text: string; choices?: string[] } | null,
 };
 
 (globalThis as unknown as { __game: typeof debugState }).__game = debugState;

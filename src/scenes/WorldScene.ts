@@ -14,6 +14,7 @@ import { TILE_PX } from '../render/chunkPixels';
 import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
 import { enemiesForChunk } from '../combat/enemies';
 import { generateItem, type Slot } from '../rpg/items';
+import { MAX_ACTIVE, accept, isReady, offerFor, onPosition, onTalk, progressText, turnIn, type Quest } from '../quests/quests';
 import { addItem } from '../rpg/progression';
 import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
 
@@ -105,6 +106,8 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-SPACE', () => this.attack());
     kb.on('keydown-J', () => this.attack());
     kb.on('keydown-Q', () => this.hero.drink());
+    kb.on('keydown-ONE', () => this.pendingOffer && this.choose(0));
+    kb.on('keydown-TWO', () => this.pendingOffer && this.choose(1));
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => {
@@ -138,6 +141,7 @@ export class WorldScene extends Phaser.Scene {
       this.events.emit('hero-changed');
       return it.id;
     };
+    debugState.choose = (i: number) => this.choose(i);
     debugState.damagePlayer = (n: number) => this.combat.hurt(n, this.player.x + 1, this.player.y, true);
     debugState.findShore = () => {
       // Nach rechts laufen, bis Wasser kommt: Kachel davor ist begehbar, ihr rechter Nachbar Wasser.
@@ -170,10 +174,66 @@ export class WorldScene extends Phaser.Scene {
     npc.talking = true;
     this.talkingTo = npc;
     this.player.face(npc.actor.x, npc.actor.y);
+    const log = this.hero.quests;
+    const now = Date.now();
+    const say = (text: string, choices?: string[]) => {
+      const d = { name: npc.spawn.name, role: npc.role.name, text, choices };
+      this.events.emit('talk', d);
+      debugState.dialog = d;
+    };
+    this.pendingOffer = null;
+    // 1. Botengang an diesen NPC
+    const delivered = onTalk(log, npc.spawn.id);
+    if (delivered) {
+      const r = turnIn(log, delivered.id, now);
+      return say(`Ein Brief von ${delivered.giverName}? Danke! (${r ? this.hero.reward(r) : ''})`);
+    }
+    // 2. Eigene Quest abgeben bzw. daran erinnern
+    const own = log.active.find((q) => q.giverId === npc.spawn.id);
+    if (own && isReady(own)) {
+      const r = turnIn(log, own.id, now)!;
+      return say(`Großartig, du hast es geschafft! Belohnung: ${this.hero.reward(r)}`);
+    }
+    if (own) return say(`${own.text} (${progressText(own)})`);
+    // 3. Neues Angebot
+    const offer = offerFor(this.world, log, npc.spawn, this.hero.hero.level, now);
+    if (offer && log.active.length < MAX_ACTIVE) {
+      this.pendingOffer = offer;
+      return say(`${offer.title} – ${offer.text}`, ['Annehmen', 'Ablehnen']);
+    }
+    // 4. Plaudern
     const line = npc.role.lines[npc.talks % npc.role.lines.length];
     npc.talks++;
-    this.events.emit('talk', { name: npc.spawn.name, role: npc.role.name, text: line });
-    debugState.dialog = { name: npc.spawn.name, role: npc.role.name, text: line };
+    say(line);
+  }
+
+  /** Auswahl im Dialog (0 = Annehmen, 1 = Ablehnen). */
+  choose(i: number): void {
+    const offer = this.pendingOffer;
+    this.pendingOffer = null;
+    if (offer && i === 0 && accept(this.hero.quests, offer)) {
+      this.events.emit('quests-changed');
+      this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Quest: ${offer.title}`, color: '#ffd84a' });
+      this.hero.persist();
+    }
+    this.endTalk();
+  }
+
+  pendingOffer: Quest | null = null;
+  /** Quest-Markierung je geladenem NPC: "!" Angebot, "?" Abgabe/Ziel. */
+  readonly markers = new Map<string, '!' | '?'>();
+  private markerTimer = 0;
+
+  private updateMarkers(): void {
+    this.markers.clear();
+    const log = this.hero.quests;
+    const now = Date.now();
+    for (const n of this.npcs.npcs.values()) {
+      const id = n.spawn.id;
+      const own = log.active.find((q) => q.giverId === id);
+      if ((own && isReady(own)) || log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id && !isReady(q))) this.markers.set(id, '?');
+      else if (!own && log.active.length < MAX_ACTIVE && offerFor(this.world, log, n.spawn, this.hero.hero.level, now)) this.markers.set(id, '!');
+    }
   }
 
   attack(): void {
@@ -182,6 +242,7 @@ export class WorldScene extends Phaser.Scene {
   }
 
   endTalk(): void {
+    this.pendingOffer = null;
     if (this.talkingTo) this.talkingTo.talking = false;
     this.talkingTo = null;
     this.events.emit('talk', null);
@@ -216,6 +277,17 @@ export class WorldScene extends Phaser.Scene {
     else this.player.update(dx, dy, k.SHIFT.isDown, dt, this.chunks);
     this.combat.update(dt);
     this.hero.update(dt);
+    this.markerTimer -= dt;
+    if (this.markerTimer <= 0) {
+      this.markerTimer = 0.5;
+      const t = this.player.tile;
+      const visited = onPosition(this.hero.quests, t.tx, t.ty);
+      if (visited) {
+        this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Gefunden: ${progressText(visited)}`, color: '#ffd84a' });
+        this.events.emit('quests-changed');
+      }
+      this.updateMarkers();
+    }
     this.npcs.update(dt, this.player);
     this.combatCtx.playerAlive = this.combat.alive;
     this.enemies.update(dt, this.combatCtx);
@@ -238,6 +310,8 @@ export class WorldScene extends Phaser.Scene {
     debugState.attacks = this.combat.attacks;
     debugState.hero = this.hero.hero;
     debugState.pickups = this.hero.pickupCount;
+    debugState.quests = this.hero.quests;
+    debugState.markers = Object.fromEntries(this.markers);
     debugState.pickupPos = this.hero.pickupPositions();
     debugState.maxHp = this.combat.stats.maxHp;
     debugState.alive = this.combat.alive;

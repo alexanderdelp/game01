@@ -3,6 +3,7 @@ import type { EnemyKind } from '../combat/enemies';
 import type { Appearance, Race } from '../character/lpc';
 import type { Bonus, Item, Slot } from './items';
 import { RACES } from './races';
+import type { QuestLog } from '../quests/quests';
 
 export type Talent = 'strength' | 'toughness' | 'agility';
 
@@ -27,6 +28,7 @@ export interface Hero {
   potions: number;
   equipped: Partial<Record<Slot, Item>>;
   inventory: Item[];
+  quests?: QuestLog;
 }
 
 export function newHero(): Hero {

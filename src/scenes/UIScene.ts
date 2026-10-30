@@ -8,6 +8,7 @@ import { ATLAS } from '../render/textures';
 import { RARITY_COLOR, RARITY_NAME, describeBonus, type Slot } from '../rpg/items';
 import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
 import { RACES } from '../rpg/races';
+import { MAX_ACTIVE, abandon, isReady, progressText, questTarget } from '../quests/quests';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -45,6 +46,8 @@ export class UIScene extends Phaser.Scene {
     this.attackButton = undefined;
     this.attackLabel = undefined;
     this.touchButtons = [];
+    this.questLog = undefined;
+    this.markerTexts = [];
     this.mapSize = 0;
     this.selected = null;
     debugState.mapOpen = false;
@@ -56,7 +59,7 @@ export class UIScene extends Phaser.Scene {
     debugState.clickPanel = (name: string) => this.clickPanel(name);
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste: angreifen  E: reden  Q: Trank  C: Held  M: Karte  Shift: rennen  N: neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste: angreifen  E: reden  Q: Trank  C: Held  L: Quests  M: Karte  Shift: rennen  N: neue Welt', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -95,6 +98,14 @@ export class UIScene extends Phaser.Scene {
       ws.events.off('hero-changed', onHero);
     });
     kb.on('keydown-C', () => this.togglePanel());
+    kb.on('keydown-L', () => this.toggleQuestLog());
+    const onQuests = () => this.questLog && this.buildQuestLog();
+    ws.events.on('quests-changed', onQuests);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('quests-changed', onQuests));
+    this.tracker = this.add.text(0, 0, '', { ...FONT, fontSize: '13px', backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 }, align: 'right' }).setOrigin(1, 0).setDepth(6);
+    this.arrow = this.add.graphics().setDepth(6);
+    this.arrowLabel = this.add.text(0, 0, '', { ...FONT, fontSize: '13px', stroke: '#0b0b14', strokeThickness: 4 }).setOrigin(0.5).setDepth(6);
+    this.markerTexts = [];
     kb.on('keydown-I', () => this.togglePanel());
     kb.on('keydown-ESC', () => {
       if (this.panel) this.togglePanel();
@@ -106,7 +117,7 @@ export class UIScene extends Phaser.Scene {
     };
     ws.events.on('player-died', onDied);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('player-died', onDied));
-    const onTalk = (d: { name: string; role: string; text: string } | null) => this.showDialog(d);
+    const onTalk = (d: { name: string; role: string; text: string; choices?: string[] } | null) => this.showDialog(d);
     ws.events.on('talk', onTalk);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('talk', onTalk));
 
@@ -125,7 +136,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map || this.panel) return;
+      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -162,6 +173,7 @@ export class UIScene extends Phaser.Scene {
       ['Karte', () => this.toggleMap()],
       ['Reden', () => ws().interact()],
       ['Held', () => this.togglePanel()],
+      ['Quests', () => this.toggleQuestLog()],
       ['Trank', () => ws().hero.drink()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
@@ -228,6 +240,115 @@ export class UIScene extends Phaser.Scene {
   private xpText?: Phaser.GameObjects.Text;
   panel?: Phaser.GameObjects.Container;
   private selected: string | null = null;
+
+  private tracker!: Phaser.GameObjects.Text;
+  private arrow!: Phaser.GameObjects.Graphics;
+  private arrowLabel!: Phaser.GameObjects.Text;
+  private markerTexts: Phaser.GameObjects.Text[] = [];
+  questLog?: Phaser.GameObjects.Container;
+
+  toggleQuestLog(): void {
+    if (this.questLog) {
+      this.questLog.destroy();
+      this.questLog = undefined;
+      debugState.questLogOpen = false;
+      return;
+    }
+    if (this.panel) this.togglePanel();
+    this.buildQuestLog();
+  }
+
+  buildQuestLog(): void {
+    this.questLog?.destroy();
+    debugState.questLogOpen = true;
+    const ws = this.scene.get('world') as WorldScene;
+    const log = ws.hero.quests;
+    const W = Math.min(this.scale.width - 16, 460);
+    const c = this.add.container(Math.round((this.scale.width - W) / 2), 8).setDepth(50);
+    const H = Math.min(this.scale.height - 16, 120 + log.active.length * 96);
+    c.add(this.add.rectangle(0, 0, W, H, 0x0b0b14, 0.94).setOrigin(0).setStrokeStyle(2, 0xffd84a, 0.8).setInteractive());
+    c.add(this.add.text(12, 10, `Quests ${log.active.length}/${MAX_ACTIVE}`, { ...FONT, fontSize: '17px', color: '#ffd84a' }));
+    const close = this.add.text(W - 34, 8, '✕', { ...FONT, color: '#0b0b14', backgroundColor: '#ffd84a', padding: { x: 6, y: 3 } }).setInteractive({ useHandCursor: true });
+    close.on('pointerdown', () => this.toggleQuestLog());
+    c.add(close);
+    let y = 44;
+    if (!log.active.length) c.add(this.add.text(12, y, 'Keine aktiven Quests. NPCs mit gelbem ! haben Aufträge.', { ...FONT, fontSize: '13px', color: '#8a8aa0', wordWrap: { width: W - 24 } }));
+    log.active.forEach((q, i) => {
+      c.add(this.add.text(12, y, q.title, { ...FONT, fontSize: '14px', color: isReady(q) ? '#4cb53e' : '#f4f0e8' }));
+      c.add(this.add.text(12, y + 18, `von ${q.giverName} · ${progressText(q)}`, { ...FONT, fontSize: '12px', color: '#ffd84a' }));
+      c.add(this.add.text(12, y + 36, q.text, { ...FONT, fontSize: '12px', color: '#a0a0b0', wordWrap: { width: W - 110 } }));
+      const ab = this.add
+        .text(W - 12, y, 'Abbrechen', { ...FONT, fontSize: '12px', color: '#0b0b14', backgroundColor: '#8a8aa0', padding: { x: 5, y: 2 } })
+        .setOrigin(1, 0)
+        .setInteractive({ useHandCursor: true })
+        .setName(`abandon-${i}`);
+      ab.on('pointerdown', () => {
+        abandon(log, q.id);
+        ws.hero.persist();
+        ws.events.emit('quests-changed');
+      });
+      c.add(ab);
+      y += 96;
+    });
+    this.questLog = c;
+  }
+
+  /** Tracker (oben rechts), Richtungspfeil zum Questziel und !/? über NPCs. */
+  private drawQuests(ws: WorldScene): void {
+    const log = ws.hero.quests;
+    const q = log.active.find((a) => isReady(a)) ?? log.active[0];
+    const cam = ws.cameras.main;
+    const top = 8 + (this.touchButtons.length ? Math.ceil(this.touchButtons.length / 3) * 40 : 0);
+    this.tracker.setPosition(this.scale.width - 8, top).setVisible(!!q && !this.panel && !this.questLog);
+    this.arrow.clear();
+    this.arrowLabel.setVisible(false);
+    if (q) {
+      this.tracker.setText(`${q.title}\n${progressText(q)}${log.active.length > 1 ? `  (+${log.active.length - 1})` : ''}`);
+      const t = questTarget(q);
+      if (t && !this.map && !this.panel && !this.questLog) {
+        const wx = t.tx * TILE_PX + TILE_PX / 2;
+        const wy = t.ty * TILE_PX + TILE_PX / 2;
+        const sx = (wx - cam.worldView.x) * cam.zoom;
+        const sy = (wy - cam.worldView.y) * cam.zoom;
+        const cx = this.scale.width / 2;
+        const cy = this.scale.height / 2;
+        const dist = Math.round(Math.hypot(t.tx - ws.player.tile.tx, t.ty - ws.player.tile.ty));
+        const onScreen = sx > 20 && sy > 20 && sx < this.scale.width - 20 && sy < this.scale.height - 20;
+        let ax = sx;
+        let ay = sy;
+        let ang = Math.PI / 2;
+        if (!onScreen) {
+          // Pfeil auf einem Kreis um die Figur (Bildschirmmitte), überdeckt so keine HUD-Elemente
+          ang = Math.atan2(sy - cy, sx - cx);
+          const k = Math.min(this.scale.width, this.scale.height) * 0.3;
+          ax = cx + Math.cos(ang) * k;
+          ay = cy + Math.sin(ang) * k;
+        } else {
+          ay -= 26;
+        }
+        // Spitze in Zielrichtung, zwei Ecken schräg dahinter
+        const pts = [
+          [0, 22],
+          [2.5, 15],
+          [-2.5, 15],
+        ].map(([da, r]) => new Phaser.Math.Vector2(ax + Math.cos(ang + da) * r, ay + Math.sin(ang + da) * r));
+        this.arrow.fillStyle(0xffd84a, 0.95).fillTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
+        this.arrow.lineStyle(2, 0x0b0b14, 1).strokeTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
+        this.arrowLabel.setText(onScreen ? t.label : `${t.label} · ${dist}`).setPosition(ax - Math.cos(ang) * 30, ay - Math.sin(ang) * 30).setVisible(true);
+      }
+    }
+    // !/? über NPCs
+    let i = 0;
+    for (const n of ws.npcs.npcs.values()) {
+      const m = ws.markers.get(n.spawn.id);
+      if (!m || this.map) continue;
+      const t = (this.markerTexts[i] ??= this.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '22px', stroke: '#0b0b14', strokeThickness: 5 }).setOrigin(0.5, 1).setDepth(5));
+      const bob = Math.sin(this.time.now / 200) * 3;
+      t.setText(m).setColor(m === '!' ? '#ffd84a' : '#4cb53e').setPosition((n.actor.x - cam.worldView.x) * cam.zoom, (n.actor.y - 66 - cam.worldView.y) * cam.zoom + bob).setVisible(true);
+      i++;
+    }
+    for (; i < this.markerTexts.length; i++) this.markerTexts[i].setVisible(false);
+  }
 
   /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster aus. */
   clickPanel(name: string): boolean {
@@ -357,7 +478,7 @@ export class UIScene extends Phaser.Scene {
   private nameTag!: Phaser.GameObjects.Text;
 
   /** Dialogfenster unten am Bildschirm. */
-  private showDialog(d: { name: string; role: string; text: string } | null): void {
+  private showDialog(d: { name: string; role: string; text: string; choices?: string[] } | null): void {
     this.dialog?.destroy();
     this.dialog = undefined;
     if (!d) return;
@@ -369,9 +490,27 @@ export class UIScene extends Phaser.Scene {
     const title = this.add.text(12, 8, `${d.name} · ${d.role}`, { ...FONT, fontSize: '15px', color: '#2fe0d8' });
     const text = this.add.text(12, 32, `„${d.text}“`, { ...FONT, fontSize: '15px', wordWrap: { width: w - 24 } });
     const hint = this.add
-      .text(w - 10, 88, this.sys.game.device.input.touch ? 'Reden: weiter' : 'E: schließen', { ...FONT, fontSize: '11px', color: '#8a8aa0' })
+      .text(w - 10, 88, d.choices ? '' : this.sys.game.device.input.touch ? 'Reden: weiter' : 'E: schließen', { ...FONT, fontSize: '11px', color: '#8a8aa0' })
       .setOrigin(1, 1);
     c.add([bg, title, text, hint]);
+    text.setWordWrapWidth(w - 24);
+    if (d.choices) {
+      bg.setSize(w, 96 + 34);
+      bg.setPosition(0, -34);
+      title.setY(-26);
+      text.setY(-2);
+      let bx = 12;
+      d.choices.forEach((label, i) => {
+        const b = this.add
+          .text(bx, 92, `[${i + 1}] ${label}`, { ...FONT, fontSize: '14px', color: '#0b0b14', backgroundColor: i === 0 ? '#ffd84a' : '#8a8aa0', padding: { x: 8, y: 4 } })
+          .setOrigin(0, 1)
+          .setInteractive({ useHandCursor: true })
+          .setName(`choice-${i}`);
+        b.on('pointerdown', () => (this.scene.get('world') as WorldScene).choose(i));
+        c.add(b);
+        bx += b.width + 10;
+      });
+    }
     this.dialog = c;
   }
 
@@ -446,6 +585,7 @@ export class UIScene extends Phaser.Scene {
     );
     this.help.setY(this.scale.height - 6);
     this.drawHp();
+    this.drawQuests(ws);
     if (this.attackButton) {
       const ax = this.scale.width - 60;
       const ay = this.scale.height - 90;
