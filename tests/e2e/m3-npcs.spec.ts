@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { open, state, waitReady } from './helpers';
+import { open, state } from './helpers';
 
 type Npc = { id: string; x: number; y: number; role: string; name: string };
 const npcs = (page: Page) => page.evaluate(() => (window as unknown as { __game: { npcs: Npc[] } }).__game.npcs.map((n) => ({ ...n })));

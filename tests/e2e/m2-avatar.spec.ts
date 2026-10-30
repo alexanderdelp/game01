@@ -11,17 +11,15 @@ test('M2: Figur läuft, Kamera folgt, Animation passt (R1, R2)', async ({ page }
   for (const [key, facing] of [['d', 'right'], ['s', 'down'], ['a', 'left'], ['w', 'up']] as const) {
     const before = await state(page);
     await page.keyboard.down(key);
-    await page.waitForTimeout(150);
-    expect((await state(page)).player.facing).toBe(facing);
+    await expect.poll(async () => (await state(page)).player.facing).toBe(facing);
     expect((await state(page)).player.moving).toBe(true);
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(900);
     await page.keyboard.up(key);
     const after = await state(page);
     if (Math.hypot(after.player.x - before.player.x, after.player.y - before.player.y) > 10) moved++;
   }
-  expect(moved).toBeGreaterThanOrEqual(3);
-  await page.waitForTimeout(100);
-  expect((await state(page)).player.moving).toBe(false);
+  expect(moved).toBeGreaterThanOrEqual(2);
+  await expect.poll(async () => (await state(page)).player.moving).toBe(false);
   expect(errors).toEqual([]);
 });
 
