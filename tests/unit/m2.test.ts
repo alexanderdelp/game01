@@ -42,7 +42,10 @@ describe('Bewegung (R2/R4)', () => {
 
 describe('LPC-Figur (R7)', () => {
   it('besteht aus Körper, Beinen, Füßen, Oberteil, Kopf und Haaren', () => {
-    const dirs = layersFor(DEFAULT_APPEARANCE).map((l) => l.dir);
+    const all = layersFor(DEFAULT_APPEARANCE).map((l) => l.dir);
+    expect(all[0]).toBe('weapon/dagger/bg');
+    expect(all.at(-1)).toBe('weapon/dagger/fg');
+    const dirs = layersFor({ ...DEFAULT_APPEARANCE, weapon: 'none' }).map((l) => l.dir);
     expect(dirs[0]).toMatch(/^body\/bodies\//);
     expect(dirs.some((d) => d.startsWith('head/'))).toBe(true);
     expect(dirs.at(-1)).toMatch(/^hair\//);

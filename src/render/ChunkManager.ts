@@ -33,8 +33,8 @@ export class ChunkManager {
   private queue: { cx: number; cy: number; key: string }[] = [];
   private destroyed = false;
   /** Wird aufgerufen, wenn ein Chunk fertig geladen bzw. entladen wurde. */
-  onLoad?: (cx: number, cy: number) => void;
-  onUnload?: (cx: number, cy: number) => void;
+  readonly onLoad: ((cx: number, cy: number) => void)[] = [];
+  readonly onUnload: ((cx: number, cy: number) => void)[] = [];
 
   constructor(private readonly scene: Phaser.Scene, seed: string) {
     const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
@@ -110,7 +110,7 @@ export class ChunkManager {
         c.objects.forEach((o) => o.destroy());
         this.scene.textures.remove(c.key);
         this.loaded.delete(k);
-        this.onUnload?.(cx, cy);
+        this.onUnload.forEach((f) => f(cx, cy));
       }
     }
 
@@ -171,7 +171,7 @@ export class ChunkManager {
       blockers.push({ x: p.x - size.w / 2, y: p.y - size.h, w: size.w, h: size.h });
     }
     this.loaded.set(k, { key: texKey, ground, objects, biomes: new Uint8Array(r.biomes), blockers });
-    this.onLoad?.(r.cx, r.cy);
+    this.onLoad.forEach((f) => f(r.cx, r.cy));
   }
 
   private decoration(d: Decoration): Phaser.GameObjects.Image[] {

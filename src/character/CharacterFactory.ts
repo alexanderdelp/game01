@@ -7,7 +7,7 @@ const BASE = 'assets/lpc/';
 export function preloadCharacter(scene: Phaser.Scene, a: Appearance): void {
   if (!scene.cache.json.exists('lpc-palettes')) scene.load.json('lpc-palettes', `${BASE}palettes.json`);
   for (const layer of layersFor(a)) {
-    for (const anim of Object.keys(ANIMS)) {
+    for (const anim of layer.anims ?? Object.keys(ANIMS)) {
       const key = `lpc:${layer.dir}/${anim}`;
       if (!scene.textures.exists(key)) scene.load.image(key, `${BASE}${layer.dir}/${anim}.png`);
     }
@@ -38,10 +38,17 @@ export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string
     const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
     for (const layer of layers) {
       const key = `lpc:${layer.dir}/${anim}`;
-      if (!scene.textures.exists(key)) continue;
-      const src = scene.textures.get(key).getSourceImage() as HTMLImageElement;
+      const walkKey = `lpc:${layer.dir}/walk`;
       tctx.clearRect(0, 0, w, h);
-      tctx.drawImage(src, 0, 0);
+      if (scene.textures.exists(key)) {
+        tctx.drawImage(scene.textures.get(key).getSourceImage() as HTMLImageElement, 0, 0);
+      } else if (anim === 'idle' && scene.textures.exists(walkKey)) {
+        // Stehpose aus Geh-Frame 0 jeder Richtung
+        const src = scene.textures.get(walkKey).getSourceImage() as HTMLImageElement;
+        for (let r = 0; r < def.rows; r++) for (let f = 0; f < def.frames; f++) tctx.drawImage(src, 0, r * FRAME, FRAME, FRAME, f * FRAME, r * FRAME, FRAME, FRAME);
+      } else {
+        continue;
+      }
       if (layer.material) {
         const img = tctx.getImageData(0, 0, w, h);
         recolor(img.data, palettes, layer.material, layer.color);

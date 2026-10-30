@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { CREATURE_FRAMES, CREATURE_KINDS, generateCreature } from './creatures';
 import { DECOR_KINDS, DECOR_VARIANTS, generateDecor, type Pixels } from './procSprites';
 
 export const ATLAS = 'decor';
@@ -58,4 +59,37 @@ export function createDecorAtlas(scene: Phaser.Scene): void {
   const tex = scene.textures.addCanvas(ATLAS, canvas)!;
   for (const p of placed) tex.add(p.key, 0, p.x, p.y, p.img.w, p.img.h);
   tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+}
+
+export const CREATURES = 'creatures';
+
+/** Erzeugt alle Kreaturen-Frames in einer Atlas-Textur und legt Loop-Animationen "<art>:loop" an. */
+export function createCreatureAtlas(scene: Phaser.Scene): void {
+  if (scene.textures.exists(CREATURES)) return;
+  const frames: { key: string; img: Pixels }[] = [];
+  for (const k of CREATURE_KINDS) for (let f = 0; f < CREATURE_FRAMES; f++) frames.push({ key: `${k}:${f}`, img: generateCreature(k, f) });
+  const pad = 2;
+  const cell = 34;
+  const cols = CREATURE_FRAMES;
+  const canvas = document.createElement('canvas');
+  canvas.width = cols * (cell + pad);
+  canvas.height = CREATURE_KINDS.length * (cell + pad);
+  const ctx = canvas.getContext('2d')!;
+  frames.forEach((f, i) => {
+    const x = (i % cols) * (cell + pad);
+    const y = Math.floor(i / cols) * (cell + pad);
+    ctx.putImageData(new ImageData(f.img.data as Uint8ClampedArray<ArrayBuffer>, f.img.w, f.img.h), x, y);
+  });
+  const tex = scene.textures.addCanvas(CREATURES, canvas)!;
+  frames.forEach((f, i) => tex.add(f.key, 0, (i % cols) * (cell + pad), Math.floor(i / cols) * (cell + pad), f.img.w, f.img.h));
+  tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  const rates: Record<string, number> = { drone: 12, wisp: 8, bolt: 10 };
+  for (const k of CREATURE_KINDS) {
+    scene.anims.create({
+      key: `${k}:loop`,
+      frames: Array.from({ length: CREATURE_FRAMES }, (_, f) => ({ key: CREATURES, frame: `${k}:${f}` })),
+      frameRate: rates[k] ?? 6,
+      repeat: -1,
+    });
+  }
 }

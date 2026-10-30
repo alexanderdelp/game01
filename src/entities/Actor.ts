@@ -45,6 +45,11 @@ export class Actor {
   /** Bewegt die Figur um eine Richtung (Länge ≤ 1) für `dt` Sekunden. */
   update(dirX: number, dirY: number, sprint: boolean, dt: number, env: MoveEnv): void {
     const len = Math.hypot(dirX, dirY);
+    if (this.busy) {
+      this.moving = false;
+      this.sync();
+      return;
+    }
     this.moving = len > 0.15;
     if (this.moving) {
       const nx = dirX / Math.max(1, len);
@@ -67,10 +72,33 @@ export class Actor {
     this.sync();
   }
 
+  /** Läuft gerade eine Aktions-Animation (Angriff, Zusammensacken)? */
+  busy = false;
+
+  /** Spielt eine einmalige Animation (z. B. "slash"); Bewegungsanimationen pausieren solange. */
+  playAction(anim: string, onDone?: () => void): void {
+    const key = anim === 'hurt' ? `${this.prefix}:hurt:any` : `${this.prefix}:${anim}:${this.facing}`;
+    this.busy = true;
+    this.sprite.anims.timeScale = 1;
+    this.sprite.play(key);
+    this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      this.busy = false;
+      onDone?.();
+    });
+  }
+
   /** Dreht die Figur zu einem Punkt. */
   face(x: number, y: number): void {
     this.facing = facingFrom(x - this.x, y - this.y, this.facing);
-    this.play(`idle:${this.facing}`, 1);
+    if (!this.busy) this.play(`idle:${this.facing}`, 1);
+  }
+
+  /** Verschiebt die Figur mit Kollision (Rückstoß). */
+  push(dx: number, dy: number, env: MoveEnv): void {
+    const moved = moveBox(this.box, dx, dy, (b) => env.blocked(b));
+    this.x = moved.x + FOOT_W / 2;
+    this.y = moved.y + FOOT_H;
+    this.sync();
   }
 
   destroy(): void {

@@ -18,6 +18,13 @@ for d in PARTS['dirs']:
         shutil.copyfile(src, os.path.join(DST, rel))
         copied.append(rel)
 
+for f in PARTS.get('files', []):
+    src = os.path.join(SRC, 'spritesheets', f['src'])
+    dst = os.path.join(DST, f['dst'])
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copyfile(src, dst)
+    copied.append(f.get('credit', f['src']))
+
 pal = {}
 for mat in ('body', 'hair', 'cloth'):
     pal[mat] = json.load(open(os.path.join(SRC, 'palette_definitions', mat, f'{mat}_ulpc.json')))

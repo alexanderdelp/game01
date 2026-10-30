@@ -14,6 +14,12 @@ export const debugState = {
   teleport: (_tx: number, _ty: number): void => {},
   findShore: (): { tx: number; ty: number } | null => null,
   npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],
+  hp: 100,
+  attacks: 0,
+  findEnemy: (_kind?: string): { tx: number; ty: number; kind: string } | null => null,
+  damagePlayer: (_n: number): void => {},
+  alive: true,
+  enemies: [] as { id: string; kind: string; x: number; y: number; hp: number; state: string }[],
   dialog: null as { name: string; role: string; text: string } | null,
 };
 

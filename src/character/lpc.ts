@@ -37,6 +37,7 @@ export interface Appearance {
   torsoColor: string;
   legsColor: string;
   feetColor: string;
+  weapon?: 'dagger' | 'none';
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -48,6 +49,7 @@ export const DEFAULT_APPEARANCE: Appearance = {
   torsoColor: 'teal',
   legsColor: 'charcoal',
   feetColor: 'brown',
+  weapon: 'dagger',
 };
 
 export interface Layer {
@@ -55,12 +57,17 @@ export interface Layer {
   dir: string;
   material: Material;
   color: string;
+  /** Vorhandene Animationen, falls nicht alle (fehlendes "idle" wird aus Geh-Frame 0 gebildet). */
+  anims?: string[];
 }
 
 /** Ebenen in Zeichenreihenfolge (hinten nach vorne). */
 export function layersFor(a: Appearance): Layer[] {
   const thin = a.body === 'female' ? 'thin' : 'male';
-  const layers: Layer[] = [
+  const weapon = a.weapon && a.weapon !== 'none';
+  const layers: Layer[] = [];
+  if (weapon) layers.push({ dir: `weapon/${a.weapon}/bg`, material: null, color: '', anims: ['slash', 'walk'] });
+  layers.push(
     { dir: `body/bodies/${a.body}`, material: 'body', color: a.skin },
     { dir: `legs/pants/${thin}`, material: 'cloth', color: a.legsColor },
     { dir: `feet/boots/basic/${thin}`, material: 'cloth', color: a.feetColor },
@@ -68,8 +75,9 @@ export function layersFor(a: Appearance): Layer[] {
       ? { dir: `torso/armour/leather/${a.body}`, material: null, color: '' }
       : { dir: `torso/clothes/longsleeve/longsleeve2/${a.body}`, material: 'cloth', color: a.torsoColor },
     { dir: `head/heads/human/${a.body}`, material: 'body', color: a.skin },
-  ];
+  );
   if (a.hair !== 'none') layers.push({ dir: `hair/${a.hair}/adult`, material: 'hair', color: a.hairColor });
+  if (weapon) layers.push({ dir: `weapon/${a.weapon}/fg`, material: null, color: '', anims: ['slash', 'thrust', 'walk', 'hurt'] });
   return layers;
 }
 

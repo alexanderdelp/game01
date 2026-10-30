@@ -14,7 +14,7 @@ export interface Pixels {
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map((v) => (v + 0.5) / 16);
 const OUTLINE = 0x1a1424;
 
-class Img {
+export class Img {
   readonly data: Uint8ClampedArray;
   /** Hilfsebene: 1 = gehört zu einem Körper, für Kontur und Schatten. */
   constructor(
@@ -39,13 +39,25 @@ class Img {
     this.data[i + 3] = 255;
   }
 
+  /** Setzt einen Pixel mit Transparenz (für Leuchten), überschreibt nur Transparentes. */
+  glow(x: number, y: number, c: number, alpha: number): void {
+    x |= 0;
+    y |= 0;
+    if (!this.inside(x, y) || this.opaque(x, y)) return;
+    const i = (y * this.w + x) * 4;
+    this.data[i] = c >> 16;
+    this.data[i + 1] = (c >> 8) & 255;
+    this.data[i + 2] = c & 255;
+    this.data[i + 3] = alpha;
+  }
+
   get(x: number, y: number): number {
     const i = (y * this.w + x) * 4;
     return (this.data[i] << 16) | (this.data[i + 1] << 8) | this.data[i + 2];
   }
 
   opaque(x: number, y: number): boolean {
-    return this.inside(x, y) && this.data[(y * this.w + x) * 4 + 3] > 0;
+    return this.inside(x, y) && this.data[(y * this.w + x) * 4 + 3] === 255;
   }
 
   /** Wählt aus einer Palette (dunkel → hell) mit Dithering anhand eines Helligkeitswerts 0..1. */

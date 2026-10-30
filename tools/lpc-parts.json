@@ -1,12 +1,62 @@
 {
-  "animations": ["walk", "idle", "slash", "hurt", "spellcast", "thrust"],
+  "animations": [
+    "walk",
+    "idle",
+    "slash",
+    "hurt",
+    "spellcast",
+    "thrust"
+  ],
   "dirs": [
-    "body/bodies/male", "body/bodies/female",
-    "head/heads/human/male", "head/heads/human/female",
-    "hair/plain/adult", "hair/long/adult", "hair/bob/adult", "hair/spiked/adult", "hair/messy1/adult", "hair/pixie/adult",
-    "torso/clothes/longsleeve/longsleeve2/male", "torso/clothes/longsleeve/longsleeve2/female",
-    "torso/armour/leather/male", "torso/armour/leather/female",
-    "legs/pants/male", "legs/pants/thin",
-    "feet/boots/basic/male", "feet/boots/basic/thin"
+    "body/bodies/male",
+    "body/bodies/female",
+    "head/heads/human/male",
+    "head/heads/human/female",
+    "hair/plain/adult",
+    "hair/long/adult",
+    "hair/bob/adult",
+    "hair/spiked/adult",
+    "hair/messy1/adult",
+    "hair/pixie/adult",
+    "torso/clothes/longsleeve/longsleeve2/male",
+    "torso/clothes/longsleeve/longsleeve2/female",
+    "torso/armour/leather/male",
+    "torso/armour/leather/female",
+    "legs/pants/male",
+    "legs/pants/thin",
+    "feet/boots/basic/male",
+    "feet/boots/basic/thin"
+  ],
+  "files": [
+    {
+      "src": "weapon/sword/dagger/slash/dagger.png",
+      "dst": "weapon/dagger/fg/slash.png",
+      "credit": "weapon/sword/dagger/slash.png"
+    },
+    {
+      "src": "weapon/sword/dagger/thrust/dagger.png",
+      "dst": "weapon/dagger/fg/thrust.png",
+      "credit": "weapon/sword/dagger/thrust.png"
+    },
+    {
+      "src": "weapon/sword/dagger/walk/dagger.png",
+      "dst": "weapon/dagger/fg/walk.png",
+      "credit": "weapon/sword/dagger/walk.png"
+    },
+    {
+      "src": "weapon/sword/dagger/hurt/dagger.png",
+      "dst": "weapon/dagger/fg/hurt.png",
+      "credit": "weapon/sword/dagger/hurt.png"
+    },
+    {
+      "src": "weapon/sword/dagger/behind/slash/dagger.png",
+      "dst": "weapon/dagger/bg/slash.png",
+      "credit": "weapon/sword/dagger/behind/slash.png"
+    },
+    {
+      "src": "weapon/sword/dagger/behind/walk/dagger.png",
+      "dst": "weapon/dagger/bg/walk.png",
+      "credit": "weapon/sword/dagger/behind/walk.png"
+    }
   ]
 }

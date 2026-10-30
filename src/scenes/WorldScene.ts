@@ -3,13 +3,16 @@ import { buildCharacter, preloadCharacter } from '../character/CharacterFactory'
 import { DEFAULT_APPEARANCE } from '../character/lpc';
 import { debugState } from '../debug';
 import { Actor } from '../entities/Actor';
+import { BANDIT_LOOKS, EnemyManager, type CombatCtx } from '../entities/Enemy';
 import { NpcManager, type Npc } from '../entities/NpcManager';
+import { PlayerCombat } from '../entities/PlayerCombat';
 import { touchInput } from '../game/input';
 import { load, save } from '../game/save';
 import { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
-import { createDecorAtlas } from '../render/textures';
-import { WORLD_TILES, WorldGen } from '../world/WorldGen';
+import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
+import { enemiesForChunk } from '../combat/enemies';
+import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
 
 const ZOOMS = [1, 2, 3, 4];
 
@@ -24,6 +27,9 @@ export class WorldScene extends Phaser.Scene {
   chunks!: ChunkManager;
   player!: Actor;
   npcs!: NpcManager;
+  enemies!: EnemyManager;
+  combat!: PlayerCombat;
+  private combatCtx!: CombatCtx;
   /** NPC, mit dem gerade gesprochen wird. */
   talkingTo: Npc | null = null;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -41,15 +47,18 @@ export class WorldScene extends Phaser.Scene {
   preload(): void {
     preloadCharacter(this, DEFAULT_APPEARANCE);
     for (const a of NpcManager.appearances(this.world)) preloadCharacter(this, a);
+    for (const a of BANDIT_LOOKS) preloadCharacter(this, a);
   }
 
   create(): void {
     createDecorAtlas(this);
+    createCreatureAtlas(this);
     this.chunks = new ChunkManager(this, this.world.seedName);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
     this.npcs = new NpcManager(this, this.world, this.chunks);
     const spawn = this.world.findSpawn();
+    this.enemies = new EnemyManager(this, this.world, this.chunks, spawn);
     const saved = load<SavedPlayer>(this.saveKey);
     const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
     const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
@@ -57,6 +66,17 @@ export class WorldScene extends Phaser.Scene {
 
     // Startzoom so, dass mindestens ~20 Kacheln in der Breite sichtbar sind (Handy: 1, Desktop: 2).
     this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
+    const respawn = () => this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
+    this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
+    this.combatCtx = {
+      chunks: this.chunks,
+      world: this.world,
+      player: this.player,
+      playerAlive: true,
+      hurtPlayer: (a, x, y) => this.combat.hurt(a, x, y),
+      fireBolt: (x, y, vx, vy, d) => this.enemies.fireBolt(x, y, vx, vy, d),
+    };
+
     const cam = this.cameras.main;
     cam.setBackgroundColor(0x172a5c);
     cam.setBounds(0, 0, WORLD_TILES * TILE_PX, WORLD_TILES * TILE_PX);
@@ -71,7 +91,8 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-MINUS', () => this.zoom(-1));
     kb.on('keydown-NUMPAD_SUBTRACT', () => this.zoom(-1));
     kb.on('keydown-E', () => this.interact());
-    kb.on('keydown-SPACE', () => this.interact());
+    kb.on('keydown-SPACE', () => this.attack());
+    kb.on('keydown-J', () => this.attack());
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
@@ -82,6 +103,20 @@ export class WorldScene extends Phaser.Scene {
     debugState.seed = this.world.seedName;
     debugState.spawn = spawn;
     debugState.teleport = (tx: number, ty: number) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
+    debugState.findEnemy = (kind?: string) => {
+      const c = { x: Math.floor(spawn.tx / CHUNK_TILES), y: Math.floor(spawn.ty / CHUNK_TILES) };
+      for (let r = 1; r < 30; r++) {
+        for (let cy = c.y - r; cy <= c.y + r; cy++) {
+          for (let cx = c.x - r; cx <= c.x + r; cx++) {
+            if (Math.max(Math.abs(cx - c.x), Math.abs(cy - c.y)) !== r) continue;
+            const e = enemiesForChunk(this.world, cx, cy, spawn).find((s) => !kind || s.kind === kind);
+            if (e) return { tx: e.tx, ty: e.ty, kind: e.kind };
+          }
+        }
+      }
+      return null;
+    };
+    debugState.damagePlayer = (n: number) => this.combat.hurt(n, this.player.x + 1, this.player.y, true);
     debugState.findShore = () => {
       // Nach rechts laufen, bis Wasser kommt: Kachel davor ist begehbar, ihr rechter Nachbar Wasser.
       const { tx, ty } = this.player.tile;
@@ -109,6 +144,11 @@ export class WorldScene extends Phaser.Scene {
     npc.talks++;
     this.events.emit('talk', { name: npc.spawn.name, role: npc.role.name, text: line });
     debugState.dialog = { name: npc.spawn.name, role: npc.role.name, text: line };
+  }
+
+  attack(): void {
+    if (this.talkingTo) return this.endTalk();
+    this.combat.attack();
   }
 
   endTalk(): void {
@@ -142,8 +182,12 @@ export class WorldScene extends Phaser.Scene {
     }
     const dt = Math.min(delta, 50) / 1000;
     this.chunks.update(this.cameras.main.worldView);
-    this.player.update(dx, dy, k.SHIFT.isDown, dt, this.chunks);
+    if (this.combat.locked) this.player.update(0, 0, false, dt, this.chunks);
+    else this.player.update(dx, dy, k.SHIFT.isDown, dt, this.chunks);
+    this.combat.update(dt);
     this.npcs.update(dt, this.player);
+    this.combatCtx.playerAlive = this.combat.alive;
+    this.enemies.update(dt, this.combatCtx);
     if (this.talkingTo && Math.hypot(this.talkingTo.actor.x - this.player.x, this.talkingTo.actor.y - this.player.y) > 90) this.endTalk();
 
     this.saveTimer += delta;
@@ -159,6 +203,10 @@ export class WorldScene extends Phaser.Scene {
     debugState.chunksLoaded = this.chunks.loadedCount;
     debugState.chunksPending = this.chunks.pendingCount;
     debugState.npcs = [...this.npcs.npcs.values()].map((n) => ({ id: n.spawn.id, x: n.actor.x, y: n.actor.y, role: n.spawn.role, name: n.spawn.name }));
+    debugState.hp = this.combat.stats.hp;
+    debugState.attacks = this.combat.attacks;
+    debugState.alive = this.combat.alive;
+    debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state }));
     debugState.ready = this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0;
   }
 }

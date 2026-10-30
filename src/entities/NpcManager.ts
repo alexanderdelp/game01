@@ -99,8 +99,8 @@ export class NpcManager {
     private readonly chunks: ChunkManager,
   ) {
     this.looks = archetypes(world.seed);
-    chunks.onLoad = (cx, cy) => this.spawnChunk(cx, cy);
-    chunks.onUnload = (cx, cy) => this.despawnChunk(cx, cy);
+    chunks.onLoad.push((cx, cy) => this.spawnChunk(cx, cy));
+    chunks.onUnload.push((cx, cy) => this.despawnChunk(cx, cy));
   }
 
   /** Alle Ebenen, die für die Archetypen dieser Welt geladen werden müssen. */
