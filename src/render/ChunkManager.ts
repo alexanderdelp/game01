@@ -37,6 +37,8 @@ export class ChunkManager {
   readonly onLoad: ((cx: number, cy: number) => void)[] = [];
   /** Erlaubt abweichende Frames (z. B. geöffnete Truhen). */
   frameHook?: (d: Decoration) => string | undefined;
+  /** Zusätzliche Hindernisse außerhalb der Chunk-Daten (z. B. Ausbauten von Orten), nach Schlüssel. */
+  readonly extraBlockers = new Map<string, Box[]>();
   /** Gebaute Objekte nach Kachel, um sie später umzuschalten. */
   readonly builtImages = new Map<string, Phaser.GameObjects.Image>();
   readonly onUnload: ((cx: number, cy: number) => void)[] = [];
@@ -82,6 +84,7 @@ export class ChunkManager {
       }
     }
     const seen = new Set<LoadedChunk>();
+    for (const list of this.extraBlockers.values()) for (const o of list) if (overlaps(b, o)) return true;
     // Dekorationen am Chunkrand ragen ein paar Pixel über; deshalb mit Rand nachsehen.
     const m = 8;
     for (const [px, py] of [[b.x - m, b.y - m], [b.x + b.w + m, b.y - m], [b.x - m, b.y + b.h + m], [b.x + b.w + m, b.y + b.h + m]]) {

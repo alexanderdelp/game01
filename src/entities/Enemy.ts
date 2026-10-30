@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { buildCharacter } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
-import { DefeatLog, attackBox, knockback, rollDamage, scaleStats, type Stats } from '../combat/combat';
+import { attackBox, knockback, rollDamage, scaleStats, type Stats } from '../combat/combat';
 import { ENEMIES, enemiesForChunk, type EnemyDef, type EnemySpawn } from '../combat/enemies';
 import type { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
@@ -320,7 +320,9 @@ export class EnemyManager {
   readonly enemies = new Map<string, Enemy>();
   private readonly byChunk = new Map<string, string[]>();
   private readonly bolts: Bolt[] = [];
-  readonly defeated = new DefeatLog();
+  /** Vom Weltzustand gesetzt: ist ein Gegner (noch) besiegt? / Besiegen protokollieren. */
+  isDefeated: (id: string) => boolean = () => false;
+  onKilled: (e: Enemy) => void = () => {};
   private readonly bars: Phaser.GameObjects.Graphics;
 
   constructor(
@@ -336,9 +338,8 @@ export class EnemyManager {
 
   private spawnChunk(cx: number, cy: number): void {
     const ids: string[] = [];
-    const now = this.scene.time.now;
     for (const s of enemiesForChunk(this.world, cx, cy, this.spawnTile)) {
-      if (this.enemies.has(s.id) || this.defeated.isDefeated(s.id, now)) continue;
+      if (this.enemies.has(s.id) || this.isDefeated(s.id)) continue;
       this.enemies.set(s.id, new Enemy(this.scene, s, this.world.seed));
       ids.push(s.id);
     }
@@ -360,7 +361,7 @@ export class EnemyManager {
 
   /** Entfernt einen besiegten Gegner (mit Platz-Effekt) und merkt ihn sich. */
   kill(e: Enemy): void {
-    this.defeated.defeat(e.spawn.id, this.scene.time.now);
+    this.onKilled(e);
     burst(this.scene, e.x, e.body.y + e.body.h / 2, e.def.kind === 'drone' ? 0x2fe0d8 : e.def.kind === 'wisp' ? 0xc4a8ff : e.def.kind === 'bandit' ? 0xe04a5a : 0x86dc62);
     e.destroy();
     this.enemies.delete(e.spawn.id);

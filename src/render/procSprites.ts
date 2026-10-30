@@ -728,3 +728,46 @@ function obelisk(rnd: () => number): Pixels {
   }
   return img.result();
 }
+
+// ---------------------------------------------------------------- Wohlstand: Laterne, Banner, Statue
+
+export function lantern(): Pixels {
+  const img = new Img(14, 36);
+  img.rect(6, 10, 2, 24, METAL[2]);
+  img.rect(3, 33, 8, 3, METAL[1]);
+  img.rect(3, 2, 8, 9, METAL[1]);
+  img.rect(4, 3, 6, 7, 0xffd84a);
+  img.rect(5, 4, 2, 3, 0xfff4c0);
+  img.rect(2, 1, 10, 2, METAL[3]);
+  img.outline();
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 14; x++) if (Math.hypot(x - 7, y - 6) < 8) img.glow(x, y, 0xffd84a, Math.max(0, 80 - Math.hypot(x - 7, y - 6) * 10));
+  return img.result();
+}
+
+export function banner(color: number): Pixels {
+  const img = new Img(18, 44);
+  img.rect(2, 2, 2, 42, WOOD[1]);
+  const shade = (f: number) => (Math.round((color >> 16) * f) << 16) | (Math.round(((color >> 8) & 255) * f) << 8) | Math.round((color & 255) * f);
+  img.polygon([[4, 4], [17, 4], [17, 26], [10, 21], [4, 26]], (x) => shade(x < 10 ? 1 : 0.8));
+  img.rect(8, 9, 5, 5, 0xf4f0e8);
+  img.rect(3, 1, 15, 2, 0xd0a048);
+  img.outline();
+  return img.result();
+}
+
+export function statue(): Pixels {
+  const img = new Img(40, 72);
+  const pal = STONE;
+  // Sockel
+  for (let y = 56; y < 72; y++) for (let x = 6; x < 34; x++) img.shade(x, y, 0.8 - (x - 6) / 28 * 0.5 + (y === 56 ? 0.2 : 0), pal);
+  // Figur: Beine, Körper, Kopf, erhobenes Schwert
+  for (let y = 40; y < 56; y++) for (let x = 15; x < 25; x++) if (x < 19 || x > 20) img.shade(x, y, 0.7 - (x - 15) / 10 * 0.4, pal);
+  for (let y = 22; y < 41; y++) for (let x = 13; x < 27; x++) img.shade(x, y, 0.85 - (x - 13) / 14 * 0.5, pal);
+  img.ball(20, 16, 6, pal.slice(1), mulberry32(3), 0);
+  img.line(27, 26, 32, 18, pal[3], 3);
+  img.line(32, 18, 32, 2, pal[5], 2);
+  img.rect(29, 17, 7, 2, pal[2]);
+  img.line(13, 26, 9, 38, pal[2], 3);
+  img.outline();
+  return img.result();
+}

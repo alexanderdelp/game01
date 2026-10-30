@@ -16,6 +16,8 @@ import { enemiesForChunk } from '../combat/enemies';
 import { generateItem, type Slot } from '../rpg/items';
 import { MAX_ACTIVE, accept, isReady, offerFor, onPosition, onTalk, progressText, turnIn, type Quest } from '../quests/quests';
 import { FACTIONS, type Poi } from '../world/meta';
+import { LocalWorldStore, WorldState, isDefeated, reputationRank } from '../state/worldState';
+import { TownDecor } from '../render/TownDecor';
 
 const POTION_PRICE = 10;
 import { addItem } from '../rpg/progression';
@@ -36,6 +38,8 @@ export class WorldScene extends Phaser.Scene {
   npcs!: NpcManager;
   enemies!: EnemyManager;
   combat!: PlayerCombat;
+  state!: WorldState;
+  towns!: TownDecor;
   hero!: HeroController;
   private combatCtx!: CombatCtx;
   /** NPC, mit dem gerade gesprochen wird. */
@@ -67,9 +71,12 @@ export class WorldScene extends Phaser.Scene {
     this.chunks = new ChunkManager(this, this.world.seedName);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
+    this.state = new WorldState(this.world.seedName, new LocalWorldStore());
     this.npcs = new NpcManager(this, this.world, this.chunks);
     const spawn = this.world.findSpawn();
     this.enemies = new EnemyManager(this, this.world, this.chunks, spawn);
+    this.enemies.isDefeated = (id) => isDefeated(this.state.d, id, Date.now());
+    this.enemies.onKilled = (e) => this.state.record({ t: Date.now(), by: this.heroName, type: 'kill', id: e.spawn.id, realm: this.world.meta.realmAt(e.spawn.tx, e.spawn.ty).id });
     const saved = load<SavedPlayer>(this.saveKey);
     const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
     const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
@@ -80,7 +87,11 @@ export class WorldScene extends Phaser.Scene {
     const respawn = () => this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
     this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
     this.hero = new HeroController(this, this.world.seedName, this.player, this.combat);
-    this.chunks.frameHook = (d) => (d.kind === 'chest' && this.hero.hero.opened?.includes(`chest:${d.tx},${d.ty}`) ? 'chest:1' : undefined);
+    // Alte Truhen-Daten aus M8 (im Helden) in den Weltzustand übernehmen
+    for (const id of this.hero.hero.opened ?? []) if (!this.state.d.chests.has(id)) this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id });
+    delete this.hero.hero.opened;
+    this.chunks.frameHook = (d) => (d.kind === 'chest' && this.state.d.chests.has(`chest:${d.tx},${d.ty}`) ? 'chest:1' : undefined);
+    this.towns = new TownDecor(this, this.world, this.chunks, this.state, () => this.heroName);
     const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
     this.events.on('defeated', onDefeated);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('defeated', onDefeated));
@@ -118,6 +129,7 @@ export class WorldScene extends Phaser.Scene {
     const persist = () => {
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
       this.hero.persist();
+      this.state.flush();
     };
     window.addEventListener('pagehide', persist);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('pagehide', persist));
@@ -147,6 +159,15 @@ export class WorldScene extends Phaser.Scene {
       return it.id;
     };
     debugState.choose = (i: number) => this.choose(i);
+    debugState.state = () => ({
+      chests: [...this.state.d.chests],
+      discovered: Object.fromEntries(this.state.d.discovered),
+      prosperity: Object.fromEntries(this.state.d.prosperity),
+      reputation: Object.fromEntries(this.state.d.reputation),
+      events: this.state.events.length,
+    });
+    debugState.recordQuest = (tx: number, ty: number) => this.recordQuest(tx, ty);
+    debugState.travel = (id: number) => this.travel(id);
     debugState.meta = {
       settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital })),
       obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
@@ -166,6 +187,20 @@ export class WorldScene extends Phaser.Scene {
       }
       return null;
     };
+  }
+
+  /** Schnellreise zu einem entdeckten Ort (Wegstein). */
+  travel(townId: number): boolean {
+    const s = this.world.meta.settlements[townId];
+    if (!s || !this.state.d.discovered.has(`town:${townId}`)) return false;
+    this.endTalk();
+    const cam = this.cameras.main;
+    cam.fadeOut(250, 0, 0, 0);
+    cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.player.setPosition(s.tx * TILE_PX + TILE_PX / 2, (s.ty + 2) * TILE_PX + TILE_PX - 1);
+      cam.fadeIn(400, 0, 0, 0);
+    });
+    return true;
   }
 
   /** Öffnet den Erschaffungsbildschirm zum Ändern des Aussehens (Fortschritt bleibt). */
@@ -193,14 +228,16 @@ export class WorldScene extends Phaser.Scene {
     const delivered = onTalk(log, npc.spawn.id);
     if (delivered) {
       const r = turnIn(log, delivered.id, now);
+      this.recordQuest(delivered.giverTx, delivered.giverTy);
       return say(`Ein Brief von ${delivered.giverName}? Danke! (${r ? this.hero.reward(r) : ''})`);
     }
     // 2. Händler
-    if (npc.spawn.role === 'merchant') return this.trade(npc.spawn.name);
+    if (npc.spawn.role === 'merchant') return this.trade(npc.spawn.name, '', this.rankAt(npc.spawn.tx, npc.spawn.ty).discount);
     // 3. Eigene Quest abgeben bzw. daran erinnern
     const own = log.active.find((q) => q.giverId === npc.spawn.id);
     if (own && isReady(own)) {
       const r = turnIn(log, own.id, now)!;
+      this.recordQuest(own.giverTx, own.giverTy);
       return say(`Großartig, du hast es geschafft! Belohnung: ${this.hero.reward(r)}`);
     }
     if (own) return say(`${own.text} (${progressText(own)})`);
@@ -215,7 +252,36 @@ export class WorldScene extends Phaser.Scene {
     // 5. Plaudern (mit Bezug auf Reich und Ort)
     const line = npc.role.lines[npc.talks % npc.role.lines.length];
     npc.talks++;
-    say(this.fillLore(line, npc.spawn.tx, npc.spawn.ty));
+    const rank = this.rankAt(npc.spawn.tx, npc.spawn.ty);
+    const greet = rank.rank > 0 ? `Ah, ${rank.title === 'Held' ? 'der Held' : rank.title === 'Freund' ? 'ein Freund' : 'ein bekanntes Gesicht'} von ${rank.realm.name}! ` : '';
+    say(greet + this.fillLore(line, npc.spawn.tx, npc.spawn.ty));
+  }
+
+  get heroName(): string {
+    return this.hero?.hero.name ?? 'Held';
+  }
+
+  /** Erledigte Quest: Wohlstand des Orts und Ansehen beim Reich steigen. */
+  private recordQuest(tx: number, ty: number): void {
+    const m = this.world.meta;
+    const town = m.settlementNear(tx, ty, 8);
+    const before = town ? (this.state.d.prosperity.get(town.id) ?? 0) : 0;
+    this.state.record({ t: Date.now(), by: this.heroName, type: 'quest', town: town?.id ?? null, realm: m.realmAt(tx, ty).id });
+    if (town) {
+      this.towns.refresh(town.id);
+      const lv = (n: number) => (n >= 10 ? 3 : n >= 5 ? 2 : n >= 2 ? 1 : 0);
+      if (lv(before + 1) > lv(before)) {
+        const text = ['', 'Laternen erhellen jetzt die Gassen.', 'Neue Häuser werden gebaut!', `Die Bewohner errichten dir eine Statue!`][lv(before + 1)];
+        this.events.emit('banner', { title: `${town.name} blüht auf`, sub: text });
+      }
+    }
+    this.state.flush();
+  }
+
+  /** Ansehen beim Reich an einer Position. */
+  rankAt(tx: number, ty: number) {
+    const realm = this.world.meta.realmAt(tx, ty);
+    return { realm, ...reputationRank(this.state.d.reputation.get(realm.id) ?? 0) };
   }
 
   /** Setzt Orts- und Reichsnamen in NPC-Sätze ein. */
@@ -249,18 +315,19 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Händler: Trank kaufen, gewöhnliche Gegenstände verkaufen. */
-  private trade(name: string, note = ''): void {
+  private trade(name: string, note = '', discount = 0): void {
     const h = this.hero.hero;
+    const price = Math.max(1, Math.round(POTION_PRICE * (1 - discount)));
     const commons = h.inventory.filter((i) => i.rarity === 'common');
     const value = commons.reduce((s, i) => s + 3 + i.level * 2, 0);
     this.say(name, 'Händlerin', `${note}Was darf's sein? Du hast ${h.shards} ◆.`, [
-      [`Heiltrank kaufen (${POTION_PRICE} ◆)`, () => {
-        if (h.shards < POTION_PRICE) return this.trade(name, 'Dafür reicht es leider nicht. ');
-        h.shards -= POTION_PRICE;
+      [`Heiltrank kaufen (${price} ◆${discount ? `, −${Math.round(discount * 100)} %` : ''})`, () => {
+        if (h.shards < price) return this.trade(name, 'Dafür reicht es leider nicht. ', discount);
+        h.shards -= price;
         h.potions++;
         this.hero.persist();
         this.events.emit('hero-changed');
-        this.trade(name, 'Bitte sehr! ');
+        this.trade(name, 'Bitte sehr! ', discount);
       }],
       [commons.length ? `${commons.length} Gewöhnliche verkaufen (+${value} ◆)` : 'Nichts zu verkaufen', () => {
         if (!commons.length) return;
@@ -268,7 +335,7 @@ export class WorldScene extends Phaser.Scene {
         h.shards += value;
         this.hero.persist();
         this.events.emit('hero-changed');
-        this.trade(name, `Gutes Geschäft! +${value} ◆. `);
+        this.trade(name, `Gutes Geschäft! +${value} ◆. `, discount);
       }],
       ['Tschüss', () => {}],
     ]);
@@ -291,11 +358,10 @@ export class WorldScene extends Phaser.Scene {
 
   private usePoi(p: Poi): void {
     const h = this.hero.hero;
-    h.opened ??= [];
     h.chronicle ??= [];
     if (p.kind === 'chest') {
-      if (h.opened.includes(p.id)) return this.say('Truhe', 'leer', 'Die Truhe ist leer.');
-      h.opened.push(p.id);
+      if (this.state.d.chests.has(p.id)) return this.say('Truhe', 'leer', `Die Truhe ist leer.`);
+      this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id: p.id });
       this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('chest:1');
       this.hero.lootChest(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
       this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: 'Truhe geöffnet!', color: '#ffd84a' });
@@ -314,6 +380,7 @@ export class WorldScene extends Phaser.Scene {
     const i = p.fragment ?? 0;
     const frag = this.world.meta.lore.fragments[i];
     const isNew = !h.chronicle.includes(i);
+    if (!this.state.d.discovered.has(`obelisk:${i}`)) this.state.record({ t: Date.now(), by: this.heroName, type: 'discover', id: `obelisk:${i}` });
     let extra = '';
     if (isNew) {
       h.chronicle.push(i);
@@ -419,6 +486,10 @@ export class WorldScene extends Phaser.Scene {
         this.lastRealm = realm.id;
       }
       if ((town?.id ?? -1) !== this.lastTown) {
+        if (town && !this.state.d.discovered.has(`town:${town.id}`)) {
+          this.state.record({ t: Date.now(), by: this.heroName, type: 'discover', id: `town:${town.id}` });
+          this.events.emit('float', { x: this.player.x, y: this.player.y - 60, text: 'Wegstein aktiviert', color: '#2fe0d8' });
+        }
         if (town) this.events.emit('banner', { title: town.name, sub: `${town.capital ? 'Hauptstadt' : 'Dorf'} im Reich ${realm.name} · sicherer Ort` });
         this.lastTown = town?.id ?? -1;
       }
@@ -434,6 +505,7 @@ export class WorldScene extends Phaser.Scene {
     this.saveTimer += delta;
     if (this.saveTimer > 2000) {
       this.saveTimer = 0;
+      this.state.flush();
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
     }
 

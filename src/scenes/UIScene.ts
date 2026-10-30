@@ -9,6 +9,7 @@ import { RARITY_COLOR, RARITY_NAME, describeBonus, type Slot } from '../rpg/item
 import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
 import { RACES } from '../rpg/races';
 import { MAX_ACTIVE, abandon, isReady, progressText, questTarget } from '../quests/quests';
+import { reputationRank } from '../state/worldState';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -414,9 +415,9 @@ export class UIScene extends Phaser.Scene {
     for (; i < this.markerTexts.length; i++) this.markerTexts[i].setVisible(false);
   }
 
-  /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster aus. */
+  /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster (oder der Karte) aus. */
   clickPanel(name: string): boolean {
-    const o = this.panel?.getByName(name) as Phaser.GameObjects.GameObject | null;
+    const o = (this.panel?.getByName(name) ?? this.map?.getByName(name)) as Phaser.GameObjects.GameObject | null;
     if (!o) return false;
     o.emit('pointerdown');
     return true;
@@ -478,7 +479,13 @@ export class UIScene extends Phaser.Scene {
       const b = button(bx, y, `+ ${TALENTS[t].name} (${h.talents[t]})`, () => hc.spend(t), h.talentPoints > 0, `talent-${t}`);
       bx += b.width + 6;
     }
-    y += 34;
+    y += 30;
+    const reps = ws.world.meta.realms.map((r) => ({ r, v: ws.state.d.reputation.get(r.id) ?? 0 })).filter((x) => x.v > 0);
+    if (reps.length) {
+      txt(12, y, `Ansehen: ${reps.map((x) => `${x.r.name} ${reputationRank(x.v).title} (${x.v})`).join(' · ')}`, '#c4a8ff', 11).setWordWrapWidth(W - 24);
+      y += reps.length > 2 ? 30 : 18;
+    }
+    y += 4;
     txt(12, y, 'Ausrüstung (antippen = ablegen)', '#8a8aa0', 12);
     y += 18;
     const slots: [Slot, string][] = [['weapon', 'Waffe'], ['armor', 'Rüstung'], ['amulet', 'Amulett']];
@@ -661,8 +668,18 @@ export class UIScene extends Phaser.Scene {
       c.add(this.add.text(mx(r.tx), my(r.ty) - (small ? 14 : 22), r.name.toUpperCase(), { fontFamily: 'monospace', fontSize: small ? '9px' : '12px', color: '#ffffff', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0.5).setAlpha(0.85));
     }
     for (const s of meta.settlements) {
+      const known = ws.state.d.discovered.has(`town:${s.id}`);
       const sz = s.capital ? 7 : 4;
-      c.add(this.add.rectangle(mx(s.tx), my(s.ty), sz, sz, s.capital ? 0xffd84a : 0xf4f0e8).setStrokeStyle(1, 0x0b0b14));
+      const dot = this.add.rectangle(mx(s.tx), my(s.ty), sz, sz, s.capital ? 0xffd84a : 0xf4f0e8).setStrokeStyle(1, 0x0b0b14);
+      c.add(dot);
+      if (known) {
+        // Wegstein: anklickbar für Schnellreise
+        const hit = this.add.circle(mx(s.tx), my(s.ty), 12, 0x2fe0d8, 0.25).setStrokeStyle(1, 0x2fe0d8).setInteractive({ useHandCursor: true }).setName(`travel-${s.id}`);
+        hit.on('pointerdown', () => {
+          if (ws.travel(s.id)) this.closeMap();
+        });
+        c.add(hit);
+      }
       if (s.capital || !small) c.add(this.add.text(mx(s.tx) + 6, my(s.ty), s.name, { fontFamily: 'monospace', fontSize: small ? '9px' : '11px', color: s.capital ? '#ffd84a' : '#e0e0e8', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0, 0.5));
     }
     const found = new Set(ws.hero.hero.chronicle ?? []);
@@ -671,6 +688,7 @@ export class UIScene extends Phaser.Scene {
       const t = questTarget(q);
       if (t) c.add(this.add.circle(mx(t.tx), my(t.ty), 4, 0xffd84a).setStrokeStyle(1, 0x0b0b14));
     }
+    c.add(this.add.text(width / 2, height / 2 + side / 2 + 16, 'Türkise Orte: Wegstein aktiv – antippen für Schnellreise', { ...FONT, fontSize: '12px', color: '#2fe0d8' }).setOrigin(0.5));
     this.marker = this.add.rectangle(0, 0, 8, 8).setStrokeStyle(2, 0xff3355);
     c.add(this.marker);
     this.map = c;
