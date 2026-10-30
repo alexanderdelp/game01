@@ -3,6 +3,10 @@ import { debugState } from '../debug';
 import { TILE_PX } from '../render/chunkPixels';
 import type { ChunkRequest, OverviewResult } from '../render/chunkProtocol';
 import { touchInput } from '../game/input';
+import { iconFor } from '../entities/HeroController';
+import { ATLAS } from '../render/textures';
+import { RARITY_COLOR, RARITY_NAME, describeBonus, type Slot } from '../rpg/items';
+import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -32,9 +36,10 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    debugState.clickPanel = (name: string) => this.clickPanel(name);
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste/J: angreifen  E: reden  Shift: rennen  Mausrad: Zoom  M: Karte  N: neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD: laufen  Leertaste: angreifen  E: reden  Q: Trank  C: Held  M: Karte  Shift: rennen  N: neue Welt', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -58,9 +63,26 @@ export class UIScene extends Phaser.Scene {
       .setVisible(false);
     this.hpBar = this.add.graphics().setDepth(6);
     const ws = this.scene.get('world') as WorldScene;
-    const onDamage = (d: { x: number; y: number; amount: number; color: string }) => this.damageNumber(d);
+    const onDamage = (d: { x: number; y: number; amount: number; color: string }) => this.floatText({ ...d, text: String(d.amount) });
+    const onFloat = (d: { x: number; y: number; text: string; color: string }) => this.floatText({ ...d, small: true });
+    const onLevel = (lvl: number) => this.banner(`Stufe ${lvl}!`, 'Talentpunkt erhalten – C: Heldenfenster');
+    const onHero = () => this.panel && this.buildPanel();
     ws.events.on('damage', onDamage);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('damage', onDamage));
+    ws.events.on('float', onFloat);
+    ws.events.on('level-up', onLevel);
+    ws.events.on('hero-changed', onHero);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      ws.events.off('damage', onDamage);
+      ws.events.off('float', onFloat);
+      ws.events.off('level-up', onLevel);
+      ws.events.off('hero-changed', onHero);
+    });
+    kb.on('keydown-C', () => this.togglePanel());
+    kb.on('keydown-I', () => this.togglePanel());
+    kb.on('keydown-ESC', () => {
+      if (this.panel) this.togglePanel();
+      else if (this.map) this.closeMap();
+    });
     const onDied = () => {
       const t = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Du bist gefallen …', { ...FONT, fontSize: '22px' }).setOrigin(0.5).setDepth(40);
       ws.events.once('player-respawned', () => t.destroy());
@@ -86,7 +108,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map) return;
+      if (pointerId !== -1 || onButton(p) || this.map || this.panel) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -122,6 +144,8 @@ export class UIScene extends Phaser.Scene {
     const buttons: [string, () => void][] = [
       ['Karte', () => this.toggleMap()],
       ['Reden', () => ws().interact()],
+      ['Held', () => this.togglePanel()],
+      ['Trank', () => ws().hero.drink()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
     ];
@@ -140,17 +164,26 @@ export class UIScene extends Phaser.Scene {
   private hpBar!: Phaser.GameObjects.Graphics;
   private attackButton?: Phaser.GameObjects.Arc;
 
-  /** Aufsteigende Schadenszahl an einer Weltposition. */
-  private damageNumber(d: { x: number; y: number; amount: number; color: string }): void {
+  /** Aufsteigender Text (Schaden, EP, Beute) an einer Weltposition. */
+  private floatText(d: { x: number; y: number; text: string; color: string; small?: boolean }): void {
     const ws = this.scene.get('world') as WorldScene;
     const cam = ws.cameras.main;
     const sx = (d.x - cam.worldView.x) * cam.zoom;
     const sy = (d.y - cam.worldView.y) * cam.zoom;
     const t = this.add
-      .text(sx, sy, String(d.amount), { fontFamily: 'monospace', fontSize: '18px', color: d.color, stroke: '#0b0b14', strokeThickness: 4 })
+      .text(sx, sy, d.text, { fontFamily: 'monospace', fontSize: d.small ? '14px' : '18px', color: d.color, stroke: '#0b0b14', strokeThickness: 4 })
       .setOrigin(0.5)
       .setDepth(8);
     this.tweens.add({ targets: t, y: sy - 34, alpha: 0, duration: 750, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
+  }
+
+  private banner(title: string, sub: string): void {
+    const c = this.add.container(this.scale.width / 2, this.scale.height * 0.28).setDepth(35);
+    c.add(this.add.text(0, 0, title, { fontFamily: 'monospace', fontSize: '32px', color: '#ffd84a', stroke: '#0b0b14', strokeThickness: 6 }).setOrigin(0.5));
+    c.add(this.add.text(0, 32, sub, { ...FONT, fontSize: '13px', stroke: '#0b0b14', strokeThickness: 4 }).setOrigin(0.5));
+    c.setScale(0.6);
+    this.tweens.add({ targets: c, scale: 1, duration: 250, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: c, alpha: 0, delay: 2200, duration: 600, onComplete: () => c.destroy() });
   }
 
   private drawHp(): void {
@@ -165,6 +198,139 @@ export class UIScene extends Phaser.Scene {
     g.fillStyle(f > 0.5 ? 0x4cb53e : f > 0.25 ? 0xe0b030 : 0xe04a5a, 1).fillRect(x + 2, y + 2, w * f, 10);
     this.hpText ??= this.add.text(0, 0, '', { ...FONT, fontSize: '11px' }).setDepth(7);
     this.hpText.setText(`LP ${Math.ceil(s.hp)}/${s.maxHp}`).setPosition(x + 6, y + 1);
+    // EP-Leiste und Vorräte
+    const h = ws.hero.hero;
+    const need = xpToNext(h.level);
+    g.fillStyle(0x0b0b14, 0.85).fillRect(x, y + 15, w + 4, 6);
+    g.fillStyle(0xffd84a, 1).fillRect(x + 2, y + 16, (w * h.xp) / need, 4);
+    this.xpText ??= this.add.text(0, 0, '', { ...FONT, fontSize: '12px', backgroundColor: '#0b0b14cc', padding: { x: 4, y: 2 } }).setDepth(7);
+    const tp = h.talentPoints > 0 ? `  ★${h.talentPoints}` : '';
+    this.xpText.setText(`Stufe ${h.level}  ◆${h.shards}  Tränke ${h.potions}${tp}`).setPosition(x, y + 24);
+  }
+
+  private xpText?: Phaser.GameObjects.Text;
+  panel?: Phaser.GameObjects.Container;
+  private selected: string | null = null;
+
+  /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster aus. */
+  clickPanel(name: string): boolean {
+    const o = this.panel?.getByName(name) as Phaser.GameObjects.GameObject | null;
+    if (!o) return false;
+    o.emit('pointerdown');
+    return true;
+  }
+
+  togglePanel(): void {
+    if (this.panel) {
+      this.panel.destroy();
+      this.panel = undefined;
+      debugState.panelOpen = false;
+      return;
+    }
+    if (this.map) this.closeMap();
+    this.buildPanel();
+  }
+
+  /** Heldenfenster: Werte, Talente, Ausrüstung, Inventar. Wird bei jeder Änderung neu aufgebaut. */
+  buildPanel(): void {
+    this.panel?.destroy();
+    debugState.panelOpen = true;
+    const ws = this.scene.get('world') as WorldScene;
+    const hc = ws.hero;
+    const h = hc.hero;
+    const fs = finalStats(h);
+    const W = Math.min(this.scale.width - 16, 400);
+    const x0 = Math.round((this.scale.width - W) / 2);
+    const c = this.add.container(x0, 8).setDepth(50);
+    const H = Math.min(this.scale.height - 16, 600);
+    c.add(this.add.rectangle(0, 0, W, H, 0x0b0b14, 0.94).setOrigin(0).setStrokeStyle(2, 0x2fe0d8, 0.8).setInteractive());
+    const txt = (x: number, y: number, s: string, color = '#f4f0e8', size = 13) => {
+      const t = this.add.text(x, y, s, { ...FONT, fontSize: `${size}px`, color });
+      c.add(t);
+      return t;
+    };
+    const button = (x: number, y: number, label: string, cb: () => void, enabled = true, name?: string) => {
+      const b = this.add
+        .text(x, y, label, { ...FONT, fontSize: '13px', color: enabled ? '#0b0b14' : '#6a6a7a', backgroundColor: enabled ? '#2fe0d8' : '#2a2a36', padding: { x: 6, y: 3 } })
+        .setInteractive({ useHandCursor: enabled });
+      if (name) b.setName(name);
+      if (enabled) b.on('pointerdown', cb);
+      c.add(b);
+      return b;
+    };
+    let y = 10;
+    txt(12, y, `Held · Stufe ${h.level}`, '#2fe0d8', 17);
+    button(W - 34, 8, '✕', () => this.togglePanel(), true, 'close');
+    y += 26;
+    txt(12, y, `EP ${h.xp}/${xpToNext(h.level)}   ◆ ${h.shards} Splitter   Tränke ${h.potions}`, '#ffd84a');
+    y += 22;
+    txt(12, y, `LP ${fs.maxHp}   Angriff ${fs.attack}   Vert. ${fs.defense}`);
+    y += 18;
+    txt(12, y, `Tempo ${Math.round(fs.speed * 100)} %   Regeneration ${fs.regen.toFixed(1)} LP/s`);
+    y += 26;
+    txt(12, y, `Talentpunkte: ${h.talentPoints}`, h.talentPoints ? '#ffd84a' : '#8a8aa0');
+    y += 20;
+    let bx = 12;
+    for (const t of Object.keys(TALENTS) as Talent[]) {
+      const b = button(bx, y, `+ ${TALENTS[t].name} (${h.talents[t]})`, () => hc.spend(t), h.talentPoints > 0, `talent-${t}`);
+      bx += b.width + 6;
+    }
+    y += 34;
+    txt(12, y, 'Ausrüstung (antippen = ablegen)', '#8a8aa0', 12);
+    y += 18;
+    const slots: [Slot, string][] = [['weapon', 'Waffe'], ['armor', 'Rüstung'], ['amulet', 'Amulett']];
+    for (const [slot, label] of slots) {
+      const it = h.equipped[slot];
+      const row = this.add.rectangle(12, y, W - 24, 24, 0xffffff, 0.04).setOrigin(0).setInteractive({ useHandCursor: !!it }).setName(`slot-${slot}`);
+      if (it) row.on('pointerdown', () => hc.unequip(slot));
+      c.add(row);
+      if (it) c.add(this.add.image(24, y + 12, ATLAS, `icon:${iconFor(it)}`));
+      txt(38, y + 5, it ? `${it.name}` : `${label}: –`, it ? RARITY_COLOR[it.rarity] : '#6a6a7a', 12);
+      if (it) txt(W - 16, y + 5, describeBonus(it.bonus), '#8a8aa0', 11).setOrigin(1, 0);
+      y += 26;
+    }
+    y += 8;
+    txt(12, y, `Inventar ${h.inventory.length}/${INVENTORY_SIZE}`, '#8a8aa0', 12);
+    y += 18;
+    const cell = Math.min(44, Math.floor((W - 24) / 6));
+    for (let i = 0; i < INVENTORY_SIZE; i++) {
+      const cx = 12 + (i % 6) * cell;
+      const cy = y + Math.floor(i / 6) * cell;
+      const it = h.inventory[i];
+      const sel = it && it.id === this.selected;
+      const r = this.add
+        .rectangle(cx, cy, cell - 4, cell - 4, 0xffffff, sel ? 0.18 : 0.05)
+        .setOrigin(0)
+        .setStrokeStyle(1, it ? Phaser.Display.Color.HexStringToColor(RARITY_COLOR[it.rarity]).color : 0x2a2a36, it ? 0.9 : 0.6)
+        .setName(`inv-${i}`);
+      c.add(r);
+      if (it) {
+        r.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+          this.selected = it.id;
+          this.buildPanel();
+        });
+        c.add(this.add.image(cx + (cell - 4) / 2, cy + (cell - 4) / 2, ATLAS, `icon:${iconFor(it)}`).setScale(2));
+      }
+    }
+    y += 4 * cell + 6;
+    const sel = h.inventory.find((i) => i.id === this.selected);
+    if (sel) {
+      txt(12, y, sel.name, RARITY_COLOR[sel.rarity], 14);
+      y += 18;
+      txt(12, y, `Stufe ${sel.level} · ${RARITY_NAME[sel.rarity]} · ${describeBonus(sel.bonus)}`, '#c0c0cc', 12);
+      y += 20;
+      const b = button(12, y, 'Anlegen', () => {
+        hc.equip(sel.id);
+        this.selected = null;
+      }, true, 'equip');
+      button(12 + b.width + 8, y, 'Wegwerfen', () => {
+        hc.discard(sel.id);
+        this.selected = null;
+      }, true, 'discard');
+    } else {
+      txt(12, y, h.inventory.length ? 'Gegenstand antippen für Details.' : 'Besiege Gegner, um Beute zu finden.', '#6a6a7a', 12);
+    }
+    this.panel = c;
   }
 
   private hpText?: Phaser.GameObjects.Text;
@@ -269,8 +435,13 @@ export class UIScene extends Phaser.Scene {
       this.attackLabel!.setPosition(ax, ay);
     }
     let bx = this.scale.width - 8;
+    let by = 8;
     for (const { b } of this.touchButtons) {
-      b.setPosition(bx, 8);
+      if (bx - b.width < 200) {
+        bx = this.scale.width - 8;
+        by += 40;
+      }
+      b.setPosition(bx, by);
       bx -= b.width + 8;
     }
 

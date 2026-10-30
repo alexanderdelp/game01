@@ -107,6 +107,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-30 – (M4) Steuerung: Leertaste/J = Angriff, E = Reden (Touch: ⚔-Button, „Reden“). Tod ohne Strafe, Erwachen am Startpunkt (casual).
 - 2026-10-30 – (M4) Gegnerstufe = 1 + Entfernung vom Start / 150 Kacheln → die Welt wird nach außen gefährlicher (Anreiz zur Erkundung und Progression in M5).
 - 2026-10-30 – (M4) Gegner im Genre-Mix: Schleime & Irrlichter (Fantasy), Drohnen (Cyberpunk), Räuber (LPC). Kreaturen prozedural animiert.
+- 2026-10-30 – (M5) Währung „Splitter“ (Kristallsplitter: Energie für Magie und Maschinen – verbindet beide Genres). Wird ab M7 für Händler/Quests genutzt.
+- 2026-10-30 – (M5) Heldenfortschritt (Stufe, Talente, Inventar) wird schon jetzt pro Welt lokal gespeichert, weil Verlust beim Neuladen dem Wunsch „casual“ widerspräche. Weltzustand bleibt M9.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - „Welt läuft weiter ohne Spieler“ wird ohne Server über deterministisches Nachrechnen der vergangenen Zeit beim Laden gelöst (M10).

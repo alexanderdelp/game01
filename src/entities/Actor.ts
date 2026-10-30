@@ -27,7 +27,7 @@ export class Actor {
     scene: Phaser.Scene,
     public x: number,
     public y: number,
-    readonly prefix: string,
+    public prefix: string,
   ) {
     this.shadow = scene.add.ellipse(x, y, 24, 8, 0x0a0814, 0.35);
     this.sprite = scene.add.sprite(x, y, `${prefix}:walk`, 18).setOrigin(0.5, (FRAME - FEET_OFFSET) / FRAME);
@@ -99,6 +99,14 @@ export class Actor {
     this.x = moved.x + FOOT_W / 2;
     this.y = moved.y + FOOT_H;
     this.sync();
+  }
+
+  /** Wechselt das Aussehen (neue Charakter-Texturen), behält Animation und Richtung. */
+  setPrefix(prefix: string): void {
+    if (prefix === this.prefix) return;
+    this.prefix = prefix;
+    this.sprite.anims.stop();
+    this.play(`idle:${this.facing}`, 1);
   }
 
   destroy(): void {

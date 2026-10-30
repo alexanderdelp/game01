@@ -30,6 +30,22 @@ export class PlayerCombat {
     private readonly respawn: () => void,
   ) {}
 
+  regenRate = 3;
+
+  /** Übernimmt neue Endwerte (Stufe, Talente, Ausrüstung); LP-Zuwachs wird gutgeschrieben. */
+  applyStats(s: { maxHp: number; attack: number; defense: number; regen: number }): void {
+    const gained = s.maxHp - this.stats.maxHp;
+    this.stats.maxHp = s.maxHp;
+    this.stats.hp = Math.min(s.maxHp, this.stats.hp + Math.max(0, gained));
+    this.stats.attack = s.attack;
+    this.stats.defense = s.defense;
+    this.regenRate = s.regen;
+  }
+
+  heal(hp: number): void {
+    this.stats.hp = Math.min(this.stats.maxHp, hp);
+  }
+
   /** Blockiert Rückstoß oder eine Aktion gerade die Steuerung? */
   get locked(): boolean {
     return !this.alive || this.actor.busy || this.knock.t > 0;
@@ -95,7 +111,7 @@ export class PlayerCombat {
       this.knock.t -= dt;
       this.actor.push((this.knock.x * dt) / 0.15, (this.knock.y * dt) / 0.15, this.chunks);
     }
-    this.stats.hp = regen(this.stats.hp, this.stats.maxHp, this.sinceHit, dt);
+    this.stats.hp = regen(this.stats.hp, this.stats.maxHp, this.sinceHit, dt, 4, this.regenRate);
     // Blinken während der Unverwundbarkeit
     if (this.alive && this.invuln > 0) {
       this.actor.sprite.setAlpha(Math.floor(this.invuln * 12) % 2 ? 0.4 : 1);

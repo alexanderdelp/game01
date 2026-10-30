@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CREATURE_FRAMES, CREATURE_KINDS, generateCreature } from './creatures';
-import { DECOR_KINDS, DECOR_VARIANTS, generateDecor, type Pixels } from './procSprites';
+import { DECOR_KINDS, DECOR_VARIANTS, ICON_KINDS, generateDecor, generateIcon, type Pixels } from './procSprites';
 
 export const ATLAS = 'decor';
 
@@ -33,6 +33,7 @@ export function createDecorAtlas(scene: Phaser.Scene): void {
   const entries: { key: string; img: Pixels }[] = [];
   for (const kind of DECOR_KINDS) for (let v = 0; v < DECOR_VARIANTS; v++) entries.push({ key: `${kind}:${v}`, img: generateDecor(kind, v) });
   for (const [k, [w, h]] of Object.entries(SHADOWS)) entries.push({ key: `shadow-${k}`, img: ellipse(w, h) });
+  for (const k of ICON_KINDS) entries.push({ key: `icon:${k}`, img: generateIcon(k) });
 
   const pad = 2;
   const width = 512;

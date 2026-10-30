@@ -5,6 +5,7 @@ import { debugState } from '../debug';
 import { Actor } from '../entities/Actor';
 import { BANDIT_LOOKS, EnemyManager, type CombatCtx } from '../entities/Enemy';
 import { NpcManager, type Npc } from '../entities/NpcManager';
+import { HeroController } from '../entities/HeroController';
 import { PlayerCombat } from '../entities/PlayerCombat';
 import { touchInput } from '../game/input';
 import { load, save } from '../game/save';
@@ -12,6 +13,8 @@ import { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
 import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
 import { enemiesForChunk } from '../combat/enemies';
+import { generateItem, type Slot } from '../rpg/items';
+import { addItem } from '../rpg/progression';
 import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
 
 const ZOOMS = [1, 2, 3, 4];
@@ -29,6 +32,7 @@ export class WorldScene extends Phaser.Scene {
   npcs!: NpcManager;
   enemies!: EnemyManager;
   combat!: PlayerCombat;
+  hero!: HeroController;
   private combatCtx!: CombatCtx;
   /** NPC, mit dem gerade gesprochen wird. */
   talkingTo: Npc | null = null;
@@ -46,6 +50,7 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     preloadCharacter(this, DEFAULT_APPEARANCE);
+    preloadCharacter(this, { ...DEFAULT_APPEARANCE, torso: 'leather' });
     for (const a of NpcManager.appearances(this.world)) preloadCharacter(this, a);
     for (const a of BANDIT_LOOKS) preloadCharacter(this, a);
   }
@@ -68,6 +73,8 @@ export class WorldScene extends Phaser.Scene {
     this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
     const respawn = () => this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
     this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
+    this.hero = new HeroController(this, this.world.seedName, this.player, this.combat);
+    this.events.on('defeated', (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e));
     this.combatCtx = {
       chunks: this.chunks,
       world: this.world,
@@ -93,9 +100,13 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-E', () => this.interact());
     kb.on('keydown-SPACE', () => this.attack());
     kb.on('keydown-J', () => this.attack());
+    kb.on('keydown-Q', () => this.hero.drink());
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
-    const persist = () => save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+    const persist = () => {
+      save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+      this.hero.persist();
+    };
     window.addEventListener('pagehide', persist);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener('pagehide', persist));
 
@@ -115,6 +126,13 @@ export class WorldScene extends Phaser.Scene {
         }
       }
       return null;
+    };
+    debugState.giveItem = (slot: string, base?: string) => {
+      const it = generateItem(3, Math.random, slot as Slot);
+      if (base) it.base = base;
+      addItem(this.hero.hero, it);
+      this.events.emit('hero-changed');
+      return it.id;
     };
     debugState.damagePlayer = (n: number) => this.combat.hurt(n, this.player.x + 1, this.player.y, true);
     debugState.findShore = () => {
@@ -185,6 +203,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.combat.locked) this.player.update(0, 0, false, dt, this.chunks);
     else this.player.update(dx, dy, k.SHIFT.isDown, dt, this.chunks);
     this.combat.update(dt);
+    this.hero.update(dt);
     this.npcs.update(dt, this.player);
     this.combatCtx.playerAlive = this.combat.alive;
     this.enemies.update(dt, this.combatCtx);
@@ -205,6 +224,10 @@ export class WorldScene extends Phaser.Scene {
     debugState.npcs = [...this.npcs.npcs.values()].map((n) => ({ id: n.spawn.id, x: n.actor.x, y: n.actor.y, role: n.spawn.role, name: n.spawn.name }));
     debugState.hp = this.combat.stats.hp;
     debugState.attacks = this.combat.attacks;
+    debugState.hero = this.hero.hero;
+    debugState.pickups = this.hero.pickupCount;
+    debugState.pickupPos = this.hero.pickupPositions();
+    debugState.maxHp = this.combat.stats.maxHp;
     debugState.alive = this.combat.alive;
     debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state }));
     debugState.ready = this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0;

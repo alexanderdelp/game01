@@ -474,3 +474,54 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
 export const DECOR_KINDS: DecorKind[] = [
   'oak', 'pine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
 ];
+
+/** Kleine Symbole (16×16) für Beute und Inventar. */
+export const ICON_KINDS = ['shards', 'potion', 'dagger', 'tunic', 'leather', 'amulet'] as const;
+export type IconKind = (typeof ICON_KINDS)[number];
+
+export function generateIcon(kind: IconKind): Pixels {
+  const img = new Img(16, 16);
+  const rnd = mulberry32(kind.length * 31 + kind.charCodeAt(0));
+  switch (kind) {
+    case 'shards': {
+      const pal = [0x0e3044, 0x1c8aa0, 0x3fc4d4, 0xa8f4f8, 0xffffff];
+      img.polygon([[4, 14], [5, 6], [7, 3], [9, 6], [8, 14]], (x, y) => pal[x < 6 ? 3 : y > 10 ? 1 : 2]);
+      img.polygon([[8, 14], [10, 8], [12, 6], [13, 9], [12, 14]], (x) => pal[x < 11 ? 2 : 1]);
+      img.set(6, 5, pal[4]);
+      break;
+    }
+    case 'potion': {
+      img.rect(7, 2, 3, 3, 0xb0a090);
+      img.rect(6, 1, 5, 1, 0x7a5232);
+      img.ball(8.5, 10, 5, [0x6a0e1e, 0xa01a30, 0xd83048, 0xff7080], rnd, 0);
+      img.set(6, 8, 0xffffff);
+      break;
+    }
+    case 'dagger': {
+      img.line(4, 12, 12, 4, (t) => (t < 0.5 ? 0xc0c0cc : 0xe8eef4), 2);
+      img.line(3, 9, 7, 13, 0xd0a048);
+      img.line(1, 15, 4, 12, 0x7a5232, 2);
+      break;
+    }
+    case 'tunic':
+    case 'leather': {
+      const pal = kind === 'tunic' ? [0x14566e, 0x1c8aa0, 0x3fc4d4, 0xa8f4f8] : [0x4a2a14, 0x6e4a30, 0x8a6240, 0xb08a5a];
+      img.polygon([[2, 5], [5, 2], [11, 2], [14, 5], [12, 8], [11, 7], [11, 14], [5, 14], [5, 7], [4, 8]], (x, y) => img_shade(pal, x, y));
+      if (kind === 'leather') img.rect(5, 10, 6, 1, 0xd0a048);
+      break;
+    }
+    case 'amulet': {
+      img.line(3, 2, 8, 8, 0xd0a048);
+      img.line(13, 2, 8, 8, 0xd0a048);
+      img.ball(8, 11, 3.5, [0x2a1650, 0x6a3ab0, 0x9b6af0, 0xd8c4ff], rnd, 0);
+      break;
+    }
+  }
+  img.outline();
+  return img.result();
+}
+
+function img_shade(pal: number[], x: number, y: number): number {
+  const l = 0.9 - (x / 16) * 0.5 - (y / 16) * 0.3;
+  return pal[Math.max(0, Math.min(pal.length - 1, Math.round(l * (pal.length - 1))))];
+}
