@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { derive, eventKey, merge, topContributor, WorldState, type WorldEvent, type WorldSave, type WorldStore } from '../../src/state/worldState';
+import { RESPAWN_MS, compact, derive, eventKey, merge, topContributor, WorldState, type WorldEvent, type WorldSave, type WorldStore } from '../../src/state/worldState';
 import { decodeShare, encodeShare } from '../../src/state/share';
 
 const A: WorldEvent[] = [
@@ -52,5 +52,17 @@ describe('Teilen-Code', () => {
     expect(code.length).toBeLessThan(JSON.stringify(events).length / 3);
     expect(await decodeShare(code)).toEqual({ seed: 'test', events });
     expect(await decodeShare('kaputt!!')).toBeNull();
+  });
+});
+
+describe('Verdichten + Zusammenführen', () => {
+  it('Ansehen aus alten Kills bleibt beim Zusammenführen zweier Spieler erhalten', () => {
+    const kills = (pid: string, n: number): WorldEvent[] => Array.from({ length: n }, (_, i) => ({ t: i, by: pid, pid, type: 'kill', id: `e${i}`, realm: 2 }) as WorldEvent);
+    const now = RESPAWN_MS * 10;
+    const a = compact(kills('a', 5), now);
+    const b = compact(kills('b', 3), now);
+    expect(derive(merge(a, b)).reputation.get(2)).toBe(8);
+    // erneutes Verdichten ändert nichts
+    expect(derive(compact(merge(a, b), now + 1)).reputation.get(2)).toBe(8);
   });
 });

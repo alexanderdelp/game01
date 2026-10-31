@@ -465,7 +465,7 @@ export class WorldScene extends Phaser.Scene {
     }
     if (own) return say(`${own.text} (${progressText(own)})`);
     // 4. Neues Angebot
-    const offer = offerFor(this.world, log, npc.spawn, this.hero.hero.level, now);
+    const offer = this.cachedOffer(npc.spawn, now);
     if (offer && log.active.length < MAX_ACTIVE) {
       return say(`${offer.title} – ${offer.text}`, [
         ['Annehmen', () => this.acceptOffer(offer)],
@@ -644,15 +644,27 @@ export class WorldScene extends Phaser.Scene {
   readonly markers = new Map<string, '!' | '?'>();
   private markerTimer = 0;
 
+  private readonly offerCache = new Map<string, Quest | null>();
+
+  /** Angebot eines NPC mit Zwischenspeicher (die Erzeugung sucht Ziele in der Welt und ist nicht billig). */
+  private cachedOffer(npc: Npc['spawn'], now: number): Quest | null {
+    const log = this.hero.quests;
+    if (log.active.some((q) => q.giverId === npc.id) || (log.cooldown[npc.id] ?? 0) > now) return null;
+    const key = `${npc.id}:${log.next[npc.id] ?? 0}:${this.hero.hero.level}`;
+    if (!this.offerCache.has(key)) this.offerCache.set(key, offerFor(this.world, log, npc, this.hero.hero.level, now));
+    return this.offerCache.get(key) ?? null;
+  }
+
   private updateMarkers(): void {
     this.markers.clear();
     const log = this.hero.quests;
     const now = Date.now();
     for (const n of this.npcs.npcs.values()) {
       const id = n.spawn.id;
+      if (n.spawn.role === 'merchant' && !log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id)) continue;
       const own = log.active.find((q) => q.giverId === id);
       if ((own && isReady(own)) || log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id && !isReady(q))) this.markers.set(id, '?');
-      else if (!own && log.active.length < MAX_ACTIVE && offerFor(this.world, log, n.spawn, this.hero.hero.level, now)) this.markers.set(id, '!');
+      else if (n.spawn.role !== 'merchant' && !own && log.active.length < MAX_ACTIVE && this.cachedOffer(n.spawn, now)) this.markers.set(id, '!');
     }
   }
 

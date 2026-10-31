@@ -137,19 +137,25 @@ export function reputationRank(rep: number): { rank: 0 | 1 | 2 | 3; title: strin
  */
 export function compact(events: WorldEvent[], now: number): WorldEvent[] {
   const out: WorldEvent[] = [];
-  const oldKills = new Map<number, number>();
+  // Alte Kills je Spieler und Reich zählen (Ansehen bleibt erhalten)
+  const oldKills = new Map<string, { by: string; pid?: string; realm: number; n: number }>();
   for (const e of events) {
     if (e.type === 'death' && now - e.t >= DEATH_MS) continue;
     if (e.type === 'kill' && now - e.t >= RESPAWN_MS) {
-      oldKills.set(e.realm, (oldKills.get(e.realm) ?? 0) + 1);
+      const k = `${e.pid ?? e.by}|${e.realm}`;
+      const o = oldKills.get(k) ?? { by: e.by, pid: e.pid, realm: e.realm, n: 0 };
+      o.n++;
+      oldKills.set(k, o);
       continue;
     }
     out.push(e);
   }
-  // Ansehen alter Kills als Sammel-Ereignisse (Kill mit abgelaufener ID) erhalten
-  for (const [realm, n] of oldKills) for (let i = 0; i < n; i++) out.unshift({ t: 0, by: '', type: 'kill', id: `_old`, realm });
-  // Sammel-IDs nicht als „besiegt“ werten: Zeit 0 ist längst abgelaufen.
-  return out;
+  // Als Ereignisse mit Zeit 0 und eindeutiger ID je Spieler/Reich/Nummer → beim Zusammenführen keine falschen Duplikate
+  const summary: WorldEvent[] = [];
+  for (const o of oldKills.values()) {
+    for (let i = 0; i < o.n; i++) summary.push({ t: 0, by: o.by, ...(o.pid ? { pid: o.pid } : {}), type: 'kill', id: `_old:${o.realm}:${i}`, realm: o.realm });
+  }
+  return [...summary, ...out];
 }
 
 /** Schnittstelle für die Speicherung (lokal; in M11 austauschbar gegen einen Server). */
