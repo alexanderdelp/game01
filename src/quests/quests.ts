@@ -240,12 +240,42 @@ export function onPosition(log: QuestLog, tx: number, ty: number): Quest | null 
   return q;
 }
 
+/** Ziel einer Quest: eine Kachel; bei NPC-Zielen zusätzlich die NPC-ID (Kachel = sein Zuhause). */
+export interface QuestTarget {
+  tx: number;
+  ty: number;
+  label: string;
+  npcId?: string;
+}
+
 /** Wohin muss der Held als Nächstes (Kachel), oder null, wenn kein Ort nötig ist. */
-export function questTarget(q: Quest): { tx: number; ty: number; label: string } | null {
-  if (isReady(q)) return q.objective.type === 'deliver' ? null : { tx: q.giverTx, ty: q.giverTy, label: q.giverName };
-  if (q.objective.type === 'deliver') return { tx: q.objective.tx, ty: q.objective.ty, label: q.objective.npcName };
+export function questTarget(q: Quest): QuestTarget | null {
+  if (isReady(q)) return q.objective.type === 'deliver' ? null : { tx: q.giverTx, ty: q.giverTy, label: q.giverName, npcId: q.giverId };
+  if (q.objective.type === 'deliver') return { tx: q.objective.tx, ty: q.objective.ty, label: q.objective.npcName, npcId: q.objective.npcId };
   if (q.objective.type === 'visit') return { tx: q.objective.tx, ty: q.objective.ty, label: BIOMES[q.objective.biome].name };
   return null;
+}
+
+/** Radius (Kacheln) des ungefähren Gebiets, in dem ein nicht geladener NPC zu finden ist. */
+export const AREA_RADIUS = 14;
+
+/**
+ * Ungefähre Beschreibung eines Zielgebiets aus Sicht des Helden: „bei <Ort> (Nordosten, 230)“.
+ * Ohne Ort in der Nähe nur Richtung und Entfernung.
+ */
+export function areaText(places: readonly { name: string; tx: number; ty: number }[], t: { tx: number; ty: number }, from: { tx: number; ty: number }): string {
+  let near: { name: string } | null = null;
+  let bd = 90;
+  for (const p of places) {
+    const d = Math.hypot(p.tx - t.tx, p.ty - t.ty);
+    if (d < bd) {
+      bd = d;
+      near = p;
+    }
+  }
+  const dist = Math.round(Math.hypot(t.tx - from.tx, t.ty - from.ty));
+  const dir = `${compass(t.tx - from.tx, t.ty - from.ty)}, ${dist}`;
+  return near ? `bei ${near.name} (${dir})` : `im ${dir.replace(',', ' ·')}`;
 }
 
 export function progressText(q: Quest): string {

@@ -24,6 +24,8 @@ export class Npc {
   talking = false;
   /** Von außen gesteuert (Karawane): keine eigene Wander-KI. */
   scripted = false;
+  /** Wartet auf den Helden (abgabebereite Quest): bleibt stehen. */
+  hold = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -46,9 +48,10 @@ export class Npc {
       if (this.talking) a.face(player.x, player.y);
       return;
     }
-    if (this.talking) {
+    if (this.talking || this.hold) {
       a.update(0, 0, false, dt, chunks);
-      a.face(player.x, player.y);
+      if (this.talking) a.face(player.x, player.y);
+      if (this.state === 'walk') this.rest();
       return;
     }
     this.timer -= dt * 1000;

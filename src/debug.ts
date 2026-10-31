@@ -25,6 +25,10 @@ export const debugState = {
   shareOpen: false,
   menuOpen: false,
   tipsShown: 0,
+  /** M16: Ziel des Questpfeils ('npc' = auf den NPC selbst, 'place' = Ort, 'area' = kein Pfeil, nur Gebiet) */
+  questPointer: 'none' as 'none' | 'npc' | 'place' | 'area',
+  minimap: false,
+  bannerTitle: '',
   titleStart: (_seed: string): void => {},
   lastShareLink: '',
   mapReady: false,

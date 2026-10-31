@@ -8,7 +8,8 @@ import { ATLAS } from '../render/textures';
 import { RARITY_COLOR, RARITY_NAME, describeBonus, type Slot } from '../rpg/items';
 import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
 import { RACES } from '../rpg/races';
-import { MAX_ACTIVE, abandon, isReady, progressText, questTarget } from '../quests/quests';
+import { AREA_RADIUS, MAX_ACTIVE, abandon, areaText, isReady, progressText, questTarget, type QuestTarget } from '../quests/quests';
+import { BannerQueue, type BannerItem } from '../ui/bannerQueue';
 import { reputationRank } from '../state/worldState';
 import { worldNow } from '../sim/LiveWorld';
 import { caravanPos, clockText, daylight, type News } from '../sim/simulation';
@@ -20,6 +21,8 @@ import { WORLD_TILES } from '../world/WorldGen';
 import type { WorldScene } from './WorldScene';
 
 const MAP_STEP = 8;
+/** Minimap: Bildschirmpixel je Pixel der Übersichtskarte (1 Pixel = MAP_STEP Kacheln). */
+const MINI_ZOOM = 4;
 const FONT = { fontFamily: 'monospace', fontSize: '14px', color: '#f4f0e8' };
 
 /** HUD und Weltkarte, gezeichnet ohne Kamera-Zoom über der Welt. */
@@ -63,6 +66,11 @@ export class UIScene extends Phaser.Scene {
     this.spellButton = undefined;
     this.drops = [];
     this.bannerObj = undefined;
+    this.banners = new BannerQueue();
+    this.mini = undefined;
+    this.miniG = undefined;
+    this.miniFg = undefined;
+    this.lastPos = null;
     this.markerTexts = [];
     this.mapSize = 0;
     this.selected = null;
@@ -141,7 +149,10 @@ export class UIScene extends Phaser.Scene {
       ws.events.off('damage', onDmg);
       ws.events.off('level-up', onLvl);
     });
-    this.input.on('pointerdown', () => audio.unlock());
+    this.input.on('pointerdown', () => {
+      audio.unlock();
+      this.banners.noteClicked();
+    });
     kb.on('keydown', () => audio.unlock());
     this.startTips(ws);
     const onChron = () => this.chronicle && this.buildChronicle();
@@ -319,16 +330,35 @@ export class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: sy - 34, alpha: 0, duration: 750, ease: 'Quad.easeOut', onComplete: () => t.destroy() });
   }
 
-  private banner(title: string, sub: string, small = false): void {
-    this.bannerObj?.destroy();
-    const c = this.add.container(this.scale.width / 2, this.scale.height * (small ? 0.2 : 0.28)).setDepth(35);
+  private banner(title: string, sub: string, small = false, sticky = false): void {
+    this.banners.push({ title, sub, small, sticky });
+  }
+
+  /** Warteschlange abarbeiten; Loslaufen und Klicks beenden Einstiegshinweise. */
+  private stepBanners(ws: WorldScene): void {
+    const p = { x: ws.player.x, y: ws.player.y };
+    if (this.lastPos && Math.hypot(p.x - this.lastPos.x, p.y - this.lastPos.y) > 0.5) this.banners.noteMoved();
+    this.lastPos = p;
+    const r = this.banners.step(this.time.now);
+    if (!r) return;
+    const old = this.bannerObj;
+    if (old) this.tweens.add({ targets: old, alpha: 0, duration: r === 'hide' ? 500 : 150, onComplete: () => old.destroy() });
+    this.bannerObj = undefined;
+    debugState.bannerTitle = '';
+    if (r !== 'hide') this.showBanner(r.show);
+  }
+
+  private showBanner(b: BannerItem): void {
+    const c = this.add.container(this.scale.width / 2, this.scale.height * (b.small ? 0.2 : 0.28)).setDepth(35);
     this.bannerObj = c;
-    const size = small ? (this.scale.width < 500 ? '18px' : '24px') : '32px';
-    c.add(this.add.text(0, 0, title, { fontFamily: 'monospace', fontSize: size, color: small ? '#f4f0e8' : '#ffd84a', stroke: '#0b0b14', strokeThickness: 6 }).setOrigin(0.5));
-    c.add(this.add.text(0, 32, sub, { ...FONT, fontSize: '13px', stroke: '#0b0b14', strokeThickness: 4 }).setOrigin(0.5));
+    debugState.bannerTitle = b.title;
+    if (b.sticky) debugState.tipsShown++;
+    const size = b.small ? (this.scale.width < 500 ? '18px' : '24px') : '32px';
+    c.add(this.add.text(0, 0, b.title, { fontFamily: 'monospace', fontSize: size, color: b.small ? '#f4f0e8' : '#ffd84a', stroke: '#0b0b14', strokeThickness: 6 }).setOrigin(0.5));
+    c.add(this.add.text(0, 32, b.sub, { ...FONT, fontSize: '13px', stroke: '#0b0b14', strokeThickness: 4, align: 'center', wordWrap: { width: this.scale.width - 32 } }).setOrigin(0.5, 0.2));
+    if (b.sticky) c.add(this.add.text(0, 58, this.sys.game.device.input.touch ? '(antippen oder loslaufen)' : '(klicken oder loslaufen)', { ...FONT, fontSize: '11px', color: '#8a8aa0', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0.5));
     c.setScale(0.6);
     this.tweens.add({ targets: c, scale: 1, duration: 250, ease: 'Back.easeOut' });
-    this.tweens.add({ targets: c, alpha: 0, delay: 2200, duration: 600, onComplete: () => c.destroy() });
   }
 
   private drawHp(): void {
@@ -370,16 +400,11 @@ export class UIScene extends Phaser.Scene {
     const tips: [string, string][] = [
       [`Willkommen in ${ws.world.meta.lore.worldName}!`, touch ? 'Ziehen = laufen · ⚔ = angreifen · E = reden/benutzen' : 'WASD = laufen · Leertaste = angreifen · E = reden/benutzen'],
       ['Gelbes ! über einem Kopf', 'Diese Person hat einen Auftrag für dich.'],
-      ['Folge dem gelben Pfeil', 'Er führt zu Quests oder zum nächsten Ort mit Händler und Wegstein.'],
+      ['Folge dem gelben Pfeil', 'Er führt zu Quests und Orten. Gelbe Kreise auf der Minimap: ungefähres Gebiet.'],
       ['Alles wird gespeichert', `Kurz spielen, jederzeit aufhören. ${touch ? '☰' : 'H'} öffnet das Menü.`],
     ];
     debugState.tipsShown = 0;
-    tips.forEach(([t, s], i) =>
-      this.time.delayedCall(1200 + i * 5200, () => {
-        this.banner(t, s, true);
-        debugState.tipsShown = i + 1;
-      }),
-    );
+    this.time.delayedCall(1200, () => tips.forEach(([t, s]) => this.banner(t, s, true, true)));
   }
   private moodAt = 0;
 
@@ -555,6 +580,13 @@ export class UIScene extends Phaser.Scene {
     this.newsPanel = c;
   }
   private bannerObj?: Phaser.GameObjects.Container;
+  private banners = new BannerQueue();
+  private lastPos: { x: number; y: number } | null = null;
+  private mini?: Phaser.GameObjects.Image;
+  private miniG?: Phaser.GameObjects.Graphics;
+  private miniFg?: Phaser.GameObjects.Graphics;
+  /** Aktuelles Questziel für die Minimap (area = nur ungefähres Gebiet). */
+  private miniTarget: { tx: number; ty: number; area: boolean } | null = null;
   chronicle?: Phaser.GameObjects.Container;
 
   toggleChronicle(): void {
@@ -665,46 +697,31 @@ export class UIScene extends Phaser.Scene {
     const log = ws.hero.quests;
     const q = log.active.find((a) => isReady(a)) ?? log.active[0];
     const cam = ws.cameras.main;
-    const top = 8 + (this.touchButtons.length ? Math.ceil(this.touchButtons.length / 3) * 40 : 0);
+    const top = this.miniBottom() + 6;
     this.tracker.setPosition(this.scale.width - 8, top).setVisible(!!q && !this.panel && !this.questLog);
     this.arrow.clear();
     this.arrowLabel.setVisible(false);
+    this.miniTarget = null;
+    debugState.questPointer = 'none';
     const guide = q ? null : this.guideTarget(ws);
-    if (q || guide) {
-      if (q) this.tracker.setText(`${q.title}\n${progressText(q)}${log.active.length > 1 ? `  (+${log.active.length - 1})` : ''}`);
-      const t = q ? questTarget(q) : guide;
-      if (t && !this.map && !this.panel && !this.questLog) {
-        const wx = t.tx * TILE_PX + TILE_PX / 2;
-        const wy = t.ty * TILE_PX + TILE_PX / 2;
-        const sx = (wx - cam.worldView.x) * cam.zoom;
-        const sy = (wy - cam.worldView.y) * cam.zoom;
-        const cx = this.scale.width / 2;
-        const cy = this.scale.height / 2;
-        const dist = Math.round(Math.hypot(t.tx - ws.player.tile.tx, t.ty - ws.player.tile.ty));
-        const onScreen = sx > 20 && sy > 20 && sx < this.scale.width - 20 && sy < this.scale.height - 20;
-        let ax = sx;
-        let ay = sy;
-        let ang = Math.PI / 2;
-        if (!onScreen) {
-          // Pfeil auf einem Kreis um die Figur (Bildschirmmitte), überdeckt so keine HUD-Elemente
-          ang = Math.atan2(sy - cy, sx - cx);
-          const k = Math.min(this.scale.width, this.scale.height) * 0.3;
-          ax = cx + Math.cos(ang) * k;
-          ay = cy + Math.sin(ang) * k;
-        } else {
-          ay -= 26;
-        }
-        // Spitze in Zielrichtung, zwei Ecken schräg dahinter
-        const pts = [
-          [0, 22],
-          [2.5, 15],
-          [-2.5, 15],
-        ].map(([da, r]) => new Phaser.Math.Vector2(ax + Math.cos(ang + da) * r, ay + Math.sin(ang + da) * r));
-        this.arrow.fillStyle(0xffd84a, 0.95).fillTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
-        this.arrow.lineStyle(2, 0x0b0b14, 1).strokeTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
-        this.arrowLabel.setText(onScreen ? t.label : `${t.label} · ${dist}`).setPosition(ax - Math.cos(ang) * 30, ay - Math.sin(ang) * 30).setVisible(true);
+    const t = q ? questTarget(q) : guide;
+    let trackerText = q ? `${q.title}\n${progressText(q)}${log.active.length > 1 ? `  (+${log.active.length - 1})` : ''}` : '';
+    if (t) {
+      // NPC-Ziele: Pfeil nur auf den NPC selbst; ist er nicht geladen, nur ein ungefähres Gebiet (Feedback Punkt 2).
+      const npc = t.npcId ? ws.npcs.npcs.get(t.npcId) : undefined;
+      const area = !!t.npcId && !npc;
+      this.miniTarget = { tx: t.tx, ty: t.ty, area };
+      if (area) {
+        debugState.questPointer = 'area';
+        trackerText += `\n${areaText(ws.world.meta.settlements, t, ws.player.tile)}`;
+      } else if (!this.map && !this.panel && !this.questLog) {
+        debugState.questPointer = npc ? 'npc' : 'place';
+        const wx = npc ? npc.actor.x : t.tx * TILE_PX + TILE_PX / 2;
+        const wy = npc ? npc.actor.y - 20 : t.ty * TILE_PX + TILE_PX / 2;
+        this.drawArrow(ws, wx, wy, t.label);
       }
     }
+    if (q) this.tracker.setText(trackerText);
     // Live-Mitspieler: Name, Lebensleiste, Sprechblasen
     const nowMs = Date.now();
     let ri = 0;
@@ -740,10 +757,129 @@ export class UIScene extends Phaser.Scene {
     for (; i < this.markerTexts.length; i++) this.markerTexts[i].setVisible(false);
   }
 
-  /** Ohne Quest: nächster noch nicht besuchter Ort (Wegstein) als Ziel. */
-  private guideTarget(ws: WorldScene): { tx: number; ty: number; label: string } | null {
+  /** Pfeil am Ziel (auf dem Bildschirm) oder auf einem Kreis um die Figur in Zielrichtung. */
+  private drawArrow(ws: WorldScene, wx: number, wy: number, label: string): void {
+    const cam = ws.cameras.main;
+    const sx = (wx - cam.worldView.x) * cam.zoom;
+    const sy = (wy - cam.worldView.y) * cam.zoom;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+    const dist = Math.round(Math.hypot(wx - ws.player.x, wy - ws.player.y) / TILE_PX);
+    const onScreen = sx > 20 && sy > 20 && sx < this.scale.width - 20 && sy < this.scale.height - 20;
+    let ax = sx;
+    let ay = sy;
+    let ang = Math.PI / 2;
+    if (!onScreen) {
+      // Pfeil auf einem Kreis um die Figur (Bildschirmmitte), überdeckt so keine HUD-Elemente
+      ang = Math.atan2(sy - cy, sx - cx);
+      const k = Math.min(this.scale.width, this.scale.height) * 0.3;
+      ax = cx + Math.cos(ang) * k;
+      ay = cy + Math.sin(ang) * k;
+    } else {
+      ay -= 26;
+    }
+    // Spitze in Zielrichtung, zwei Ecken schräg dahinter
+    const pts = [
+      [0, 22],
+      [2.5, 15],
+      [-2.5, 15],
+    ].map(([da, r]) => new Phaser.Math.Vector2(ax + Math.cos(ang + da) * r, ay + Math.sin(ang + da) * r));
+    this.arrow.fillStyle(0xffd84a, 0.95).fillTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
+    this.arrow.lineStyle(2, 0x0b0b14, 1).strokeTriangle(pts[0].x, pts[0].y, pts[1].x, pts[1].y, pts[2].x, pts[2].y);
+    this.arrowLabel.setText(onScreen ? label : `${label} · ${dist}`).setPosition(ax - Math.cos(ang) * 30, ay - Math.sin(ang) * 30).setVisible(true);
+  }
+
+  /** Größe der Minimap (Seitenlänge in Pixeln). */
+  private miniSide(): number {
+    return this.scale.width < 500 ? 104 : 150;
+  }
+
+  /** Oberkante der Minimap: unter den Handy-Knöpfen oben rechts. */
+  private miniTop(): number {
+    return 8 + (this.touchButtons.length ? Math.ceil(this.touchButtons.length / 3) * 40 : 0);
+  }
+
+  private miniBottom(): number {
+    return this.mini?.visible ? this.miniTop() + this.miniSide() + 4 : this.miniTop() - 6;
+  }
+
+  /** Minimap oben rechts: Ausschnitt der Übersichtskarte um den Helden mit Orten, Questziel, Mitspielern. */
+  private drawMinimap(ws: WorldScene): void {
+    if (!this.mapSize) return;
+    const S = this.miniSide();
+    const x0 = this.scale.width - 8 - S;
+    const y0 = this.miniTop();
+    this.mini ??= this.add.image(0, 0, this.mapTex).setOrigin(0).setDepth(4.1).setScale(MINI_ZOOM);
+    this.miniG ??= this.add.graphics().setDepth(4);
+    const show = !this.map && !this.panel && !this.questLog;
+    this.mini.setVisible(show);
+    this.miniG.clear().setVisible(show);
+    debugState.minimap = show;
+    this.miniFg?.clear();
+    if (!show) return;
     const { tx, ty } = ws.player.tile;
-    let best: { tx: number; ty: number; label: string } | null = null;
+    // linke obere Ecke des Ausschnitts in Pixeln der Übersichtskarte
+    const half = S / 2 / MINI_ZOOM;
+    const ox = tx / MAP_STEP - half;
+    const oy = ty / MAP_STEP - half;
+    // Grund (Ozean) unter dem Kartenbild, falls der Ausschnitt über den Weltrand reicht
+    this.miniG.fillStyle(0x1c3a66, 1).fillRect(x0, y0, S, S);
+    const cx0 = Math.max(0, ox);
+    const cy0 = Math.max(0, oy);
+    const cw = Math.min(this.mapSize, ox + 2 * half) - cx0;
+    const ch = Math.min(this.mapSize, oy + 2 * half) - cy0;
+    this.mini.setCrop(cx0, cy0, Math.max(0, cw), Math.max(0, ch)).setPosition(x0 - ox * MINI_ZOOM, y0 - oy * MINI_ZOOM);
+    const fg = (this.miniFg ??= this.add.graphics().setDepth(4.2)).clear().setVisible(true);
+    const px = (t: number) => x0 + (t / MAP_STEP - ox) * MINI_ZOOM;
+    const py = (t: number) => y0 + (t / MAP_STEP - oy) * MINI_ZOOM;
+    const inside = (x: number, y: number, m = 0) => x >= x0 + m && y >= y0 + m && x <= x0 + S - m && y <= y0 + S - m;
+    for (const st of ws.world.meta.settlements) {
+      const x = px(st.tx);
+      const y = py(st.ty);
+      if (!inside(x, y, 3)) continue;
+      const known = ws.state.d.discovered.has(`town:${st.id}`);
+      const sz = st.capital ? 6 : 4;
+      fg.fillStyle(known ? 0x2fe0d8 : st.capital ? 0xffd84a : 0xf4f0e8, 1).fillRect(x - sz / 2, y - sz / 2, sz, sz);
+      fg.lineStyle(1, 0x0b0b14, 1).strokeRect(x - sz / 2, y - sz / 2, sz, sz);
+    }
+    for (const car of ws.live.caravans) {
+      const p = caravanPos(car, worldNow());
+      const x = px(p.tx);
+      const y = py(p.ty);
+      if (inside(x, y, 2)) fg.fillStyle(0xf08a3a, 1).fillTriangle(x, y - 3, x - 3, y + 3, x + 3, y + 3);
+    }
+    for (const r of ws.remote.remotes.values()) {
+      const x = px(r.x / TILE_PX);
+      const y = py(r.y / TILE_PX);
+      if (inside(x, y, 2)) fg.fillStyle(0x2fe0d8, 1).fillCircle(x, y, 3).lineStyle(1, 0x0b0b14, 1).strokeCircle(x, y, 3);
+    }
+    const t = this.miniTarget;
+    if (t) {
+      let x = px(t.tx);
+      let y = py(t.ty);
+      if (t.area) {
+        // Ungefähres Gebiet (Kreis); außerhalb des Ausschnitts am Rand angedeutet
+        const r = Math.max(6, (AREA_RADIUS / MAP_STEP) * MINI_ZOOM);
+        x = Phaser.Math.Clamp(x, x0 + r + 1, x0 + S - r - 1);
+        y = Phaser.Math.Clamp(y, y0 + r + 1, y0 + S - r - 1);
+        fg.fillStyle(0xffd84a, 0.25).fillCircle(x, y, r).lineStyle(1, 0xffd84a, 0.9).strokeCircle(x, y, r);
+      } else {
+        x = Phaser.Math.Clamp(x, x0 + 4, x0 + S - 4);
+        y = Phaser.Math.Clamp(y, y0 + 4, y0 + S - 4);
+        fg.fillStyle(0xffd84a, 1).fillCircle(x, y, 3.5).lineStyle(1, 0x0b0b14, 1).strokeCircle(x, y, 3.5);
+      }
+    }
+    // Held in der Mitte, Rahmen
+    const hx = x0 + S / 2;
+    const hy = y0 + S / 2;
+    fg.fillStyle(0xff3355, 1).fillCircle(hx, hy, 3.5).lineStyle(1.5, 0xffffff, 1).strokeCircle(hx, hy, 3.5);
+    fg.lineStyle(2, 0x0b0b14, 1).strokeRect(x0, y0, S, S).lineStyle(1, 0xffd84a, 0.6).strokeRect(x0 - 1, y0 - 1, S + 2, S + 2);
+  }
+
+  /** Ohne Quest: nächster noch nicht besuchter Ort (Wegstein) als Ziel. */
+  private guideTarget(ws: WorldScene): QuestTarget | null {
+    const { tx, ty } = ws.player.tile;
+    let best: QuestTarget | null = null;
     let bd = 450;
     for (const s of ws.world.meta.settlements) {
       if (ws.state.d.discovered.has(`town:${s.id}`)) continue;
@@ -1043,7 +1179,9 @@ export class UIScene extends Phaser.Scene {
     for (const o of meta.obelisks) if (found.has(o.fragment ?? -1)) c.add(this.add.star(mx(o.tx), my(o.ty), 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
     for (const q of ws.hero.quests.active) {
       const t = questTarget(q);
-      if (t) c.add(this.add.circle(mx(t.tx), my(t.ty), 4, 0xffd84a).setStrokeStyle(1, 0x0b0b14));
+      if (!t) continue;
+      if (t.npcId && !ws.npcs.npcs.has(t.npcId)) c.add(this.add.circle(mx(t.tx), my(t.ty), Math.max(7, AREA_RADIUS * k), 0xffd84a, 0.25).setStrokeStyle(1, 0xffd84a));
+      else c.add(this.add.circle(mx(t.tx), my(t.ty), 4, 0xffd84a).setStrokeStyle(1, 0x0b0b14));
     }
     for (const car of ws.live.caravans) {
       const p = caravanPos(car, worldNow());
@@ -1081,7 +1219,9 @@ export class UIScene extends Phaser.Scene {
       audio.setMood(daylight(worldNow()) < 0.35 ? 'night' : realm.faction === 'techno' ? 'cyber' : 'day');
     }
     this.drawHp();
+    this.stepBanners(ws);
     this.drawQuests(ws);
+    this.drawMinimap(ws);
     if (this.attackButton) {
       const ax = this.scale.width - 60;
       const ay = this.scale.height - 90;

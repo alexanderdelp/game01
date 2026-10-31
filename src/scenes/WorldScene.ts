@@ -855,6 +855,8 @@ export class WorldScene extends Phaser.Scene {
       }
     }
     if (this.enemies.invasion !== this.live.invasion) this.enemies.invasion = this.live.invasion;
+    const waiting = new Set(this.hero.quests.active.filter((q) => isReady(q) && q.objective.type !== 'deliver').map((q) => q.giverId));
+    for (const n of this.npcs.npcs.values()) n.hold = waiting.has(n.spawn.id);
     this.npcs.update(dt, this.player);
     this.combatCtx.playerAlive = this.combat.alive;
     this.enemies.update(dt, this.combatCtx);

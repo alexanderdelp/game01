@@ -71,6 +71,7 @@ describe('Fortschritt & Ablauf (R2, R3)', () => {
 
     if (deliver.objective.type !== 'deliver') throw new Error();
     expect(questTarget(deliver)?.label).toBe(deliver.objective.npcName);
+    expect(questTarget(deliver)?.npcId).toBe(deliver.objective.npcId);
     expect(onTalk(log, 'jemand-anders')).toBeNull();
     expect(onTalk(log, deliver.objective.npcId)?.id).toBe(deliver.id);
     expect(isReady(deliver)).toBe(true);
@@ -79,6 +80,7 @@ describe('Fortschritt & Ablauf (R2, R3)', () => {
     expect(onPosition(log, visit.objective.tx + 20, visit.objective.ty)).toBeNull();
     expect(onPosition(log, visit.objective.tx + 3, visit.objective.ty)?.id).toBe(visit.id);
     expect(questTarget(visit)?.tx).toBe(visit.giverTx);
+    expect(questTarget(visit)?.npcId).toBe(visit.giverId);
 
     const r = turnIn(log, kill.id, 1000);
     expect(r?.xp).toBe(kill.reward.xp);
