@@ -1,6 +1,6 @@
 # Design-Dokument – Splitterwelten (Game01)
 
-Stand: 2026-10-31, nach Meilenstein 13. Details und Anforderungen je Meilenstein: [`docs/milestones/`](milestones/).
+Stand: 2026-10-31, nach Meilenstein 14. Details und Anforderungen je Meilenstein: [`docs/milestones/`](milestones/).
 
 ## Vision
 
@@ -17,12 +17,12 @@ oder live.
 | Immersiv | Reiche mit Fraktionen, Orte mit Bewohnern, Chronik an Obelisken, Tag/Nacht, Wetter, Musik und Klänge. |
 | Relevante Entscheidungen | Weltzustand als Ereignisprotokoll: Truhen bleiben offen, Orte wachsen sichtbar bis zur Heldenstatue, Ansehen beim Reich (Rabatt, Titel), Botschaften für andere. |
 | Lebendige Welt | Simulation aus Seed + Uhrzeit: Karawanen, Reichsmacht verschiebt Grenzen, Orte schwanken, Invasionen, „Während du weg warst …“. |
-| Erkundung | 4096² Kacheln, 15 Biome, 6 Reiche, ~20 Orte, Truhen, Schreine, 8 Obelisken, Erkundungsquests, Wegsteine. |
+| Erkundung | 4096² Kacheln, 15 Biome, 6 Reiche, ~20 Orte, Truhen, Schreine, 8 Obelisken, ~18 Ruinen mit Wächter und Schatz, Erkundungsquests, Wegsteine. |
 | Große Spielwelt | Alles Weltwissen ist eine Funktion `f(seed, x, y[, zeit])`; nur Abweichungen werden gespeichert. |
 | Charakterentwicklung | EP und Stufen, Talente (Kraft, Zähigkeit, Flinkheit), Ausrüstung in drei Seltenheiten. |
 | Charakter-Customizing | Volk (Mensch, Elf, Ork, Synth) mit Bonus, Körper, Haut, Frisur, Farben, Name – jederzeit änderbar. |
 | Genres | Fantasy (Schleime, Irrlichter, Magierzirkel, Fachwerk) ↔ Cyberpunk (Drohnen, Technokratie, Neon-Häuser, Synth). |
-| Kampf | Dolchhieb mit Trefferfenster, Rückstoß, Schadenszahlen, vier Gegnerarten mit eigenem Verhalten. |
+| Kampf | Dolchhieb mit Trefferfenster, Rückstoß, Schadenszahlen, vier Gegnerarten mit eigenem Verhalten, Elite-Gegner und Ruinenwächter. |
 | Multiplayer | Welt teilen per Link (ohne Server) oder automatisch/live über den Referenz-Server: Mitspieler sehen, Koop-Kampf, Chat. |
 | Pixel-Art | 32-px-Kacheln (LPC-Maßstab), prozedurale Landschaft und Gebäude, LPC-Figuren. |
 

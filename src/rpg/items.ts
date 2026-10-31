@@ -49,10 +49,12 @@ const PREFIX = ['Neon', 'Runen', 'Chrom', 'Mond', 'Glut', 'Sturm', 'Kristall', '
 const SUFFIX = ['des Fuchses', 'der Wacht', 'des Nordens', 'der Ödnis', 'des Leuchtens', 'der Stille', 'des Drachen', 'der Maschine'];
 
 /** Erzeugt einen Gegenstand einer Stufe. */
-export function generateItem(level: number, rnd: () => number, slot?: Slot): Item {
+export function generateItem(level: number, rnd: () => number, slot?: Slot, minRarity: Rarity = 'common'): Item {
   const s: Slot = slot ?? (['weapon', 'armor', 'amulet'] as const)[Math.floor(rnd() * 3)];
   const roll = rnd();
-  const rarity: Rarity = roll < 0.08 ? 'epic' : roll < 0.3 ? 'rare' : 'common';
+  let rarity: Rarity = roll < 0.08 ? 'epic' : roll < 0.3 ? 'rare' : 'common';
+  if (minRarity === 'rare' && rarity === 'common') rarity = roll < 0.6 ? 'rare' : roll < 0.75 ? 'epic' : 'rare';
+  if (minRarity === 'epic') rarity = 'epic';
   const mult = rarity === 'epic' ? 1.8 : rarity === 'rare' ? 1.35 : 1;
   const base = BASES[s][Math.floor(rnd() * BASES[s].length)];
   const v = (x: number) => Math.max(1, Math.round(x * mult * (0.85 + rnd() * 0.3)));

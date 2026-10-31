@@ -476,12 +476,14 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
     case 'chest': return chest(rnd, variant % 2 === 1);
     case 'shrine': return shrine(rnd);
     case 'obelisk': return obelisk(rnd);
+    case 'ruin': return ruin(rnd, variant);
+    case 'ruinchest': return ruinchest(rnd, variant % 2 === 1);
   }
 }
 
 export const DECOR_KINDS: DecorKind[] = [
   'oak', 'pine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
-  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk',
+  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest',
 ];
 
 /** Kleine Symbole (16×16) für Beute und Inventar. */
@@ -789,6 +791,67 @@ export function grave(): Pixels {
   img.rect(9, 8, 2, 10, STONE[1]);
   img.rect(6, 11, 8, 2, STONE[1]);
   img.rect(1, 23, 18, 3, 0x4a6a3a);
+  img.outline();
+  return img.result();
+}
+
+// ---------------------------------------------------------------- Ruinen (M14)
+
+function ruin(rnd: () => number, v: number): Pixels {
+  const img = new Img(110, 130);
+  const crystal = CRYSTAL_PALS[v % CRYSTAL_PALS.length];
+  // Sockel aus Stein
+  for (let y = 112; y < 128; y++) for (let x = 6; x < 104; x++) img.shade(x, y, 0.75 - (x - 6) / 98 * 0.4 + ((x + (y >> 2) * 3) % 9 === 0 ? -0.2 : 0), STONE);
+  // Zwei abgebrochene Metallsäulen mit Streben
+  const pillar = (x0: number, top: number, w: number) => {
+    for (let y = top; y < 112; y++) {
+      const broken = y < top + 6 && rnd() < 0.5;
+      for (let x = x0; x < x0 + w; x++) if (!broken || rnd() < 0.5) img.shade(x, y, 0.75 - (x - x0) / w * 0.5 + (y % 10 === 0 ? -0.15 : 0), METAL);
+    }
+    img.rect(x0 + 2, top + 10, w - 4, 2, 0x2fe0d8);
+  };
+  pillar(14, 30 + Math.floor(rnd() * 10), 16);
+  pillar(80, 46 + Math.floor(rnd() * 12), 14);
+  // Gebrochener Bogen
+  img.line(30, 44, 56, 30, METAL[2], 4);
+  img.line(56, 30, 66, 36, METAL[2], 3);
+  // Großer Kristall in der Mitte
+  img.polygon([[42, 112], [44, 70], [55, 50], [66, 70], [68, 112]], (x) => crystal[x < 55 ? 4 : 2]);
+  img.polygon([[34, 112], [36, 90], [42, 82], [46, 112]], (x) => crystal[x < 40 ? 3 : 1]);
+  img.polygon([[64, 112], [68, 92], [74, 86], [76, 112]], (x) => crystal[x < 70 ? 3 : 1]);
+  // Ranken
+  for (let i = 0; i < 26; i++) {
+    const x = 10 + Math.floor(rnd() * 90);
+    const y = 40 + Math.floor(rnd() * 70);
+    if (img.opaque(x, y)) {
+      img.set(x, y, 0x2f7533);
+      img.set(x, y + 1, 0x47923d);
+    }
+  }
+  // Schrott am Boden
+  img.rect(88, 106, 12, 6, METAL[1]);
+  img.rect(8, 108, 8, 4, 0x6e3a1e);
+  img.outline();
+  for (let y = 40; y < 112; y++) for (let x = 30; x < 80; x++) if (!img.opaque(x, y) && Math.hypot(x - 55, y - 80) < 30) img.glow(x, y, crystal[3], Math.max(0, 60 - Math.hypot(x - 55, y - 80) * 2));
+  return img.result();
+}
+
+function ruinchest(rnd: () => number, open: boolean): Pixels {
+  const img = new Img(28, 24);
+  const top = open ? 11 : 7;
+  const gold = [0x6a4a10, 0xa07a20, 0xe0b030, 0xffe890];
+  for (let y = top + 4; y < 23; y++) for (let x = 2; x < 26; x++) img.shade(x, y, 0.8 - (x - 2) / 24 * 0.4 + (y % 5 === 0 ? -0.25 : 0), METAL);
+  if (open) {
+    img.rect(3, 2, 22, 7, METAL[2]);
+    img.rect(4, 12, 20, 3, 0x1a1424);
+    for (let i = 0; i < 5; i++) img.set(6 + i * 4, 13, i % 2 ? 0xc47aff : 0x3fc4d4);
+  } else {
+    img.polygon([[2, 11], [5, 4], [23, 4], [26, 11]], (x) => METAL[x < 14 ? 4 : 3]);
+  }
+  for (const x of [2, 12, 24]) img.rect(x, top + 4, 2, 23 - top - 4, gold[2]);
+  img.rect(2, top + 4, 24, 2, gold[3]);
+  img.rect(12, top + 6, 4, 4, 0x2fe0d8);
+  void rnd;
   img.outline();
   return img.result();
 }

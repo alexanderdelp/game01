@@ -116,7 +116,8 @@ export class WorldScene extends Phaser.Scene {
     // Alte Truhen-Daten aus M8 (im Helden) in den Weltzustand übernehmen
     for (const id of this.hero.hero.opened ?? []) if (!this.state.d.chests.has(id)) this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id });
     delete this.hero.hero.opened;
-    this.chunks.frameHook = (d) => (d.kind === 'chest' && this.state.d.chests.has(`chest:${d.tx},${d.ty}`) ? 'chest:1' : undefined);
+    this.chunks.frameHook = (d) =>
+      (d.kind === 'chest' || d.kind === 'ruinchest') && this.state.d.chests.has(`${d.kind}:${d.tx},${d.ty}`) ? `${d.kind}:1` : undefined;
     this.live = new LiveWorld(this.world, this.chunks, this.npcs, this.state);
     this.enemies.invasion = this.live.invasion;
     this.towns = new TownDecor(this, this.world, this.chunks, this.state, () => this.heroName, (id) => this.live.drift(id));
@@ -239,6 +240,14 @@ export class WorldScene extends Phaser.Scene {
       return it.id;
     };
     debugState.choose = (i: number) => this.choose(i);
+    debugState.killEnemy = (id: string) => {
+      const e = this.enemies.enemies.get(id);
+      if (!e) return false;
+      e.hit(e.stats.hp + 1, this.player.x, this.player.y);
+      this.enemies.kill(e);
+      this.hero.onDefeated(e);
+      return true;
+    };
     debugState.state = () => ({
       chests: [...this.state.d.chests],
       discovered: Object.fromEntries(this.state.d.discovered),
@@ -263,6 +272,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.meta = {
       settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital })),
       obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
+      ruins: this.world.meta.ruins.map((r) => ({ tx: r.tx, ty: r.ty })),
       chunkPoi: (cx: number, cy: number) => this.world.meta.chunkPoi(cx, cy),
     };
     debugState.damagePlayer = (n: number) => this.combat.hurt(n, this.player.x + 1, this.player.y, true);
@@ -597,6 +607,21 @@ export class WorldScene extends Phaser.Scene {
       this.hero.persist();
       return;
     }
+    if (p.kind === 'ruinchest') {
+      if (this.state.d.chests.has(p.id)) {
+        const by = this.state.d.chestsBy.get(p.id);
+        return this.say('Ruinentruhe', 'leer', by && by !== this.heroName ? `Leer – ${by} hat sie bereits geplündert.` : 'Die Ruinentruhe ist leer.');
+      }
+      const guardian = [...this.enemies.enemies.values()].find((e) => e.spawn.id.startsWith('g') && e.alive && Math.hypot(e.x - this.player.x, e.y - this.player.y) < 12 * TILE_PX);
+      if (guardian) return this.say('Ruinentruhe', 'versiegelt', 'Ein Wächter bewacht diese Truhe. Besiege ihn zuerst!');
+      this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id: p.id });
+      this.events.emit('sfx', 'open');
+      this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('ruinchest:1');
+      this.hero.lootRuin(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
+      this.events.emit('banner', { title: 'Ruinenschatz!', sub: 'Ein seltener Fund aus der alten Zeit' });
+      this.hero.persist();
+      return;
+    }
     if (p.kind === 'shrine') {
       const now = this.time.now;
       if ((this.shrineCooldown.get(p.id) ?? 0) > now) return this.say('Schrein', 'ruhend', 'Das Licht des Schreins sammelt sich noch.');
@@ -744,6 +769,11 @@ export class WorldScene extends Phaser.Scene {
         }
         if (town) this.events.emit('banner', { title: town.name, sub: `${town.capital ? 'Hauptstadt' : 'Dorf'} im Reich ${realm.name} · sicherer Ort` });
         this.lastTown = town?.id ?? -1;
+      }
+      const ruin = this.world.meta.ruinNear(t.tx, t.ty, 10);
+      if (ruin && !this.state.d.discovered.has(`ruin:${ruin.id}`)) {
+        this.state.record({ t: Date.now(), by: this.heroName, type: 'discover', id: `ruin:${ruin.id}` });
+        this.events.emit('banner', { title: 'Eine alte Ruine', sub: 'Ein Wächter hütet hier einen Schatz …' });
       }
       debugState.realm = realm.name;
       debugState.town = town?.name ?? '';

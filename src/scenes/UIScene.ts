@@ -1022,6 +1022,11 @@ export class UIScene extends Phaser.Scene {
       }
       if (s.capital || !small) c.add(this.add.text(mx(s.tx) + 6, my(s.ty), s.name, { fontFamily: 'monospace', fontSize: small ? '9px' : '11px', color: s.capital ? '#ffd84a' : '#e0e0e8', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0, 0.5));
     }
+    for (const r of meta.ruins) {
+      if (!ws.state.d.discovered.has(`ruin:${r.id}`)) continue;
+      const looted = ws.state.d.chests.has(`ruinchest:${r.tx + 2},${r.ty + 1}`);
+      c.add(this.add.triangle(mx(r.tx), my(r.ty), 0, 8, 4, 0, 8, 8, looted ? 0x8a8aa0 : 0x3fc4d4).setStrokeStyle(1, 0x0b0b14));
+    }
     const found = new Set(ws.hero.hero.chronicle ?? []);
     for (const o of meta.obelisks) if (found.has(o.fragment ?? -1)) c.add(this.add.star(mx(o.tx), my(o.ty), 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
     for (const q of ws.hero.quests.active) {

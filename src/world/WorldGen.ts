@@ -177,8 +177,11 @@ export class WorldGen {
     const meta = this.meta;
     const building = meta.buildingAt(tx, ty);
     if (building) return { tx, ty, kind: building.kind, variant: building.variant << 1 };
+    const ruin = meta.ruinAt(tx, ty);
+    if (ruin) return { tx, ty, kind: 'ruin', variant: (ruin.id % 4) << 1 };
     const poi = meta.poiAt(tx, ty);
     if (poi) return { tx, ty, kind: poi.kind, variant: 0 };
+    if (meta.ruinNear(tx, ty, 4)) return null;
     const inTown = meta.settlementNear(tx, ty, 2);
     if (inTown && (meta.isPlaza(tx, ty) || rand2(this.seed, tx, ty, 79) < 0.85)) return null;
     const rules = BIOMES[b].decor;

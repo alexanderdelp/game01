@@ -53,7 +53,14 @@ export interface Settlement {
   buildings: Building[];
 }
 
-export type PoiKind = 'chest' | 'shrine' | 'obelisk';
+export type PoiKind = 'chest' | 'shrine' | 'obelisk' | 'ruinchest';
+
+export interface Ruin {
+  id: number;
+  tx: number;
+  ty: number;
+  realm: number;
+}
 
 export interface Poi {
   id: string;
@@ -79,6 +86,8 @@ export class WorldMeta {
   readonly realms: Realm[] = [];
   readonly settlements: Settlement[] = [];
   readonly obelisks: Poi[] = [];
+  readonly ruins: Ruin[] = [];
+  private readonly ruinIndex = new Map<string, Ruin>();
   readonly lore: Lore;
   private readonly warp: Simplex2;
   private readonly buildingIndex = new Map<string, Building>();
@@ -90,6 +99,7 @@ export class WorldMeta {
     this.placeRealms(rnd);
     this.placeSettlements(rnd);
     this.placeObelisks(rnd);
+    this.placeRuins(rnd);
     this.lore = generateLore(t.seed, this);
   }
 
@@ -221,6 +231,34 @@ export class WorldMeta {
     }
   }
 
+  /** Drei Ruinen je Reich, abseits von Orten und Obelisken (M14). */
+  private placeRuins(rnd: () => number): void {
+    for (const r of this.realms) {
+      for (let n = 0; n < 3; n++) {
+        for (let k = 0; k < 40; k++) {
+          const p = this.landPoint(rnd, r.tx, r.ty, 340);
+          if (!p || this.settlementNear(p.tx, p.ty, 30)) continue;
+          if (this.obelisks.some((o) => Math.hypot(o.tx - p.tx, o.ty - p.ty) < 25)) continue;
+          if (this.ruins.some((o) => Math.hypot(o.tx - p.tx, o.ty - p.ty) < 80)) continue;
+          if (!this.isGood(p.tx + 2, p.ty + 1, 0)) continue;
+          const ruin: Ruin = { id: this.ruins.length, tx: p.tx, ty: p.ty, realm: r.id };
+          this.ruins.push(ruin);
+          this.ruinIndex.set(`${p.tx},${p.ty}`, ruin);
+          break;
+        }
+      }
+    }
+  }
+
+  ruinAt(tx: number, ty: number): Ruin | undefined {
+    return this.ruinIndex.get(`${tx},${ty}`);
+  }
+
+  ruinNear(tx: number, ty: number, radius: number): Ruin | null {
+    for (const r of this.ruins) if (Math.abs(r.tx - tx) <= radius && Math.abs(r.ty - ty) <= radius) return r;
+    return null;
+  }
+
   /** Siedlung, in deren Umkreis (+ Rand) die Kachel liegt. */
   settlementNear(tx: number, ty: number, margin = 0): Settlement | null {
     for (const s of this.settlements) if (Math.hypot(s.tx - tx, s.ty - ty) <= s.radius + margin) return s;
@@ -247,6 +285,8 @@ export class WorldMeta {
   poiAt(tx: number, ty: number): Poi | null {
     const o = this.obeliskIndex.get(`${tx},${ty}`);
     if (o) return o;
+    const r = this.ruinIndex.get(`${tx - 2},${ty - 1}`);
+    if (r) return { id: `ruinchest:${tx},${ty}`, kind: 'ruinchest', tx, ty };
     const cx = Math.floor(tx / CHUNK_TILES);
     const cy = Math.floor(ty / CHUNK_TILES);
     const p = this.chunkPoi(cx, cy);

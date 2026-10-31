@@ -56,7 +56,11 @@ export interface EnemySpawn {
   color: number;
   /** Aussehen-Index für Räuber. */
   look: number;
+  /** Elite: größer, stärker, bessere Beute (M14). */
+  elite?: boolean;
 }
+
+export const ELITE_CHANCE = 0.06;
 
 export function enemiesForChunk(
   world: WorldGen,
@@ -67,6 +71,13 @@ export function enemiesForChunk(
 ): EnemySpawn[] {
   const rnd = mulberry32(hash2(world.seed, cx, cy, 777));
   const out: EnemySpawn[] = [];
+  // Wächter der Ruinen (M14): immer Elite, etwas stärker
+  for (const r of world.meta.ruins) {
+    if (Math.floor(r.tx / CHUNK_TILES) !== cx || Math.floor(r.ty / CHUNK_TILES) !== cy) continue;
+    const kind = (['bandit', 'drone', 'wisp'] as const)[r.id % 3];
+    const dist = Math.hypot(r.tx - spawn.tx, r.ty - spawn.ty);
+    out.push({ id: `g${r.id}`, kind, tx: r.tx, ty: r.ty + 3, level: levelForDistance(dist) + 3, color: 0, look: r.id % 4, elite: true });
+  }
   const groupRoll = rnd();
   const tx0 = cx * CHUNK_TILES + Math.floor(rnd() * CHUNK_TILES);
   const ty0 = cy * CHUNK_TILES + Math.floor(rnd() * CHUNK_TILES);
@@ -87,7 +98,8 @@ export function enemiesForChunk(
     if (!BIOMES[tb].walkable && !ENEMIES[kind].flying) continue;
     const deco = world.decorationAt(tx, ty, tb);
     if (deco && DECOR_BLOCK[deco.kind] && !ENEMIES[kind].flying) continue;
-    out.push({ id: `e${cx},${cy},${i}`, kind, tx, ty, level: levelForDistance(dist), color: SLIME_COLOR[tb] ?? 0, look: Math.floor(rnd() * 4) });
+    const elite = hash2(world.seed, tx, ty, 999) / 4294967296 < ELITE_CHANCE;
+    out.push({ id: `e${cx},${cy},${i}`, kind, tx, ty, level: levelForDistance(dist) + (elite ? 2 : 0), color: SLIME_COLOR[tb] ?? 0, look: Math.floor(rnd() * 4), ...(elite ? { elite } : {}) });
   }
   return out;
 }

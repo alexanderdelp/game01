@@ -102,9 +102,9 @@ export class HeroController {
   }
 
   onDefeated(e: Enemy): void {
-    const xp = xpForKill(e.def.kind, e.spawn.level, this.hero.race);
+    const xp = xpForKill(e.def.kind, e.spawn.level, this.hero.race) * (e.spawn.elite ? 3 : 1);
     const ups = gainXp(this.hero, xp);
-    this.scene.events.emit('float', { x: e.x, y: e.body.y - 10, text: `+${xp} EP`, color: '#ffd84a' });
+    this.scene.events.emit('float', { x: e.x, y: e.body.y - 10, text: `+${xp} EP${e.spawn.elite ? ' (Elite!)' : ''}`, color: '#ffd84a' });
     if (ups > 0) {
       this.refresh();
       this.combat.heal(this.combat.stats.maxHp);
@@ -112,6 +112,7 @@ export class HeroController {
     }
     const rnd = mulberry32(hash2(Date.now() >>> 0, this.drops++, e.spawn.level, 5));
     const drops = rollDrops(e.spawn.level, rnd);
+    if (e.spawn.elite) drops.push({ type: 'item', item: generateItem(e.spawn.level, rnd, undefined, 'rare') });
     if (onKill(this.quests, e.def.kind).length) this.scene.events.emit('quests-changed');
     const qd = questDropFor(this.quests, e.def.kind, rnd());
     if (qd && qd.objective.type === 'collect') drops.push({ type: 'quest', questId: qd.id, name: qd.objective.item });
@@ -180,6 +181,18 @@ export class HeroController {
     const lvl = this.hero.level + 1;
     const drops: Drop[] = [{ type: 'shards', amount: 8 + Math.floor(rnd() * 6 * lvl) }, { type: 'item', item: generateItem(lvl, rnd) }];
     if (rnd() < 0.5) drops.push({ type: 'potion' });
+    drops.forEach((d, i) => this.spawnPickup(x + (i - 1) * 16, y + (rnd() - 0.5) * 6, d));
+  }
+
+  /** Ruinenschatz: sicher ein seltener oder epischer Gegenstand, viele Splitter. */
+  lootRuin(x: number, y: number): void {
+    const rnd = mulberry32(hash2(Date.now() >>> 0, this.drops++, 88, 5));
+    const lvl = this.hero.level + 2;
+    const drops: Drop[] = [
+      { type: 'shards', amount: 30 + Math.floor(rnd() * 10 * lvl) },
+      { type: 'item', item: generateItem(lvl, rnd, undefined, rnd() < 0.4 ? 'epic' : 'rare') },
+      { type: 'potion' },
+    ];
     drops.forEach((d, i) => this.spawnPickup(x + (i - 1) * 16, y + (rnd() - 0.5) * 6, d));
   }
 

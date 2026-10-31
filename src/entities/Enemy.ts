@@ -65,6 +65,10 @@ export class Enemy {
   ) {
     this.def = ENEMIES[spawn.kind];
     this.stats = scaleStats(this.def.base, spawn.level);
+    if (spawn.elite) {
+      this.stats.maxHp *= 2;
+      this.stats.hp = this.stats.maxHp;
+    }
     this.x = spawn.tx * TILE_PX + TILE_PX / 2;
     this.y = spawn.ty * TILE_PX + TILE_PX - 2;
     this.rnd = mulberry32(hash2(seed, spawn.tx, spawn.ty, 31337));
@@ -81,6 +85,10 @@ export class Enemy {
       this.sprite = scene.add.sprite(this.x, this.y, CREATURES, `${kind}:0`).setOrigin(0.5, 1);
       this.sprite.play({ key: `${kind}:loop`, startFrame: Math.floor(this.rnd() * 4) });
     }
+    if (spawn.elite) {
+      this.sprite.setScale(1.4);
+      this.shadow.setFillStyle(0xffd84a, 0.45).setSize(this.def.flying ? 24 : 34, 9);
+    }
     this.sync();
   }
 
@@ -91,7 +99,8 @@ export class Enemy {
   /** Trefferfläche des Körpers. */
   get body(): Box {
     const lift = this.def.flying ? 14 : 0;
-    return this.actor ? { x: this.x - 10, y: this.y - 42, w: 20, h: 42 } : { x: this.x - 12, y: this.y - 22 - lift, w: 24, h: 22 };
+    const s = this.spawn.elite ? 1.4 : 1;
+    return this.actor ? { x: this.x - 10 * s, y: this.y - 42 * s, w: 20 * s, h: 42 * s } : { x: this.x - 12 * s, y: this.y - (22 + lift) * s, w: 24 * s, h: 22 * s };
   }
 
   private get foot(): Box {
@@ -297,6 +306,7 @@ export class Enemy {
     }
     if (this.flash > 0) this.sprite.setTintFill(0xffffff);
     else if (windup) this.sprite.setTint(0xffa0a0);
+    else if (this.spawn.elite) this.sprite.setTint(0xfff0b0);
     else this.sprite.clearTint();
   }
 
@@ -306,7 +316,7 @@ export class Enemy {
     const w = 24;
     const top = this.body.y - 6;
     g.fillStyle(0x0b0b14, 0.8).fillRect(this.x - w / 2 - 1, top - 1, w + 2, 4);
-    g.fillStyle(0xe04a5a, 1).fillRect(this.x - w / 2, top, (w * Math.max(0, this.stats.hp)) / this.stats.maxHp, 2);
+    g.fillStyle(this.spawn.elite ? 0xffd84a : 0xe04a5a, 1).fillRect(this.x - w / 2, top, (w * Math.max(0, this.stats.hp)) / this.stats.maxHp, 2);
   }
 
   destroy(): void {

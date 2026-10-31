@@ -21,10 +21,10 @@ export enum B {
 export type DecorKind =
   | 'oak' | 'pine' | 'snowpine' | 'palm' | 'cactus' | 'deadtree' | 'bush' | 'flowers'
   | 'rock' | 'boulder' | 'reeds' | 'crystal' | 'scrap' | 'pylon' | 'tuft'
-  | 'house' | 'tower' | 'neonhouse' | 'stall' | 'well' | 'chest' | 'shrine' | 'obelisk';
+  | 'house' | 'tower' | 'neonhouse' | 'stall' | 'well' | 'chest' | 'shrine' | 'obelisk' | 'ruin' | 'ruinchest';
 
 /** Von Menschen gebaute Dekorationen (werden nicht gespiegelt). */
-export const BUILT = new Set<DecorKind>(['house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk']);
+export const BUILT = new Set<DecorKind>(['house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest']);
 
 export interface DecorRule {
   kind: DecorKind;
@@ -107,5 +107,5 @@ export const DECOR_BLOCK: Partial<Record<DecorKind, { w: number; h: number }>> =
   cactus: { w: 10, h: 7 }, deadtree: { w: 10, h: 6 }, boulder: { w: 32, h: 14 }, crystal: { w: 20, h: 8 },
   scrap: { w: 32, h: 10 }, pylon: { w: 10, h: 6 }, bush: { w: 22, h: 8 },
   house: { w: 60, h: 22 }, tower: { w: 40, h: 22 }, neonhouse: { w: 60, h: 22 }, stall: { w: 44, h: 12 }, well: { w: 28, h: 14 },
-  chest: { w: 20, h: 8 }, shrine: { w: 28, h: 12 }, obelisk: { w: 20, h: 10 },
+  chest: { w: 20, h: 8 }, shrine: { w: 28, h: 12 }, obelisk: { w: 20, h: 10 }, ruin: { w: 64, h: 22 }, ruinchest: { w: 22, h: 8 },
 };
