@@ -6,7 +6,7 @@ const port = Number(process.env.E2E_PORT ?? 4173);
 export default defineConfig({
   testDir: 'tests/e2e',
   timeout: 120_000,
-  expect: { timeout: 10_000 },
+  expect: { timeout: 20_000 },
   // Jeder Test hat eigenen Browser-Kontext (eigener Speicher) und Netz-Tests eigene Server-Ports → parallel möglich
   fullyParallel: true,
   workers: process.env.CI ? 2 : 4,

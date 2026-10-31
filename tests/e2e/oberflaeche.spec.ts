@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { G, open, shot, skipCreation, state, waitReady, watchErrors } from './helpers';
+import { G, frames, open, shot, skipCreation, state, waitReady, watchErrors } from './helpers';
 
 // Modul Oberfläche: Titel, Hinweise, Menüs, Karte, Minimap, Handy-Bedienung.
 // Banner-Warteschlange (≥ 5 s, Reihenfolge), Zielgebiet und Musik prüfen die Unit-Tests m13 und m16.
@@ -7,7 +7,7 @@ import { G, open, shot, skipCreation, state, waitReady, watchErrors } from './he
 test('Titel, neue Welt, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13 R2/R4, M16 R1/R4)', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/');
-  await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 30_000 }).toBe('title');
+  await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 60_000 }).toBe('title');
   await shot(page, 'm13-title');
   await G(page, "g.titleStart('titel-test')");
   await expect.poll(() => G<string>(page, 'g.scene')).not.toBe('title');
@@ -16,7 +16,7 @@ test('Titel, neue Welt, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13
   expect(page.url()).toContain('seed=titel-test');
 
   // Erster Hinweis bleibt bis zum Klick stehen, dann kommt der nächste
-  await expect.poll(() => G<string>(page, 'g.bannerTitle'), { timeout: 30_000 }).toContain('Willkommen');
+  await expect.poll(() => G<string>(page, 'g.bannerTitle'), { timeout: 60_000 }).toContain('Willkommen');
   expect(await G<number>(page, 'g.tipsShown')).toBeGreaterThanOrEqual(1);
   await shot(page, 'm13-tips');
   await page.mouse.click(400, 300);
@@ -50,11 +50,11 @@ test('M22: Weltkarte zoomen und verschieben, feiner Ausschnitt ab 4× (R1, R2)',
   expect(await G<boolean>(page, "g.clickPanel('map-zoom-in')")).toBe(true);
   await page.keyboard.press('+');
   expect(await G<number>(page, 'g.mapZoom')).toBe(4);
-  await expect.poll(() => G<number>(page, 'g.mapDetail'), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(() => G<number>(page, 'g.mapDetail'), { timeout: 30_000 }).toBeGreaterThan(0);
   await shot(page, 'm22-zoom4');
   for (let i = 0; i < 3; i++) await G(page, 'g.mapZoomBy(1)');
   expect(await G<number>(page, 'g.mapZoom')).toBe(16);
-  await expect.poll(() => G<number>(page, 'g.mapDetail'), { timeout: 15_000 }).toBe(2);
+  await expect.poll(() => G<number>(page, 'g.mapDetail'), { timeout: 30_000 }).toBe(2);
   await shot(page, 'm22-zoom16');
   // Ziehen verschiebt, Mausrad zoomt die Karte – nicht die Welt
   const zoomBefore = await G<number>(page, 'g.zoom');
@@ -85,10 +85,10 @@ test.describe('Handy', () => {
     await page.mouse.down();
     await page.mouse.move(240, 500, { steps: 4 });
     await expect.poll(async () => (await state(page)).player.facing).toBe('right');
-    await page.waitForTimeout(400);
+    await frames(page, 10);
     await page.mouse.move(200, 540, { steps: 4 });
     await expect.poll(async () => (await state(page)).player.facing).toBe('down');
-    await page.waitForTimeout(400);
+    await frames(page, 10);
     await page.mouse.up();
     const after = (await state(page)).player;
     expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(20);

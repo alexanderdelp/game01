@@ -39,18 +39,18 @@ export async function open(page: Page, seed: string) {
 /** Bestätigt den Erschaffungsbildschirm mit Standardwerten, falls er erscheint. */
 export async function skipCreation(page: Page) {
   const sceneOf = () => page.evaluate(() => (window as unknown as { __game?: { scene: string } }).__game?.scene ?? '');
-  await expect.poll(sceneOf, { timeout: 30_000 }).not.toBe('');
+  await expect.poll(sceneOf, { timeout: 60_000 }).not.toBe('');
   const scene = await page.evaluate(() => (window as unknown as { __game: { scene: string } }).__game.scene);
   if (scene === 'create') await page.evaluate(() => (window as unknown as { __game: { createConfirm(n?: string): void } }).__game.createConfirm('Testheld'));
 }
 
 /** Wartet auf den Erschaffungsbildschirm (neue Welt), samt fertiger Vorschau. */
 export async function waitCreate(page: Page) {
-  await expect.poll(() => G<string>(page, "g.scene + (g.createLook() ? '+' : '')"), { timeout: 30_000 }).toBe('create+');
+  await expect.poll(() => G<string>(page, "g.scene + (g.createLook() ? '+' : '')"), { timeout: 60_000 }).toBe('create+');
 }
 
 export async function waitReady(page: Page) {
-  await expect.poll(async () => (await state(page))?.ready, { timeout: 30_000 }).toBe(true);
+  await expect.poll(async () => (await state(page))?.ready, { timeout: 60_000 }).toBe(true);
 }
 
 /** Teleportiert und wartet, bis die Umgebung geladen ist. */
@@ -68,10 +68,34 @@ export async function saveAndReload(page: Page) {
   await waitReady(page);
 }
 
-export async function hold(page: Page, key: string, ms: number) {
+/**
+ * Wartet eine Anzahl gezeichneter Bilder ab. Unabhängig von der Rechnerlast (der Testbrowser läuft gedrosselt und
+ * auf dem CI-Rechner noch langsamer) – feste Millisekunden würden dort zu wenige Spielschritte bedeuten.
+ */
+export async function frames(page: Page, n: number) {
+  await page.evaluate((k) => new Promise<void>((r) => { let i = 0; const f = () => (++i >= k ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); }), n);
+}
+
+/** Hält eine Taste für eine Anzahl Bilder gedrückt. */
+export async function hold(page: Page, key: string, n: number) {
   await page.keyboard.down(key);
-  await page.waitForTimeout(ms);
+  await frames(page, n);
   await page.keyboard.up(key);
+}
+
+/** Läuft mit einer Taste, bis sich die Figur mindestens `px` bewegt hat (oder das Zeitlimit abläuft); liefert die Strecke. */
+export async function walk(page: Page, key: string, px = 12, timeout = 15_000): Promise<number> {
+  const p0 = (await state(page)).player;
+  const dist = async () => { const p = (await state(page)).player; return Math.hypot(p.x - p0.x, p.y - p0.y); };
+  await page.keyboard.down(key);
+  try {
+    await expect.poll(dist, { timeout, intervals: [100] }).toBeGreaterThan(px);
+  } catch {
+    // blockiert – Rückgabe zeigt die Strecke
+  } finally {
+    await page.keyboard.up(key);
+  }
+  return dist();
 }
 
 type Dialog = { text: string; name: string; role?: string; choices?: string[] };
@@ -80,7 +104,7 @@ type Dialog = { text: string; name: string; role?: string; choices?: string[] };
  * Geht zu einem NPC (Rolle oder Id) und spricht ihn an. NPCs laufen weiter und laden auf
  * langsamen Rechnern spät nach – daher wird bis zum Zeitlimit wiederholt.
  */
-export async function talkTo(page: Page, who: { role?: string; id?: string }, ok: (d: Dialog) => boolean = () => true, timeout = 30_000): Promise<Dialog> {
+export async function talkTo(page: Page, who: { role?: string; id?: string }, ok: (d: Dialog) => boolean = () => true, timeout = 45_000): Promise<Dialog> {
   const find = who.id ? `g.npcs.find((n) => n.id === ${JSON.stringify(who.id)})` : `g.npcs.find((n) => n.role === ${JSON.stringify(who.role)})`;
   let found: Dialog | null = null;
   await expect

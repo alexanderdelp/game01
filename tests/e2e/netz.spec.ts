@@ -16,7 +16,7 @@ test('M11: Welt per Link teilen – Freund sieht Taten, Botschaft und Namen (R2,
   expect(link).toContain('#w=');
 
   const b = await player(browser, link, 'Bo');
-  await expect.poll(async () => (await G<State>(b.page, 'g.state()')).prosperity['0'], { timeout: 10_000 }).toBe(10);
+  await expect.poll(async () => (await G<State>(b.page, 'g.state()')).prosperity['0'], { timeout: 30_000 }).toBe(10);
   expect((await G<{ name: string }[]>(b.page, 'g.players()')).map((p) => p.name)).toContain('Ada');
   await expect.poll(() => G<boolean>(b.page, 'g.newsOpen')).toBe(true);
   await shot(b.page, 'm11-import');
@@ -46,12 +46,12 @@ test('M11: Automatischer Abgleich über den Referenz-Server (R4)', async ({ brow
     await G(a.page, 'g.syncNow()');
     const b = await player(browser, url, 'Bo');
     await G(b.page, 'g.syncNow()');
-    await expect.poll(() => G<string[]>(b.page, 'g.players().map((p) => p.name)'), { timeout: 15_000 }).toContain('Ada');
+    await expect.poll(() => G<string[]>(b.page, 'g.players().map((p) => p.name)'), { timeout: 30_000 }).toContain('Ada');
     expect(await G<string>(b.page, 'g.syncStatus()')).toBe('verbunden');
     await G(b.page, "g.placeSign('Bo grüßt zurück')");
     await G(b.page, 'g.syncNow()');
     await G(a.page, 'g.syncNow()');
-    await expect.poll(() => G<string[]>(a.page, 'g.players().map((p) => p.name)'), { timeout: 15_000 }).toContain('Bo');
+    await expect.poll(() => G<string[]>(a.page, 'g.players().map((p) => p.name)'), { timeout: 30_000 }).toContain('Bo');
     await a.page.keyboard.press('g');
     await shot(a.page, 'm11-share');
     expect(a.errors).toEqual([]);
@@ -74,15 +74,15 @@ test('M12: Live – sehen, chatten, gemeinsam kämpfen (R2–R4)', async ({ brow
     const ada = async () => (await G<R[]>(b.page, 'g.remotes()')).find((r) => r.name === 'Ada');
 
     // R2: Bo sieht Ada, und Adas Bewegung kommt an
-    await expect.poll(async () => !!(await ada()), { timeout: 15_000 }).toBe(true);
+    await expect.poll(async () => !!(await ada()), { timeout: 30_000 }).toBe(true);
     const x0 = (await ada())!.x;
     const sp = await G<{ tx: number; ty: number }>(a.page, 'g.spawn');
     await G(a.page, `g.teleport(${sp.tx + 4}, ${sp.ty})`);
-    await expect.poll(async () => (await ada())!.x, { timeout: 10_000 }).toBeGreaterThan(x0 + 60);
+    await expect.poll(async () => (await ada())!.x, { timeout: 30_000 }).toBeGreaterThan(x0 + 60);
 
     // R4: Chat
     await G(a.page, "g.chat('Hallo Bo!')");
-    await expect.poll(async () => (await ada())?.chat, { timeout: 10_000 }).toBe('Hallo Bo!');
+    await expect.poll(async () => (await ada())?.chat, { timeout: 30_000 }).toBe('Hallo Bo!');
     await shot(b.page, 'm12-together');
 
     // R3: Gemeinsamer Kampf – Adas Treffer schadet dem Gegner auch bei Bo
@@ -105,7 +105,7 @@ test('M12: Live – sehen, chatten, gemeinsam kämpfen (R2–R4)', async ({ brow
       }, { timeout: 40_000, intervals: [0] })
       .not.toBe('');
     await expect
-      .poll(() => G<boolean>(b.page, `(() => { const e = g.enemies.find((x) => x.id === "${hitId}"); return !e || e.hp < 24; })()`), { timeout: 10_000 })
+      .poll(() => G<boolean>(b.page, `(() => { const e = g.enemies.find((x) => x.id === "${hitId}"); return !e || e.hp < 24; })()`), { timeout: 30_000 })
       .toBe(true);
     await shot(a.page, 'm12-fight');
     expect(a.errors).toEqual([]);

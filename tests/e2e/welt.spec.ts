@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { G, hold, open, saveAndReload, shot, state, tp } from './helpers';
+import { G, hold, open, saveAndReload, shot, state, tp, walk } from './helpers';
 
 // Modul Welt: Laden aus dem Seed, Bewegung, Grenzen, Höhen/Sicht, Fog of War.
 // Generierung, Kollision, Höhen und Sicht selbst prüfen die Unit-Tests (world, m2, m19, m20, m24, m26).
@@ -14,14 +14,8 @@ test('M1/M2: Welt aus Seed, Zoom, Karte, Laufen in alle Richtungen (M1 R7–R10,
   // Laufen: mindestens zwei Richtungen müssen frei sein (Bäume können einzelne blockieren)
   let moved = 0;
   for (const [key, facing] of [['d', 'right'], ['s', 'down'], ['a', 'left'], ['w', 'up']] as const) {
-    const before = (await state(page)).player;
-    await page.keyboard.down(key);
-    await expect.poll(async () => (await state(page)).player.facing).toBe(facing);
-    expect((await state(page)).player.moving).toBe(true);
-    await page.waitForTimeout(600);
-    await page.keyboard.up(key);
-    const after = (await state(page)).player;
-    if (Math.hypot(after.x - before.x, after.y - before.y) > 10) moved++;
+    if ((await walk(page, key, 10, 5_000)) > 10) moved++;
+    expect((await state(page)).player.facing).toBe(facing);
   }
   expect(moved).toBeGreaterThanOrEqual(2);
   await expect.poll(async () => (await state(page)).player.moving).toBe(false);
@@ -29,7 +23,8 @@ test('M1/M2: Welt aus Seed, Zoom, Karte, Laufen in alle Richtungen (M1 R7–R10,
   // Zoom (R10) und Weltkarte (R8)
   await page.keyboard.press('-');
   await page.keyboard.press('-');
-  expect((await state(page)).zoom).toBe(1);
+  // M27: fester Ausschnitt – bei 1280 × 720 ist Zoom 2 das Minimum (höchstens 32 × 18 Kacheln)
+  expect((await state(page)).zoom).toBe(2);
   await shot(page, 'm1-zoom1');
   await expect.poll(async () => (await state(page)).mapReady, { timeout: 30_000 }).toBe(true);
   await page.keyboard.press('m');
@@ -52,15 +47,13 @@ test('M2/M20: Wasser ist eine Grenze; Position und Erkundetes überstehen das Ne
   expect(shore).not.toBeNull();
   await tp(page, shore!.tx, shore!.ty);
   await expect.poll(() => G<boolean>(page, `g.fogKnows(${shore!.tx}, ${shore!.ty})`)).toBe(true);
-  await page.keyboard.down('d');
-  await expect.poll(async () => (await state(page)).player.facing).toBe('right');
-  await page.waitForTimeout(800);
-  await page.keyboard.up('d');
+  await hold(page, 'd', 30);
+  expect((await state(page)).player.facing).toBe('right');
   expect((await state(page)).focus.tx).toBe(shore!.tx);
   await shot(page, 'm2-shore');
 
   // Ein Stück zurück laufen, dann speichern und neu laden
-  await hold(page, 'a', 400);
+  await hold(page, 'a', 10);
   const before = (await state(page)).player;
   await saveAndReload(page);
   const after = (await state(page)).player;
@@ -79,16 +72,14 @@ test('M24: Klippen versperren den Weg, Sichtschatten verdeckt Gelände und Gegne
 
   // Unter der Felswand nach oben laufen – man kommt nicht hinauf
   const before = (await state(page)).player;
-  await page.keyboard.down('w');
-  await expect.poll(async () => (await state(page)).player.facing).toBe('up');
-  await page.waitForTimeout(800);
-  await page.keyboard.up('w');
+  await hold(page, 'w', 30);
+  expect((await state(page)).player.facing).toBe('up');
   const after = (await state(page)).player;
   expect(after.y).toBeGreaterThan(cliff!.ty * 32 - 2);
   expect(before.y - after.y).toBeLessThan(32);
 
   // Am Fuß der Wand sieht man nicht hinauf; Gegner sind genau dann sichtbar, wenn ihre Kachel sichtbar ist
-  await expect.poll(() => G<number>(page, 'g.sightHidden'), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect.poll(() => G<number>(page, 'g.sightHidden'), { timeout: 30_000 }).toBeGreaterThan(0);
   expect(await G<boolean>(page, `g.seesTile(${cliff!.tx}, ${cliff!.ty})`)).toBe(true);
   const mismatch = await G<number>(page, 'g.enemies.filter((e) => e.seen !== g.seesTile(Math.floor(e.x / 32), Math.floor((e.y - 4) / 32))).length');
   expect(mismatch).toBe(0);

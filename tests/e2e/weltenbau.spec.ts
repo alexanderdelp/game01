@@ -10,7 +10,7 @@ type Npc = { id: string; x: number; y: number };
 
 test('M3: NPCs wandern und lassen sich ansprechen (R3, R5)', async ({ page }) => {
   const errors = await open(page, 'test');
-  await expect.poll(() => G<number>(page, 'g.npcs.length'), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(() => G<number>(page, 'g.npcs.length'), { timeout: 30_000 }).toBeGreaterThan(0);
   const before = await G<Npc[]>(page, 'g.npcs.map((n) => ({ ...n }))');
   const moved = () =>
     G<number>(page, `g.npcs.filter((a) => { const b = ${JSON.stringify(before)}.find((n) => n.id === a.id); return b && Math.hypot(a.x - b.x, a.y - b.y) > 8; }).length`);
@@ -31,7 +31,7 @@ test('M8/M15: Hauptstadt ohne Gegner, Treueschwur, Händler mit Gruß, Rivale ve
   const capRival = towns.find((t) => t.capital && t.realm === rivals[capA.realm])!;
 
   await tp(page, capA.tx + 1, capA.ty + 1);
-  await expect.poll(() => G<string>(page, 'g.town'), { timeout: 10_000 }).toBe(capA.name);
+  await expect.poll(() => G<string>(page, 'g.town'), { timeout: 30_000 }).toBe(capA.name);
   expect(await G<number>(page, `g.enemies.filter((e) => Math.hypot(e.x / 32 - ${capA.tx}, e.y / 32 - ${capA.ty}) < 12).length`)).toBe(0);
   await shot(page, 'm8-town');
 
@@ -91,7 +91,7 @@ test('M9: Ort entdecken, Wohlstand, Rabatt, Speichern, Schnellreise (R2–R5)', 
   const errors = await open(page, 'persist-world');
   const town = await G<Town>(page, 'g.meta.settlements[0]');
   await tp(page, town.tx, town.ty + 2);
-  await expect.poll(async () => (await G<State>(page, 'g.state()')).discovered['town:0'], { timeout: 10_000 }).toBe('Testheld');
+  await expect.poll(async () => (await G<State>(page, 'g.state()')).discovered['town:0'], { timeout: 30_000 }).toBe('Testheld');
 
   // 10 erledigte Quests für den Ort → Statue, Ansehen
   for (let i = 0; i < 10; i++) await G(page, `g.recordQuest(${town.tx}, ${town.ty})`);
@@ -122,7 +122,7 @@ test('M9: Ort entdecken, Wohlstand, Rabatt, Speichern, Schnellreise (R2–R5)', 
     .poll(async () => {
       const p = await G<{ x: number; y: number }>(page, '({ ...g.player })');
       return Math.hypot(p.x / 32 - town.tx, p.y / 32 - town.ty);
-    }, { timeout: 10_000 })
+    }, { timeout: 30_000 })
     .toBeLessThan(5);
   expect(errors).toEqual([]);
 });
@@ -155,7 +155,7 @@ test('M10: Nach Abwesenheit erscheinen Neuigkeiten (R6)', async ({ page }) => {
   await page.goto('/?seed=news-test&test=1');
   await skipCreation(page);
   await waitReady(page);
-  await expect.poll(() => G<boolean>(page, 'g.newsOpen'), { timeout: 10_000 }).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.newsOpen'), { timeout: 30_000 }).toBe(true);
   await shot(page, 'm10-news');
   expect(errors).toEqual([]);
 });

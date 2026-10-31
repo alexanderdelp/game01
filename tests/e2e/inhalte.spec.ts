@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { G, open, saveAndReload, shot, talkTo } from './helpers';
+import { G, frames, open, saveAndReload, shot, talkTo } from './helpers';
 
 // Modul Inhalte: Quests und Gespräche im Spiel. Erzeugung, Fortschritt, Abbruch und Grenzen prüft m7.test.ts.
 
@@ -57,7 +57,7 @@ test('M16: Pfeil nur auf geladene NPCs, Questgeber bleibt stehen, sonst Gebiet (
   await expect.poll(() => G<string>(page, 'g.questPointer')).toBe('npc');
   const pos = `(() => { const n = g.npcs.find((n) => n.id === "${npc.id}"); return { x: n.x, y: n.y }; })()`;
   const p0 = await G<{ x: number; y: number }>(page, pos);
-  await page.waitForTimeout(2000); // Wartezeit gewollt: geprüft wird, dass in dieser Zeit nichts passiert
+  await frames(page, 30); // gewollt: geprüft wird, dass in dieser Zeit nichts passiert
   const p1 = await G<{ x: number; y: number }>(page, pos);
   expect(Math.hypot(p1.x - p0.x, p1.y - p0.y)).toBeLessThan(2);
   await shot(page, 'm16-npc-arrow');

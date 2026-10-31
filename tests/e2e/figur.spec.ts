@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { G, open, saveAndReload, shot, talkTo, tp, waitCreate, waitReady, watchErrors } from './helpers';
+import { G, frames, open, saveAndReload, shot, talkTo, tp, waitCreate, waitReady, watchErrors } from './helpers';
 
 // Modul Figur: Erschaffung, Aussehen, Ausrüstung, Fortschritt. Ebenen, Umfärben, Boni, Werte, Beute und
 // Startausrüstung je Volk prüfen die Unit-Tests m5, m6, m18, m23.
@@ -135,7 +135,7 @@ async function walkTo(page: Page, x: number, y: number) {
     if (Math.hypot(dx, dy) < 12) return;
     const key = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'd' : 'a') : dy > 0 ? 's' : 'w';
     await page.keyboard.down(key);
-    await page.waitForTimeout(Math.min(300, Math.max(40, Math.max(Math.abs(dx), Math.abs(dy)) * 5)));
+    await frames(page, Math.min(10, Math.max(2, Math.round(Math.max(Math.abs(dx), Math.abs(dy)) / 6))));
     await page.keyboard.up(key);
   }
 }
@@ -154,7 +154,7 @@ test('M5: Gegner besiegen gibt EP und Beute, Beute lässt sich aufheben (R4)', a
       const t = await G<{ x: number; y: number } | null>(page, '(() => { const p = g.player; const e = [...g.enemies].sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]; return e ? { x: e.x, y: e.y } : null; })()');
       if (t) await walkTo(page, t.x - 20, t.y);
       await page.keyboard.press('Space');
-      await page.waitForTimeout(200);
+      await frames(page, 6);
     }
     expect(await score()).toBeGreaterThan(xp0);
     for (let i = 0; i < 6; i++) {
