@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { buildCharacter } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
+import { waypoint } from '../combat/pathing';
 import { attackBox, knockback, rollDamage, scaleStats, type Stats } from '../combat/combat';
 import { ENEMIES, enemiesForChunk, type EnemyDef, type EnemySpawn } from '../combat/enemies';
 import type { ChunkManager } from '../render/ChunkManager';
@@ -67,6 +68,9 @@ export class Enemy {
   private flash = 0;
   private hitThisAttack = false;
   private bob = 0;
+  /** Zwischenpunkt um ein Hindernis herum (M25), wird regelmäßig neu geplant. */
+  private route: { x: number; y: number } | null = null;
+  private replan = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -135,6 +139,8 @@ export class Enemy {
   private enter(s: State, timer = 0): void {
     this.state = s;
     this.timer = timer;
+    this.route = null;
+    this.replan = 0;
   }
 
   private move(dx: number, dy: number, ctx: CombatCtx): void {
@@ -225,10 +231,23 @@ export class Enemy {
               ctx.fireBolt(this.x, this.y - 26, (dx / dist) * sp, ((dy - 0) / dist) * sp, this.stats.attack);
               this.cooldown = 1.8;
             }
-          } else if (dist > range * 0.8 || this.cooldown > 0) {
-            mx = dx / dist;
-            my = dy / dist;
-            if (dist < range * 0.6 && this.cooldown > 0) {
+          } else if (dist > range * 0.8 || this.cooldown > 0 || this.route) {
+            // Am Boden: Steht ein Hindernis im Weg, über einen Zwischenpunkt darum herum
+            if (!this.def.flying) {
+              this.replan -= dt;
+              if (this.replan <= 0) {
+                this.replan = 0.5;
+                this.route = waypoint(this.x, this.y, p.x, p.y, (tx, ty) => ctx.terrain.isWalkable(tx, ty), 600);
+              }
+            }
+            const r = this.route;
+            const gx = r ? r.x - this.x : dx;
+            const gy = r ? r.y - this.y : dy;
+            const gd = Math.hypot(gx, gy) || 1;
+            if (r && gd < 6) this.replan = 0;
+            mx = gx / gd;
+            my = gy / gd;
+            if (!r && dist < range * 0.6 && this.cooldown > 0) {
               mx *= -0.3;
               my *= -0.3;
             }

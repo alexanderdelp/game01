@@ -14,7 +14,10 @@ npm run arena          # Entwicklungsserver, öffnet http://localhost:5173/?aren
 
 Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 
-- Gegner per Knopf (Schleim, Räuber, Drohne, Irrlicht), Stufe, Elite, „eingefroren“, „kommen wieder“.
+- **Gelände** (M25): Offen, Säulen, Wald & Felsen, Engpässe, Sumpf (`src/arena/layouts.ts`, Daten → `blocked`/`speedAt`).
+- **Waffe** (M25): ohne / Alter Dolch / Dolch gewöhnlich, selten, episch mit Stufe; Werte wie im Spiel (`finalStats`).
+- Gegner per Knopf (Schleim, Räuber, Drohne, Irrlicht) oder als **Welle**, **Anzahl** 1/3/5, **Ort** zufällig / vor dem
+  Helden / per Klick, Stufe, Elite, „eingefroren“, „kommen wieder“. Mausrad zoomt.
 - **Regler für alle Kampfwerte, live**: Lauftempo, Hieb-Bildrate, Treffer-Zeitpunkt, Pause nach dem Hieb, Tempo beim
   Hieb, Kontrollverlust bei Treffern. Werte bleiben im Browser gespeichert.
 - „Werte kopieren“ erzeugt den Code für `src/combat/combat.ts` → so wandern gute Einstellungen ins Spiel.
@@ -29,6 +32,7 @@ Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 | `src/combat/tuning.ts` | Regler-Definitionen der Arena, Export als Code |
 | `src/entities/PlayerCombat.ts` | Hieb, Zauber, Treffer, Tod des Spielers |
 | `src/entities/Enemy.ts` | Gegner-KI (umherlaufen, verfolgen, ausholen, angreifen), `EnemyManager` |
+| `src/combat/pathing.ts` | Umweg um Hindernisse (Sichtlinie, Breitensuche) für Gegner am Boden |
 | `src/entities/Actor.ts` | Bewegung und Animation einer Figur (auch von NPCs genutzt – vorsichtig ändern) |
 | `src/arena/` | Arena-Szene und Bedienfeld |
 
@@ -44,7 +48,7 @@ Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 ## Tests
 
 ```bash
-npx vitest run tests/unit/m4.test.ts tests/unit/m17.test.ts     # Kampflogik und Zeitwerte
+npx vitest run tests/unit/m4.test.ts tests/unit/m17.test.ts tests/unit/m25.test.ts    # Kampflogik und Zeitwerte
 npm run build && npx playwright test tests/e2e/arena.spec.ts tests/e2e/m4-combat.spec.ts tests/e2e/m17-feel.spec.ts tests/e2e/m14-explore.spec.ts
 ```
 
