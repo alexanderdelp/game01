@@ -14,6 +14,11 @@ export interface ChunkResult {
   pixels: ArrayBuffer;
   biomes: ArrayBuffer;
   decorations: Decoration[];
+  /** Geländeraster (M24): Stufe und Zellart je 4-px-Zelle. */
+  levels: ArrayBuffer;
+  kinds: ArrayBuffer;
+  /** Steilheit des Hangs je Kachel (Höheneinheiten je Kachel). */
+  steep: ArrayBuffer;
 }
 
 export interface OverviewResult {

@@ -20,6 +20,10 @@ export enum B {
   River = 15,
   /** Brücke, wo ein Pfad einen Fluss quert */
   Bridge = 16,
+  /** See in einer Senke des Flachlands (M24) */
+  Lake = 17,
+  /** Hügelland: kräftige, begehbare Hänge (M24) */
+  Hills = 18,
 }
 
 export type DecorKind =
@@ -94,6 +98,11 @@ export const BIOMES: readonly BiomeDef[] = [
   ]),
   def(B.River, 'Fluss', false, [0x2a62a8, 0x3070b8, 0x3a82c8, 0x6aa8e0], 0x3a78c0),
   def(B.Bridge, 'Brücke', true, [0x7a5432, 0x8a6240, 0x9c7450, 0x5a3c22], 0x8a6240),
+  def(B.Lake, 'See', false, [0x285c98, 0x2f69a8, 0x3878b8, 0x68a2d6], 0x3470b4),
+  def(B.Hills, 'Hügelland', true, [0x5a9440, 0x68a44a, 0x78b458, 0x98c86a], 0x74a850, [
+    { kind: 'tuft', density: 0.1 }, { kind: 'flowers', density: 0.03 }, { kind: 'bush', density: 0.02 },
+    { kind: 'oak', density: 0.012 }, { kind: 'rock', density: 0.02 }, { kind: 'boulder', density: 0.004 },
+  ]),
 ];
 
 export function biome(id: number): BiomeDef {
@@ -104,7 +113,7 @@ export function biome(id: number): BiomeDef {
 export const BIOME_SPEED: Record<B, number> = {
   [B.DeepOcean]: 0, [B.Ocean]: 0, [B.Beach]: 1, [B.Grassland]: 1, [B.Forest]: 0.95, [B.Jungle]: 0.8,
   [B.Swamp]: 0.65, [B.Savanna]: 1, [B.Desert]: 0.85, [B.Tundra]: 0.9, [B.Snow]: 0.75, [B.Mountain]: 0.75,
-  [B.Peak]: 0, [B.CrystalGrove]: 1, [B.ScrapWastes]: 0.9, [B.River]: 0, [B.Bridge]: 1,
+  [B.Peak]: 0, [B.CrystalGrove]: 1, [B.ScrapWastes]: 0.9, [B.River]: 0, [B.Bridge]: 1, [B.Lake]: 0, [B.Hills]: 0.95,
 };
 
 /** Kollisionsbox (Breite, Höhe in px) am Fuß blockierender Dekorationen. */

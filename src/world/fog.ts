@@ -52,6 +52,34 @@ export class ExploredMap {
     return n;
   }
 
+  /**
+   * Deckt nur auf, was der Held sieht (M24): eine Zelle im Umkreis `radius`, wenn ihr nächster Punkt oder ihre
+   * Mitte sichtbar ist. Die eigene Zelle und die direkte Umgebung (3 Kacheln) immer.
+   */
+  revealVisible(tx: number, ty: number, sees: (x: number, y: number) => boolean, radius: number): number {
+    let n = this.reveal(tx, ty, 3);
+    const r = radius / FOG_CELL;
+    const fx = tx / FOG_CELL;
+    const fy = ty / FOG_CELL;
+    for (let cy = Math.floor(fy - r); cy <= Math.floor(fy + r); cy++) {
+      for (let cx = Math.floor(fx - r); cx <= Math.floor(fx + r); cx++) {
+        if (cx < 0 || cy < 0 || cx >= this.size || cy >= this.size || this.isExplored(cx, cy)) continue;
+        const nx = Math.max(cx * FOG_CELL, Math.min(tx, cx * FOG_CELL + FOG_CELL - 1));
+        const ny = Math.max(cy * FOG_CELL, Math.min(ty, cy * FOG_CELL + FOG_CELL - 1));
+        if (Math.hypot(nx - tx, ny - ty) > radius) continue;
+        const mx = cx * FOG_CELL + FOG_CELL / 2;
+        const my = cy * FOG_CELL + FOG_CELL / 2;
+        if (!sees(nx, ny) && !sees(mx, my)) continue;
+        const i = cy * this.size + cx;
+        this.bits[i >> 3] |= 1 << (i & 7);
+        this.fresh.push(i);
+        n++;
+      }
+    }
+    if (n) this.dirty = true;
+    return n;
+  }
+
   /** Anteil der erkundeten Zellen (0–1). */
   get fraction(): number {
     let n = 0;

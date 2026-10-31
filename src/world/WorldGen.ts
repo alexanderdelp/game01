@@ -7,9 +7,12 @@ const YOUNG: Partial<Record<DecorKind, DecorKind>> = { oak: 'youngoak', pine: 'y
 import { Simplex2 } from './noise';
 import { WorldMeta } from './meta';
 import { hashString, rand2 } from './rng';
+import { RUGGED_H, TERRACE_SCALE, wallAt } from './terrain';
 
-/** Version der Weltgenerierung (2 = M19: große Welt, große Biome, Pfade). */
-export const WORLD_VERSION = 2;
+export { RUGGED_H };
+
+/** Version der Weltgenerierung (2 = M19: große Welt, große Biome, Pfade; 3 = M24: Höhen, Klippen, Seen). */
+export const WORLD_VERSION = 3;
 export const WORLD_TILES = 8192;
 /** Maßstab gegenüber der ersten Weltgröße (4096): Abstände in Weltlogik und Platzierung wachsen mit. */
 export const SCALE = WORLD_TILES / 4096;
@@ -27,6 +30,20 @@ export interface Climate {
   magic: number;
   /** Technik-Feld in [0, 1] (Schrottödnis). */
   tech: number;
+  /** Hügeligkeit in [0, 1] (M24: Hügelland ab 0,5). */
+  hills: number;
+  /** Seen-Feld: < LAKE_AT ist Wasser; 1 = hier keine Seen. */
+  lake: number;
+  /** Tiefe der Senke um einen See in [0, 1]. */
+  lakeDepth: number;
+}
+
+/** Bodenhöhe einer Kachel (M24): Hang `s` (Höheneinheiten, 1 = 16 px) und Stufenfeld `r` (Klippen bei ganzen Zahlen). */
+export interface Ground {
+  s: number;
+  r: number;
+  /** Zerklüftung in [0, 1] (nur im Gebirge > 0). */
+  rug: number;
 }
 
 export interface Decoration {
@@ -49,6 +66,7 @@ export const SEA_LEVEL = 0.42;
 /** Höhe (über dem Meer, 0–1), ab der Gebirge bzw. Felsgipfel beginnen. */
 export const MOUNTAIN_H = 0.44;
 export const PEAK_H = 0.6;
+const LAKE_AT = -0.42;
 const DEEP_LEVEL = 0.3;
 const BEACH_LEVEL = 0.431;
 
@@ -73,6 +91,11 @@ export class WorldGen {
   private readonly nTech: Simplex2;
   private readonly nGrove: Simplex2;
   private readonly nPatch: Simplex2;
+  private readonly nHill: Simplex2;
+  private readonly nLake: Simplex2;
+  private readonly nMesa: Simplex2;
+  private readonly nFine: Simplex2;
+  private readonly groundCache = new Map<number, Ground>();
 
   private metaCache?: WorldMeta;
 
@@ -95,6 +118,10 @@ export class WorldGen {
     this.nTech = new Simplex2(s ^ 0x7007);
     this.nGrove = new Simplex2(s ^ 0x8008);
     this.nPatch = new Simplex2(s ^ 0x9009);
+    this.nHill = new Simplex2(s ^ 0xa00a);
+    this.nLake = new Simplex2(s ^ 0xb00b);
+    this.nMesa = new Simplex2(s ^ 0xc00c);
+    this.nFine = new Simplex2(s ^ 0xd00d);
   }
 
   /** Klima an einer (auch gebrochenen) Kachelposition. */
@@ -110,7 +137,45 @@ export class WorldGen {
     const moisture = Math.min(1, Math.max(0, this.nMoist.fbm(wx / (800 * S), wy / (800 * S), 3) * 0.62 + 0.5));
     const magic = this.nMagic.fbm(wx / (600 * S), wy / (600 * S), 4) * 0.5 + 0.5;
     const tech = this.nTech.fbm(wx / (640 * S), wy / (640 * S), 4) * 0.5 + 0.5;
-    return { elevation, temperature, moisture, magic, tech };
+    return { elevation, temperature, moisture, magic, tech, ...this.landform(x, y, height) };
+  }
+
+  /** Hügelland und Seen (M24) aus Position und Höhe über dem Meer. */
+  private landform(x: number, y: number, height: number): { hills: number; lake: number; lakeDepth: number } {
+    const S = SCALE;
+    // Hügelland: eigene Zonen im Flachland und der Fuß der Gebirge
+    const hills = Math.max(smoothstep(0.12, 0.3, this.nHill.fbm(x / (700 * S), y / (700 * S), 2)), smoothstep(0.1, 0.3, height));
+    // Seen nur im flachen, nicht hügeligen Land; die Senke läuft weich aus
+    const lakeW = (1 - smoothstep(0.14, 0.2, height)) * (1 - smoothstep(0.3, 0.5, hills)) * smoothstep(0, 0.02, height);
+    const lk = this.nLake.fbm(x / 60, y / 60, 2);
+    const lakeDepth = lakeW * smoothstep(-0.1, -0.75, lk);
+    const lake = lakeW > 0.95 ? lk : 1;
+    return { hills, lake, lakeDepth };
+  }
+
+  /** Bodenhöhe an einer Kachel (Mitte), zwischengespeichert. */
+  ground(tx: number, ty: number): Ground {
+    const k = (tx + 64) * 16384 + ty + 64;
+    let g = this.groundCache.get(k);
+    if (g) return g;
+    const x = tx + 0.5;
+    const y = ty + 0.5;
+    const h = Math.max(0, (this.relief(x, y).elevation - SEA_LEVEL) / (1 - SEA_LEVEL));
+    const c = this.landform(x, y, h);
+    const rug = smoothstep(RUGGED_H, RUGGED_H + 0.06, h);
+    // Im Gebirge tragen die Stufen die Höhe; der Hang wird dort flacher
+    const s = h * (40 - 25 * rug) + this.nHill.fbm(x / 30 + 100.3, y / 30 - 7.7, 2) * (0.35 + 5 * c.hills) - 3.5 * c.lakeDepth;
+    const r0 = RUGGED_H * TERRACE_SCALE;
+    const r = r0 + rug * (h * TERRACE_SCALE + 1.8 * this.nMesa.fbm(x / 30, y / 30, 2) - r0);
+    g = { s, r, rug };
+    if (this.groundCache.size > 300_000) this.groundCache.clear();
+    this.groundCache.set(k, g);
+    return g;
+  }
+
+  /** Feine Verwirbelung der Klippenkanten (Kachelkoordinaten, gebrochen). */
+  fine(x: number, y: number): number {
+    return this.nFine.noise(x / 2.5, y / 2.5) * 0.18;
   }
 
   /** Nur die Geländehöhe (günstiger als das volle Klima; für Flussläufe). */
@@ -152,6 +217,7 @@ export class WorldGen {
     const e = c.elevation;
     if (e < DEEP_LEVEL) return B.DeepOcean;
     if (e < SEA_LEVEL) return B.Ocean;
+    if (c.lake < LAKE_AT) return B.Lake;
     const h = (e - SEA_LEVEL) / (1 - SEA_LEVEL);
     if (h > PEAK_H) return B.Peak;
     if (h > MOUNTAIN_H) return c.temperature < 0.3 ? B.Snow : B.Mountain;
@@ -167,9 +233,10 @@ export class WorldGen {
     if (m > 0.78 && h < 0.12) return B.Swamp;
     if (t > 0.68) {
       if (m < 0.36) return B.Desert;
-      if (m < 0.56) return B.Savanna;
+      if (m < 0.56) return c.hills > 0.5 ? B.Hills : B.Savanna;
       return B.Jungle;
     }
+    if (c.hills > 0.5) return B.Hills;
     if (m < 0.48) return B.Grassland;
     return B.Forest;
   }
@@ -190,8 +257,9 @@ export class WorldGen {
     return w === 'bridge' ? B.Bridge : w === 'river' ? B.River : b;
   }
 
+  /** Begehbar: Biom begehbar und keine Felswand (M24). */
   isWalkable(tx: number, ty: number): boolean {
-    return BIOMES[this.biomeAt(tx, ty)].walkable;
+    return BIOMES[this.biomeAt(tx, ty)].walkable && !wallAt(this, tx * 32 + 16, ty * 32 + 16);
   }
 
   /** Erzeugt die Daten eines Chunks. */
@@ -227,6 +295,8 @@ export class WorldGen {
     if (inTown && (meta.isPlaza(tx, ty) || rand2(this.seed, tx, ty, 79) < 0.85)) return null;
     const rules = BIOMES[b].decor;
     if (rules.length === 0) return null;
+    // Keine Pflanzen und Steine auf Felswänden (M24)
+    if (wallAt(this, tx * 32 + 16, ty * 32 + 24)) return null;
     const v = this.vegetation(tx, ty, b);
     let r = rand2(this.seed, tx, ty, 77);
     for (const rule of rules) {

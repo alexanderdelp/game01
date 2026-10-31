@@ -770,7 +770,7 @@ export class UIScene extends Phaser.Scene {
     let i = 0;
     for (const n of ws.npcs.npcs.values()) {
       const m = ws.markers.get(n.spawn.id);
-      if (!m || this.map) continue;
+      if (!m || this.map || !n.seen) continue;
       const t = (this.markerTexts[i] ??= this.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '22px', stroke: '#0b0b14', strokeThickness: 5 }).setOrigin(0.5, 1).setDepth(5));
       const bob = Math.sin(this.time.now / 200) * 3;
       t.setText(m).setColor(m === '!' ? '#ffd84a' : '#4cb53e').setPosition((n.actor.x - cam.worldView.x) * cam.zoom, (n.actor.y - 66 - cam.worldView.y) * cam.zoom + bob).setVisible(true);

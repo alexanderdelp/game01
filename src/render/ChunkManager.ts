@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BIOMES, BIOME_SPEED, BUILT, DECOR_BLOCK } from '../world/biomes';
 import { overlaps, type Box } from '../world/collision';
 import { CHUNK_TILES, WORLD_CHUNKS, type Decoration } from '../world/WorldGen';
+import { CELL, cellsBlock, slopeSpeed } from '../world/terrain';
 import { CHUNK_PX, FLAT_DECOR, TILE_PX, decorPos } from './chunkPixels';
 import type { ChunkRequest, ChunkResult } from './chunkProtocol';
 import { DECOR_VARIANTS } from './procSprites';
@@ -13,7 +14,13 @@ interface LoadedChunk {
   objects: Phaser.GameObjects.Image[];
   biomes: Uint8Array;
   blockers: Box[];
+  /** Geländeraster (M24) */
+  levels: Uint8Array;
+  kinds: Uint8Array;
+  steep: Float32Array;
 }
+
+const CELLS = CHUNK_PX / CELL;
 
 
 /**
@@ -64,7 +71,15 @@ export class ChunkManager {
     return c.biomes[ly * CHUNK_TILES + lx];
   }
 
-  /** Nur Gelände (Wasser, Gipfel, nicht geladen) – ohne Dekorationen. */
+  /** Stufe und Art einer Geländezelle (4 px), falls geladen. */
+  cellAt(cx: number, cy: number): { level: number; kind: number } | undefined {
+    const c = this.loaded.get(key(Math.floor(cx / CELLS), Math.floor(cy / CELLS)));
+    if (!c) return undefined;
+    const i = (((cy % CELLS) + CELLS) % CELLS) * CELLS + (((cx % CELLS) + CELLS) % CELLS);
+    return { level: c.levels[i], kind: c.kinds[i] };
+  }
+
+  /** Nur Gelände (Wasser, Gipfel, Klippen, nicht geladen) – ohne Dekorationen. */
   terrainBlocked(b: Box): boolean {
     const t0x = Math.floor(b.x / TILE_PX);
     const t0y = Math.floor(b.y / TILE_PX);
@@ -76,7 +91,7 @@ export class ChunkManager {
         if (biome === undefined || !BIOMES[biome].walkable) return true;
       }
     }
-    return false;
+    return cellsBlock(b.x, b.y, b.w, b.h, (cx, cy) => this.cellAt(cx, cy));
   }
 
   /** Ist eine Box (in Weltpixeln) blockiert? Nicht geladene Bereiche gelten als blockiert. */
@@ -91,6 +106,7 @@ export class ChunkManager {
         if (biome === undefined || !BIOMES[biome].walkable) return true;
       }
     }
+    if (cellsBlock(b.x, b.y, b.w, b.h, (cx, cy) => this.cellAt(cx, cy))) return true;
     const seen = new Set<LoadedChunk>();
     for (const list of this.extraBlockers.values()) for (const o of list) if (overlaps(b, o)) return true;
     // Dekorationen am Chunkrand ragen ein paar Pixel über; deshalb mit Rand nachsehen.
@@ -106,8 +122,13 @@ export class ChunkManager {
 
   /** Geschwindigkeitsfaktor an einer Pixelposition. */
   speedAt(x: number, y: number): number {
-    const biome = this.biomeAt(Math.floor(x / TILE_PX), Math.floor(y / TILE_PX));
-    return biome === undefined ? 1 : BIOME_SPEED[biome as keyof typeof BIOME_SPEED];
+    const tx = Math.floor(x / TILE_PX);
+    const ty = Math.floor(y / TILE_PX);
+    const biome = this.biomeAt(tx, ty);
+    if (biome === undefined) return 1;
+    const c = this.loaded.get(key(Math.floor(tx / CHUNK_TILES), Math.floor(ty / CHUNK_TILES)))!;
+    const steep = c.steep[(((ty % CHUNK_TILES) + CHUNK_TILES) % CHUNK_TILES) * CHUNK_TILES + (((tx % CHUNK_TILES) + CHUNK_TILES) % CHUNK_TILES)];
+    return BIOME_SPEED[biome as keyof typeof BIOME_SPEED] * slopeSpeed(steep);
   }
 
   /** Muss jeden Frame mit dem sichtbaren Weltausschnitt aufgerufen werden. */
@@ -188,7 +209,7 @@ export class ChunkManager {
       const p = BUILT.has(d.kind) ? { x: d.tx * TILE_PX + TILE_PX / 2, y: d.ty * TILE_PX + TILE_PX } : decorPos(d);
       blockers.push({ x: p.x - size.w / 2, y: p.y - size.h, w: size.w, h: size.h });
     }
-    this.loaded.set(k, { key: texKey, ground, objects, biomes: new Uint8Array(r.biomes), blockers });
+    this.loaded.set(k, { key: texKey, ground, objects, biomes: new Uint8Array(r.biomes), blockers, levels: new Uint8Array(r.levels), kinds: new Uint8Array(r.kinds), steep: new Float32Array(r.steep) });
     this.onLoad.forEach((f) => f(r.cx, r.cy));
   }
 

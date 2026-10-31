@@ -43,6 +43,7 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
     case B.DeepOcean:
     case B.Ocean:
     case B.River:
+    case B.Lake:
       // Wellenstriche
       count(biome === B.Ocean ? 26 : 14, (x, y, i) => {
         const len = 3 + (i % 4);
@@ -50,6 +51,7 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
       });
       break;
     case B.Grassland:
+    case B.Hills:
     case B.Forest:
     case B.Jungle:
     case B.Savanna:

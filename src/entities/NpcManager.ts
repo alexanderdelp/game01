@@ -26,6 +26,15 @@ export class Npc {
   scripted = false;
   /** Wartet auf den Helden (abgabebereite Quest): bleibt stehen. */
   hold = false;
+  /** Vom Helden aus sichtbar (M24)? */
+  seen = true;
+
+  setSeen(v: boolean): void {
+    if (v === this.seen) return;
+    this.seen = v;
+    this.actor.sprite.setVisible(v);
+    this.actor.shadow.setVisible(v);
+  }
 
   constructor(
     scene: Phaser.Scene,

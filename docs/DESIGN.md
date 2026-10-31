@@ -17,7 +17,7 @@ oder live.
 | Immersiv | Reiche mit Fraktionen, Orte mit Bewohnern, Chronik an Obelisken, Tag/Nacht, Wetter, Musik und Klänge. |
 | Relevante Entscheidungen | Treueschwur bei einem Herrscher (Reich wächst, Rabatt – aber der Rivale wird zum Feind), Weltzustand als Ereignisprotokoll: Truhen bleiben offen, Orte wachsen sichtbar bis zur Heldenstatue, Ansehen beim Reich, Botschaften für andere. |
 | Lebendige Welt | Simulation aus Seed + Uhrzeit: Karawanen, Reichsmacht verschiebt Grenzen, Orte schwanken, Invasionen, „Während du weg warst …“. |
-| Erkundung | 4096² Kacheln, 15 Biome, 6 Reiche, ~20 Orte, Truhen, Schreine, 8 Obelisken, ~18 Ruinen mit Wächter und Schatz, Erkundungsquests, Wegsteine. |
+| Erkundung | Gelände mit Hängen, Klippen und Seen; Sicht und Fog of War folgen der Sichtlinie (Gipfel als Aussichtspunkte). 8192² Kacheln, 17 Biome, 6 Reiche, ~20 Orte, Truhen, Schreine, 8 Obelisken, ~18 Ruinen mit Wächter und Schatz, Erkundungsquests, Wegsteine. |
 | Große Spielwelt | Alles Weltwissen ist eine Funktion `f(seed, x, y[, zeit])`; nur Abweichungen werden gespeichert. |
 | Charakterentwicklung | EP und Stufen, Talente (Kraft, Zähigkeit, Flinkheit), Ausrüstung in drei Seltenheiten. |
 | Charakter-Customizing | Volk (Mensch, Elf, Ork, Synth) mit Bonus, Körper, Haut, Frisur, Farben, Name – jederzeit änderbar. |

@@ -26,11 +26,12 @@ export const ENEMIES: Record<EnemyKind, EnemyDef> = {
 
 /** Schleimfarbe je Biom (Index in die Farbpaletten der Kreaturen). */
 export const SLIME_COLOR: Partial<Record<B, number>> = {
-  [B.Grassland]: 0, [B.Forest]: 0, [B.Jungle]: 4, [B.Swamp]: 2, [B.Desert]: 3, [B.Savanna]: 3, [B.Snow]: 1, [B.Tundra]: 1, [B.Beach]: 3,
+  [B.Grassland]: 0, [B.Hills]: 0, [B.Forest]: 0, [B.Jungle]: 4, [B.Swamp]: 2, [B.Desert]: 3, [B.Savanna]: 3, [B.Snow]: 1, [B.Tundra]: 1, [B.Beach]: 3,
 };
 
 const BIOME_ENEMIES: Partial<Record<B, { chance: number; kinds: EnemyKind[] }>> = {
   [B.Grassland]: { chance: 0.35, kinds: ['slime', 'slime', 'bandit'] },
+  [B.Hills]: { chance: 0.4, kinds: ['bandit', 'slime'] },
   [B.Forest]: { chance: 0.45, kinds: ['slime', 'bandit'] },
   [B.Jungle]: { chance: 0.5, kinds: ['slime', 'wisp'] },
   [B.Swamp]: { chance: 0.55, kinds: ['slime', 'wisp'] },

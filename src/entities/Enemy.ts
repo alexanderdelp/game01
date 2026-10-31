@@ -320,9 +320,20 @@ export class Enemy {
     else this.sprite.clearTint();
   }
 
+  /** Vom Helden aus sichtbar (M24: hinter Hügeln verborgen)? */
+  seen = true;
+
+  setSeen(v: boolean): void {
+    if (v === this.seen) return;
+    this.seen = v;
+    this.sprite.setVisible(v);
+    if (this.actor) this.actor.shadow.setVisible(v);
+    else this.shadow.setVisible(v);
+  }
+
   /** Lebensleiste über dem Gegner (nur wenn verletzt). */
   drawBar(g: Phaser.GameObjects.Graphics): void {
-    if (!this.alive || this.stats.hp >= this.stats.maxHp) return;
+    if (!this.alive || !this.seen || this.stats.hp >= this.stats.maxHp) return;
     const w = 24;
     const top = this.body.y - 6;
     g.fillStyle(0x0b0b14, 0.8).fillRect(this.x - w / 2 - 1, top - 1, w + 2, 4);

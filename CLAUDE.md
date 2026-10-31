@@ -73,6 +73,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-10-31 – **Zusätzlicher Meilenstein 21 „Kampf-Arena & Module“** (Nutzerwunsch: isoliert und mit mehreren Agenten am Kampf arbeiten), siehe `docs/modules/README.md`.
 - 2026-10-31 – **Zusätzlicher Meilenstein 22 „Zoombare Weltkarte“** (Nutzerwunsch; nötig durch große Welt + Fog of War).
 - 2026-10-31 – **Zusätzlicher Meilenstein 23 „Aussehen aus Ausrüstung“** (Nutzerwunsch: Kleidung aus Ausrüstung statt Farbwahl, Völker mit Merkmalen).
+- 2026-10-31 – **Zusätzlicher Meilenstein 24 „Höhen, Klippen und Sicht“** (Nutzerwunsch, `docs/VORSCHLAG-hoehen.md`): Hänge, Klippen im Gebirge, Hügelland, Seen in Senken, Sicht nach Sichtlinie.
 
 ## Vorgehen
 
@@ -136,6 +137,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – Testmodus `?test=1` (feste Weltzeit Mittag, keine Invasionen): Die Simulation hängt an der echten Uhrzeit, automatische Tests müssen aber reproduzierbar sein (eine echte Drohnen-Invasion ließ einen Kampftest scheitern).
 - 2026-10-31 – Telegram-Bot für Updates **und Fragen** an den Nutzer (`tools/telegram.mjs`); der Nutzer ist nur vereinzelt im Chat, Telegram bleibt der Hauptkanal (Nutzerentscheidung). Token und Chat-ID liegen außerhalb des Repos in `~/.config/game01/telegram.env` (nie committen).
 - 2026-10-31 – (M18) Synth trägt keine Kleidung, sondern Implantate/Panzerung; Aussehen nach der Erschaffung nur beim Barbier (Splitter), Volk/Körper fest (Nutzerentscheidung).
+- 2026-10-31 – (M24) Zwei Arten Höhe: stufenloser **Hang** (immer begehbar, steil = bis −35 % Tempo) und ganzzahlige **Stufen** nur im **Gebirge** (Klippe = nicht begehbar, Felswand 32 px je Stufe, auf Pfaden Treppe). **Hügelland** als eigenes Biom (Nutzerentscheidung: Gebirge zerklüftet, Hügelland sanft). Seen in Senken des Flachlands. Weltversion 3, alte Spielstände werden nicht übernommen (Nutzerentscheidung: Tech-Demo).
+- 2026-10-31 – (M24) Sicht über Höhen (Nutzerentscheidung: alle drei Stufen): verdecktes Gelände abgedunkelt, Gegner/NPCs dort unsichtbar, Fog of War nur nach Sichtlinie; Sichtweite 20 Kacheln, von oben bis 50. Flachland nur leicht gewellt, damit die Sicht dort frei bleibt.
 - 2026-10-31 – (M23) Aussehen aus Ausrüstung: Kleidung als sichtbare Einzelteile mit Boni, Editor ohne Kleidungsfarben, Synth ohne Geschlecht, Volksmerkmale (Nutzerentscheidung).
 - 2026-10-31 – (M19) Ziel: ein Biom in 1–2 min durchqueren (Nutzerentscheidung).
 - 2026-10-31 – (M19) Welt 8192 × 8192 Kacheln, Flüsse mit Brücken an Pfaden; Weltversion 2 (alte Positionen verfallen). Vom Nutzer freigegeben.

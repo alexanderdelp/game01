@@ -5,7 +5,7 @@
 import { B, BIOMES } from './biomes';
 import { Simplex2 } from './noise';
 import { hash2, mulberry32 } from './rng';
-import { CHUNK_TILES, MOUNTAIN_H, PEAK_H, SCALE, SEA_LEVEL, WORLD_TILES } from './WorldGen';
+import { CHUNK_TILES, MOUNTAIN_H, PEAK_H, RUGGED_H, SCALE, SEA_LEVEL, WORLD_TILES } from './WorldGen';
 
 /** Was die Metadaten von der Landschaft brauchen (vermeidet zirkuläre Abhängigkeit zu WorldGen). */
 export interface Terrain {
@@ -92,7 +92,7 @@ function shuffle<T>(a: T[], rnd: () => number): T[] {
   }
   return a;
 }
-const GOOD = new Set<B>([B.Grassland, B.Forest, B.Savanna, B.Beach, B.Tundra, B.Desert, B.CrystalGrove, B.ScrapWastes, B.Jungle, B.Snow]);
+const GOOD = new Set<B>([B.Hills, B.Grassland, B.Forest, B.Savanna, B.Beach, B.Tundra, B.Desert, B.CrystalGrove, B.ScrapWastes, B.Jungle, B.Snow]);
 
 export class WorldMeta {
   readonly realms: Realm[] = [];
@@ -282,6 +282,8 @@ export class WorldMeta {
 
   private isGood(tx: number, ty: number, r = 1): boolean {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!GOOD.has(this.t.biomeAt(tx + dx * 2, ty + dy * 2))) return false;
+    // Nicht im zerklüfteten Gebirge (M24: dort gibt es Klippen)
+    if (this.t.elevationAt && (this.t.elevationAt(tx + 0.5, ty + 0.5) - SEA_LEVEL) / (1 - SEA_LEVEL) > RUGGED_H - 0.02) return false;
     return true;
   }
 

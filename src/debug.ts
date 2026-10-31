@@ -32,6 +32,12 @@ export const debugState = {
   fogKnows: (_tx: number, _ty: number): boolean => false,
   fogFraction: (): number => 0,
   fogReveal: (_tx: number, _ty: number, _r: number): void => {},
+  /** M24: Höhen und Sicht */
+  sightHidden: 0,
+  heightAt: (_tx: number, _ty: number): number => 0,
+  seesTile: (_tx: number, _ty: number): boolean => true,
+  /** Sucht nahe dem Helden eine begehbare Kachel direkt unter einer Felswand (für Tests). */
+  findCliff: (): { tx: number; ty: number } | null => null,
   /** Kampf-Arena */
   arenaSpawn: (_kind: string): void => {},
   arenaTune: (_id: string, _v: number): void => {},
@@ -65,7 +71,7 @@ export const debugState = {
   findEnemy: (_kind?: string): { tx: number; ty: number; kind: string } | null => null,
   damagePlayer: (_n: number): void => {},
   alive: true,
-  enemies: [] as { id: string; kind: string; x: number; y: number; hp: number; state: string }[],
+  enemies: [] as { id: string; kind: string; x: number; y: number; hp: number; state: string; seen?: boolean }[],
   quests: null as unknown,
   realm: '',
   weather: '',

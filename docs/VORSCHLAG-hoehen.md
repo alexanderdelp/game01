@@ -1,6 +1,6 @@
 # Vorschlag: Gelände mit Höhenstufen, Sicht und Klettern (2026-10-31)
 
-Status: **Vorschlag, wartet auf Entscheidung des Nutzers** (große optische Überarbeitung).
+Status: **Entschieden und umgesetzt am 2026-10-31 als M24** (`docs/milestones/M24-hoehen.md`).
 Idee des Nutzers: Gelände mit Höhenunterschieden; zu große Unterschiede nehmen die Sicht. Wasser sammelt sich in
 Senken. Berge sind besteigbar, solange der Unterschied zwischen benachbarten Feldern klein genug ist.
 
@@ -74,3 +74,13 @@ Spielerisch ist alles flach.
    - (c) zusätzlich Fog of War über die Sichtlinie (Empfehlung)
 3. **Wie zerklüftet?** Prototyp: eher viele Hügel. Alternative: überwiegend sanft, Klippen vor allem in Bergland
    und Gebirge.
+
+## Entscheidungen des Nutzers (2026-10-31)
+
+| Punkt | Entscheidung |
+|---|---|
+| Umsetzen | Ja. |
+| Sicht | Alle drei: abdunkeln, Gegner/NPCs dahinter unsichtbar, Fog of War nach Sichtlinie. |
+| Zerklüftung | Je Biom: **Gebirge** mit Klippen, **Hügellandschaft** mit sanften Hängen. |
+| Schrägen | Ja: Hänge steigen stufenlos leicht oder steil an, statt nur Stufen von Kachel zu Kachel. |
+| Spielstände | Werden zurückgesetzt (Tech-Demo). |

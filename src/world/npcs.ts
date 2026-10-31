@@ -116,6 +116,7 @@ export const ROLES: Record<string, Role> = {
 const BIOME_NPCS: Partial<Record<B, { chance: number; roles: string[] }>> = {
   [B.Beach]: { chance: 0.62, roles: ['fisher', 'wanderer'] },
   [B.Grassland]: { chance: 0.75, roles: ['herder', 'wanderer', 'wanderer'] },
+  [B.Hills]: { chance: 0.6, roles: ['herder', 'wanderer'] },
   [B.Forest]: { chance: 0.5, roles: ['hunter', 'wanderer'] },
   [B.Jungle]: { chance: 0.38, roles: ['hunter'] },
   [B.Swamp]: { chance: 0.25, roles: ['hermit', 'hunter'] },

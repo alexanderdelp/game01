@@ -2,6 +2,7 @@ import { B, BIOMES, BUILT, type DecorKind } from '../world/biomes';
 import { Simplex2 } from '../world/noise';
 import { hash2 } from '../world/rng';
 import { CHUNK_TILES, WORLD_TILES, WorldGen, type Decoration } from '../world/WorldGen';
+import { CELL, CellKind, buildCells, type ChunkCells } from '../world/terrain';
 import { PATTERN, cobblePattern, dirtPattern, groundPattern } from './groundPatterns';
 import { DECOR_VARIANTS, generateDecor, type Pixels } from './procSprites';
 
@@ -30,8 +31,10 @@ const M = 2;
 const SOIL = new Set<number>([B.Grassland, B.Forest, B.Jungle, B.Savanna]);
 /** Biome mit verstreuten Kieseln. */
 const STONY = new Set<number>([B.Mountain, B.Desert, B.Beach, B.Tundra, B.Savanna, B.ScrapWastes, B.Snow]);
-const isWater = (b: number) => b === B.DeepOcean || b === B.Ocean || b === B.River;
-const isHigh = (b: number) => b === B.Mountain || b === B.Peak;
+const isWater = (b: number) => b === B.DeepOcean || b === B.Ocean || b === B.River || b === B.Lake;
+/** Felsfarben der Klippen: [hell, mittel, dunkel] – Schnee-/Tundragebirge heller. */
+const ROCK = [0x9a8c7c, 0x7c6e60, 0x4e4238];
+const ROCK_COLD = [0xb4b8c0, 0x8e929c, 0x5a5e6a];
 
 /**
  * Rendert den Boden eines Chunks als RGBA-Pixel. Biomgrenzen werden auf einem 4-px-Raster mit
@@ -54,6 +57,11 @@ export class ChunkPainter {
   }
 
   paint(cx: number, cy: number, out = new Uint8ClampedArray(CHUNK_PX * CHUNK_PX * 4)): Uint8ClampedArray {
+    return this.paintWithCells(cx, cy, out).pixels;
+  }
+
+  /** Bodenbild und Geländeraster (Stufen, Wände, Treppen) eines Chunks. */
+  paintWithCells(cx: number, cy: number, out = new Uint8ClampedArray(CHUNK_PX * CHUNK_PX * 4)): { pixels: Uint8ClampedArray; cells: ChunkCells } {
     const T = CHUNK_TILES;
     const ox = cx * T;
     const oy = cy * T;
@@ -61,7 +69,6 @@ export class ChunkPainter {
     // Biome und Höhen der Kacheln inkl. M Kacheln Rand (ein Klima-Aufruf je Kachel).
     const G = T + 2 * M;
     const grid = new Uint8Array(G * G);
-    const elev = new Float32Array(G * G);
     for (let y = 0; y < G; y++) {
       for (let x = 0; x < G; x++) {
         const tx = ox + x - M;
@@ -72,7 +79,6 @@ export class ChunkPainter {
         }
         const c = this.world.climate(tx + 0.5, ty + 0.5);
         grid[y * G + x] = this.world.withWater(tx, ty, WorldGen.classify(c));
-        elev[y * G + x] = c.elevation;
       }
     }
     // Pflaster und Pfade: Kennzeichnung als Pseudo-Biome (nur wenn begehbar)
@@ -86,9 +92,18 @@ export class ChunkPainter {
         else if (meta.isRoad(ox + x - M, oy + y - M)) grid[i] = ROAD;
       }
     }
-    // Hangneigung je Kachel (Licht von Nordwesten) für die Höhenschattierung
+    // Hang je Kachel (M24): Licht von Nordwesten, in Stufen für Pixel-Art
+    const hs = new Float32Array(G * G);
+    for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) hs[y * G + x] = this.world.ground(ox + x - M, oy + y - M).s;
     const slope = new Float32Array(G * G);
-    for (let y = 1; y < G - 1; y++) for (let x = 1; x < G - 1; x++) slope[y * G + x] = Math.tanh((elev[(y - 1) * G + x - 1] - elev[(y + 1) * G + x + 1]) * 60) * 0.14;
+    for (let y = 1; y < G - 1; y++) {
+      for (let x = 1; x < G - 1; x++) {
+        const lit = Math.tanh((hs[(y + 1) * G + x + 1] - hs[(y - 1) * G + x - 1]) * 0.45) * 0.36;
+        slope[y * G + x] = lit;
+      }
+    }
+    const cells = buildCells(this.world, cx, cy, T, (tx, ty) => meta.isRoad(tx, ty));
+    const CN = cells.n;
 
     // Verwirbelte Biome auf dem Sub-Raster inkl. 1 Sub-Zelle Rand.
     const S = SUBS + 2;
@@ -129,7 +144,8 @@ export class ChunkPainter {
             const wy = cy * CHUNK_PX + sy * SUB + py;
             for (let px = 0; px < SUB; px++) {
               const wx = cx * CHUNK_PX + sx * SUB + px;
-              const c = pat[(wy & (PATTERN - 1)) * PATTERN + (wx & (PATTERN - 1))];
+              // Pfade über Klippen werden zu Treppen (M24)
+              const c = this.cliff(pat[(wy & (PATTERN - 1)) * PATTERN + (wx & (PATTERN - 1))], cells, CN, sx * SUB + px, sy * SUB + py, wx, b);
               const o = ((sy * SUB + py) * CHUNK_PX + sx * SUB + px) * 4;
               out[o] = c >> 16;
               out[o + 1] = (c >> 8) & 255;
@@ -139,15 +155,11 @@ export class ChunkPainter {
           }
           continue;
         }
-        let mode = 0; // 0 normal, 1 Gischt, 2 nasser Rand, 3 Klippenschatten, 4 Klippenkante
+        let mode = 0; // 0 normal, 1 Gischt, 2 nasser Rand
         if (isWater(b)) {
           if (!isWater(up) || !isWater(down) || !isWater(left) || !isWater(right)) mode = 1;
         } else if (isWater(down) || isWater(left) || isWater(right) || isWater(up)) {
           mode = 2;
-        } else if (isHigh(b) && !isHigh(down) && down !== PLAZA && down !== ROAD) {
-          mode = 3;
-        } else if (isHigh(b) && !isHigh(up)) {
-          mode = 4;
         }
         const pat = this.patterns[b];
         // Höhenschattierung: Hangneigung bilinear zwischen den Kachelmitten
@@ -157,9 +169,10 @@ export class ChunkPainter {
         const iy = Math.floor(fty);
         const ax = ftx - ix;
         const ay = fty - iy;
+        // in Stufen (Pixel-Art): klare Bänder statt weicher Verläufe
         const sl = isWater(b)
           ? 0
-          : (slope[iy * G + ix] * (1 - ax) + slope[iy * G + ix + 1] * ax) * (1 - ay) + (slope[(iy + 1) * G + ix] * (1 - ax) + slope[(iy + 1) * G + ix + 1] * ax) * ay;
+          : Math.round(((slope[iy * G + ix] * (1 - ax) + slope[iy * G + ix + 1] * ax) * (1 - ay) + (slope[(iy + 1) * G + ix] * (1 - ax) + slope[(iy + 1) * G + ix + 1] * ax) * ay) * 9) / 9;
         // Bodendetails: Erdflecken und Laub (in fruchtbaren Biomen), Kiesel (in steinigen)
         const wsx0 = cx * SUBS + sx;
         const wsy0 = cy * SUBS + sy;
@@ -177,8 +190,7 @@ export class ChunkPainter {
             if (sl) c = sl > 0 ? blend(c, 0xfff4dc, sl) : blend(c, 0x141026, -sl * 1.4);
             if (mode === 1) c = ((wx + wy) & 3) === 0 ? 0xeaf6ff : blend(c, 0xbfe0f4, 0.45);
             else if (mode === 2) c = blend(c, 0x000000, 0.18);
-            else if (mode === 3) c = blend(c, 0x1a1424, 0.45);
-            else if (mode === 4) c = blend(c, 0xffffff, 0.2);
+            if (!isWater(b)) c = this.cliff(c, cells, CN, sx * SUB + px, sy * SUB + py, wx, b);
             const o = ((sy * SUB + py) * CHUNK_PX + sx * SUB + px) * 4;
             out[o] = c >> 16;
             out[o + 1] = (c >> 8) & 255;
@@ -189,7 +201,45 @@ export class ChunkPainter {
       }
     }
     this.bake(cx, cy, grid, out);
-    return out;
+    return { pixels: out, cells };
+  }
+
+  /** Felswände, Treppen und Kanten der Stufen (M24) an einem Pixel des Chunks. */
+  private cliff(c: number, cells: ChunkCells, n: number, lx: number, ly: number, wx: number, b: number): number {
+    const x = (lx / CELL) | 0;
+    const y = (ly / CELL) | 0;
+    const i = y * n + x;
+    const k = cells.faceK[i];
+    if (k) {
+      // Position in der Wand: 0 = Oberkante, 1 = Fuß
+      const p = (k - 1) * CELL + (ly % CELL);
+      const len = cells.faceLen[i] * CELL;
+      const t = p / len;
+      if (cells.kind[i] === CellKind.Stairs) {
+        // Steinstufen mit Seitenwangen
+        const step = p % 6;
+        const edge = cells.kind[i - 1] !== CellKind.Stairs || cells.kind[i + 1] !== CellKind.Stairs;
+        if (edge) return 0x5a5044;
+        return step < 2 ? 0xc0b49e : step < 5 ? 0x948872 : 0x5a5044;
+      }
+      const rock = b === B.Snow || b === B.Tundra ? ROCK_COLD : ROCK;
+      if (p < 2) return blend(rock[0], 0xffffff, 0.15);
+      // senkrechte Felsrippen und eine dunkle Fußzone
+      const rib = hash2(this.world.seed, wx >> 2, 0, 31) % 3;
+      let col = t > 0.82 ? rock[2] : rib === 0 ? rock[2] : rib === 1 ? rock[1] : rock[0];
+      if (rib !== 0 && t > 0.5) col = blend(col, rock[2], (t - 0.5) * 0.9);
+      if ((hash2(this.world.seed, wx, ly, 32) & 31) === 0) col = blend(col, 0x000000, 0.25);
+      return col;
+    }
+    const l = cells.level[i];
+    // Schlagschatten am Fuß einer Wand
+    if (y > 0 && cells.faceK[i - n] && cells.kind[i - n] === CellKind.Wall) return blend(c, 0x141026, ly % CELL < 2 ? 0.4 : 0.2);
+    // Oberkante einer Wand: helle Lippe
+    if (y + 1 < n && cells.faceK[i + n] === 1 && cells.level[i + n] < l && ly % CELL >= 2) return blend(c, 0xfff4dc, 0.28);
+    // Seitliche Stufenkante: Schatten auf der tieferen Seite
+    if ((x > 0 && cells.level[i - 1] > l) || (x + 1 < n && cells.level[i + 1] > l)) return blend(c, 0x141026, 0.35);
+    if (y > 0 && cells.level[i - n] < l && !cells.faceK[i - n]) return blend(c, 0xfff4dc, 0.2);
+    return c;
   }
 
   private readonly flatCache = new Map<string, Pixels>();

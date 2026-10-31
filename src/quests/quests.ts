@@ -63,7 +63,7 @@ const ROLE_KINDS: Record<string, EnemyKind[]> = {
   scavenger: ['drone', 'bandit'],
 };
 
-const VISIT_BIOMES = [B.CrystalGrove, B.ScrapWastes, B.Desert, B.Snow, B.Jungle, B.Swamp, B.Beach, B.Mountain, B.Savanna];
+const VISIT_BIOMES = [B.CrystalGrove, B.ScrapWastes, B.Desert, B.Snow, B.Jungle, B.Swamp, B.Beach, B.Mountain, B.Savanna, B.Hills];
 
 export function compass(dx: number, dy: number): string {
   const a = (Math.atan2(dy, dx) * 180) / Math.PI;

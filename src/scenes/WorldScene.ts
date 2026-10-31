@@ -36,6 +36,8 @@ const BARBER_PRICE = 20;
 import { addItem } from '../rpg/progression';
 import { CHUNK_TILES, WORLD_TILES, WORLD_VERSION, WorldGen } from '../world/WorldGen';
 import { ExploredMap } from '../world/fog';
+import { MAX_VIEW, sees, viewshed } from '../world/sight';
+import { tileHeight } from '../world/terrain';
 
 const ZOOMS = [1, 2, 3, 4];
 
@@ -47,6 +49,10 @@ interface SavedPlayer {
 }
 
 /** Die Spielwelt: Chunks, Dekorationen und die Spielfigur. */
+/** Radius des Sichtfelds um den Helden in Kacheln (M24) und Kantenlänge des Sichtrasters. */
+const SIGHT_R = 24;
+const SIGHT_N = 2 * SIGHT_R + 1;
+
 export class WorldScene extends Phaser.Scene {
   world!: WorldGen;
   chunks!: ChunkManager;
@@ -100,8 +106,12 @@ export class WorldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
     this.state = new WorldState(this.world.seedName, new LocalWorldStore(), Date.now(), playerId());
-    this.fog = ExploredMap.decode(load<string>(`fog:${this.world.seedName}`));
+    this.fog = ExploredMap.decode(load<string>(`fog${WORLD_VERSION}:${this.world.seedName}`));
     this.lastFogTile = { tx: -1, ty: -1 };
+    this.heights.clear();
+    this.sightTex = this.textures.exists('sight') ? (this.textures.get('sight') as Phaser.Textures.CanvasTexture) : this.textures.createCanvas('sight', SIGHT_N, SIGHT_N)!;
+    this.sightTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    this.sightImg = this.add.image(0, 0, 'sight').setOrigin(0, 0).setScale(TILE_PX).setDepth(900_000).setVisible(false);
     // Bekannte Orte (Wegsteine) sind auch auf der Karte bekannt, z. B. aus älteren Spielständen
     for (const t of this.world.meta.settlements) if (this.state.d.discovered.has(`town:${t.id}`)) this.fog.reveal(t.tx, t.ty, 24);
     this.npcs = new NpcManager(this, this.world, this.chunks);
@@ -243,6 +253,27 @@ export class WorldScene extends Phaser.Scene {
     debugState.seed = this.world.seedName;
     debugState.spawn = spawn;
     debugState.fogKnows = (tx: number, ty: number) => this.fog.knows(tx, ty);
+    debugState.heightAt = (tx: number, ty: number) => this.heightAt(tx, ty);
+    debugState.seesTile = (tx: number, ty: number) => this.seesPx(tx * TILE_PX + 16, ty * TILE_PX + 16);
+    debugState.findCliff = () => {
+      const p = this.player.tile;
+      for (let r = 0; r < 120; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const tx = p.tx + dx;
+            const ty = p.ty + dy;
+            // drei Kacheln breit frei, darüber über die ganze Breite Wand, kein Pfad
+            let ok = true;
+            for (let k = -1; k <= 1 && ok; k++) {
+              ok = this.world.isWalkable(tx + k, ty) && this.world.isWalkable(tx + k, ty + 1) && !this.world.isWalkable(tx + k, ty - 1) && !this.world.meta.isRoad(tx + k, ty - 1);
+            }
+            if (ok) return { tx, ty };
+          }
+        }
+      }
+      return null;
+    };
     debugState.fogFraction = () => this.fog.fraction;
     debugState.fogReveal = (tx: number, ty: number, r: number) => void this.fog.reveal(tx, ty, r);
     debugState.teleport = (tx: number, ty: number) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
@@ -818,11 +849,59 @@ export class WorldScene extends Phaser.Scene {
 
   /** Mittelpunkt des Interesses (die Figur) in Kachelkoordinaten. */
   private lastFogTile = { tx: -1, ty: -1 };
+  /** Höhen je Kachel (M24), zwischengespeichert für Sichtlinien. */
+  private readonly heights = new Map<number, number>();
+  /** Sichtfeld um den Helden (M24): 1 = sichtbar. */
+  private sight: { ox: number; oy: number; vis: Uint8Array } | null = null;
+  private sightTex!: Phaser.Textures.CanvasTexture;
+  private sightImg!: Phaser.GameObjects.Image;
+
+  /** Gesamthöhe einer Kachel (Hang + Stufen). */
+  readonly heightAt = (tx: number, ty: number): number => {
+    const k = tx * 16384 + ty;
+    let h = this.heights.get(k);
+    if (h === undefined) {
+      if (this.heights.size > 250_000) this.heights.clear();
+      h = tileHeight(this.world, tx, ty);
+      this.heights.set(k, h);
+    }
+    return h;
+  };
+
+  /** Ist der Weltpixel vom Helden aus sichtbar? Außerhalb des Sichtfelds: ja (ohnehin nicht im Bild). */
+  seesPx(x: number, y: number): boolean {
+    const s = this.sight;
+    if (!s) return true;
+    const dx = Math.floor(x / TILE_PX) - s.ox + SIGHT_R;
+    const dy = Math.floor(y / TILE_PX) - s.oy + SIGHT_R;
+    if (dx < 0 || dy < 0 || dx >= SIGHT_N || dy >= SIGHT_N) return true;
+    return s.vis[dy * SIGHT_N + dx] === 1;
+  }
+
+  /** Sichtfeld neu berechnen und als weichen Schatten über verdecktes Gelände legen. */
+  private updateSight(tx: number, ty: number): void {
+    const vis = viewshed(this.heightAt, tx, ty, SIGHT_R);
+    this.sight = { ox: tx, oy: ty, vis };
+    const ctx = this.sightTex.getContext();
+    const img = ctx.createImageData(SIGHT_N, SIGHT_N);
+    for (let i = 0; i < vis.length; i++) {
+      img.data[i * 4] = 12;
+      img.data[i * 4 + 1] = 14;
+      img.data[i * 4 + 2] = 34;
+      img.data[i * 4 + 3] = vis[i] ? 0 : 150;
+    }
+    ctx.putImageData(img, 0, 0);
+    this.sightTex.refresh();
+    this.sightTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    // Texel-Mitten liegen auf Kachelmitten
+    this.sightImg.setPosition((tx - SIGHT_R) * TILE_PX, (ty - SIGHT_R) * TILE_PX).setVisible(true);
+    debugState.sightHidden = vis.length - vis.reduce((a, v) => a + v, 0);
+  }
 
   private saveFog(): void {
     if (!this.fog.dirty) return;
     this.fog.dirty = false;
-    save(`fog:${this.world.seedName}`, this.fog.encode());
+    save(`fog${WORLD_VERSION}:${this.world.seedName}`, this.fog.encode());
   }
 
   get focusTile(): { tx: number; ty: number } {
@@ -913,8 +992,12 @@ export class WorldScene extends Phaser.Scene {
     const pt = this.player.tile;
     if (pt.tx !== this.lastFogTile.tx || pt.ty !== this.lastFogTile.ty) {
       this.lastFogTile = pt;
-      this.fog.reveal(pt.tx, pt.ty);
+      this.fog.revealVisible(pt.tx, pt.ty, (x, y) => sees(this.heightAt, pt.tx, pt.ty, x, y), MAX_VIEW);
+      this.updateSight(pt.tx, pt.ty);
     }
+    // Verdeckte Gegner und NPCs sind unsichtbar (M24)
+    for (const n of this.npcs.npcs.values()) n.setSeen(this.seesPx(n.actor.x, n.actor.y - 4));
+    for (const e of this.enemies.enemies.values()) e.setSeen(this.seesPx(e.x, e.y - 4));
 
     this.saveTimer += delta;
     if (this.saveTimer > 2000) {
@@ -947,7 +1030,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.pickupPos = this.hero.pickupPositions();
     debugState.maxHp = this.combat.stats.maxHp;
     debugState.alive = this.combat.alive;
-    debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state }));
+    debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state, seen: e.seen }));
     debugState.ready = this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0;
   }
 }
