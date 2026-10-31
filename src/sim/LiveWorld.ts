@@ -2,7 +2,7 @@ import { debugState } from '../debug';
 import type { NpcManager, Npc } from '../entities/NpcManager';
 import type { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
-import type { WorldState } from '../state/worldState';
+import { pledgeInfluence, type WorldState } from '../state/worldState';
 import type { WorldGen } from '../world/WorldGen';
 import { CHUNK_TILES } from '../world/WorldGen';
 import { caravanPos, caravans, invasionAt, realmPower, townDrift, weatherAt, type Caravan, type Invasion, type Weather } from './simulation';
@@ -36,7 +36,8 @@ export class LiveWorld {
   private tick(force = false): boolean {
     const now = worldNow();
     const m = this.world.meta;
-    m.powers = m.realms.map((r) => realmPower(this.world.seed, r.id, now, this.state.d.reputation.get(r.id) ?? 0));
+    const pledge = pledgeInfluence(this.state.d, m.realms.length, m.rivals);
+    m.powers = m.realms.map((r) => Math.max(0.5, realmPower(this.world.seed, r.id, now, this.state.d.reputation.get(r.id) ?? 0) + pledge[r.id]));
     const inv = debugState.calm ? null : invasionAt(this.world.seed, m.realms, now);
     const changed = force || inv?.realm !== this.invasion?.realm || inv?.kind !== this.invasion?.kind;
     this.invasion = inv;

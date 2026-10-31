@@ -33,6 +33,7 @@ export const debugState = {
   npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],
   hp: 100,
   objects: 0,
+  pledge: (): number | null => null,
   spellCooldown: 0,
   killEnemy: (_id: string): boolean => false,
   attacks: 0,

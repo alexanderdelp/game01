@@ -84,6 +84,8 @@ const GOOD = new Set<B>([B.Grassland, B.Forest, B.Savanna, B.Beach, B.Tundra, B.
 
 export class WorldMeta {
   readonly realms: Realm[] = [];
+  /** Erzrivale je Reich (symmetrische Paare, M15) */
+  readonly rivals: number[] = [];
   readonly settlements: Settlement[] = [];
   readonly obelisks: Poi[] = [];
   readonly ruins: Ruin[] = [];
@@ -97,6 +99,7 @@ export class WorldMeta {
     const rnd = mulberry32(t.seed ^ 0x3e7a);
     this.warp = new Simplex2(t.seed ^ 0x51a7);
     this.placeRealms(rnd);
+    this.pairRivals();
     this.placeSettlements(rnd);
     this.placeObelisks(rnd);
     this.placeRuins(rnd);
@@ -144,6 +147,16 @@ export class WorldMeta {
 
   /** Aktuelle Macht je Reich (aus der Simulation, M10); gewichtet die Grenzen. */
   powers: number[] | null = null;
+
+  /** Reiche paarweise verfeinden (eigener Zufallsstrom, damit die übrige Welt gleich bleibt). */
+  private pairRivals(): void {
+    const rnd = mulberry32(this.t.seed ^ 0x77ab);
+    const ids = this.realms.map((r) => r.id).sort(() => rnd() - 0.5);
+    for (let i = 0; i + 1 < ids.length; i += 2) {
+      this.rivals[ids[i]] = ids[i + 1];
+      this.rivals[ids[i + 1]] = ids[i];
+    }
+  }
 
   /** Reich einer Kachel (nächstes Zentrum, nach Macht gewichtet, Grenzen verwirbelt). */
   realmAt(tx: number, ty: number): Realm {
@@ -330,7 +343,7 @@ const ARTIFACTS = [
 const THREATS = ['der Schatten unter den Gipfeln', 'der Hungernde Schwarm', 'die Rostkönigin', 'das Echo des Sterns', 'der Leere Wanderer'];
 
 /** Seed-basierte Weltgeschichte in acht Fragmenten. */
-export function generateLore(seed: number, meta: { realms: Realm[]; settlements: Settlement[] }): Lore {
+export function generateLore(seed: number, meta: { realms: Realm[]; settlements: Settlement[]; rivals?: number[] }): Lore {
   const rnd = mulberry32(seed ^ 0x10de);
   const worldName = `${pick(rnd, ['Ael', 'Myr', 'Cal', 'Ther', 'Vey', 'Or'])}${pick(rnd, ['theron', 'dris', 'avon', 'ensia', 'galoth', 'umbra'])}`;
   const ev = pick(rnd, EVENTS);
@@ -339,7 +352,10 @@ export function generateLore(seed: number, meta: { realms: Realm[]; settlements:
   const artAcc = art.acc.replace('{world}', worldName);
   const threat = pick(rnd, THREATS);
   const age = 200 + Math.floor(rnd() * 800);
-  const [r1, r2] = [...meta.realms].sort(() => rnd() - 0.5);
+  const shuffled = [...meta.realms].sort(() => rnd() - 0.5);
+  // Der Krieg der Chronik ist der Streit eines Rivalenpaares (M15)
+  const r1 = shuffled[0];
+  const r2 = meta.rivals?.[r1.id] !== undefined ? meta.realms[meta.rivals[r1.id]] : shuffled[1];
   const cap = (r: Realm) => meta.settlements[r.capital]?.name ?? r.name;
   const f = (r: Realm) => FACTIONS[r.faction].the;
   return {

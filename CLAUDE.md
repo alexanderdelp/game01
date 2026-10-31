@@ -63,6 +63,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-10-31 – M11/M12: Online-Teil zweistufig (Link-Teilen ohne Server + optionaler eigener Sync-Server), weil ein dauerhafter Server ein Konto des Nutzers braucht.
 - 2026-10-31 – **Zusätzlicher Meilenstein 13 „Feinschliff & Spielgefühl“** (Titelbildschirm, Handy-Menü, Musik/Klänge, Einstiegshinweise): alle 12 Meilensteine waren um 01:54 erreicht; die Restzeit fließt in „casual“ und „immersiv“.
 - 2026-10-31 – **Zusätzlicher Meilenstein 14 „Erkundung & Herausforderung“** (Elite-Gegner, Ruinen mit Wächter und Schatz) – stärkt „Erkundung“ und „spaßige Action“.
+- 2026-10-31 – **Zusätzlicher Meilenstein 15 „Fraktionstreue“** (Treueschwur beim Herrscher mit Vor- und Nachteilen, verschiebt Reichsgrenzen) – eine echte „relevante Entscheidung“.
 
 ## Vorgehen
 

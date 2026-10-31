@@ -1,6 +1,6 @@
 # Design-Dokument – Splitterwelten (Game01)
 
-Stand: 2026-10-31, nach Meilenstein 14. Details und Anforderungen je Meilenstein: [`docs/milestones/`](milestones/).
+Stand: 2026-10-31, nach Meilenstein 15. Details und Anforderungen je Meilenstein: [`docs/milestones/`](milestones/).
 
 ## Vision
 
@@ -15,7 +15,7 @@ oder live.
 |---|---|
 | Casual | Titelbildschirm mit „Weiterspielen“, alles speichert automatisch, Tod ohne Strafe, Schnellreise, Pfeil zum nächsten Ziel, wenige Tasten, Handy-Steuerung. |
 | Immersiv | Reiche mit Fraktionen, Orte mit Bewohnern, Chronik an Obelisken, Tag/Nacht, Wetter, Musik und Klänge. |
-| Relevante Entscheidungen | Weltzustand als Ereignisprotokoll: Truhen bleiben offen, Orte wachsen sichtbar bis zur Heldenstatue, Ansehen beim Reich (Rabatt, Titel), Botschaften für andere. |
+| Relevante Entscheidungen | Treueschwur bei einem Herrscher (Reich wächst, Rabatt – aber der Rivale wird zum Feind), Weltzustand als Ereignisprotokoll: Truhen bleiben offen, Orte wachsen sichtbar bis zur Heldenstatue, Ansehen beim Reich, Botschaften für andere. |
 | Lebendige Welt | Simulation aus Seed + Uhrzeit: Karawanen, Reichsmacht verschiebt Grenzen, Orte schwanken, Invasionen, „Während du weg warst …“. |
 | Erkundung | 4096² Kacheln, 15 Biome, 6 Reiche, ~20 Orte, Truhen, Schreine, 8 Obelisken, ~18 Ruinen mit Wächter und Schatz, Erkundungsquests, Wegsteine. |
 | Große Spielwelt | Alles Weltwissen ist eine Funktion `f(seed, x, y[, zeit])`; nur Abweichungen werden gespeichert. |

@@ -22,6 +22,11 @@ export const ROLES: Record<string, Role> = {
       'Man sagt, ganz {world} hat eine Geschichte, die keiner mehr kennt.',
     ],
   },
+  ruler: {
+    id: 'ruler',
+    name: 'Herrscher',
+    lines: ['{motto}'],
+  },
   merchant: {
     id: 'merchant',
     name: 'Händlerin',
@@ -146,6 +151,7 @@ export function npcsForChunk(world: WorldGen, cx: number, cy: number): NpcSpawn[
     if (Math.floor(s.tx / CHUNK_TILES) !== cx || Math.floor(s.ty / CHUNK_TILES) !== cy) continue;
     const srnd = mulberry32(hash2(world.seed, s.tx, s.ty, 4343));
     out.push({ id: `m${s.id}`, tx: s.tx - 2, ty: s.ty + 2, role: 'merchant', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
+    if (s.capital) out.push({ id: `r${s.id}`, tx: s.tx + 2, ty: s.ty - 2, role: 'ruler', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
     const n = s.capital ? 7 : 4;
     for (let i = 0; i < n; i++) {
       const a = srnd() * Math.PI * 2;

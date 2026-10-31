@@ -211,7 +211,7 @@ export class WorldScene extends Phaser.Scene {
     const lastSeen = load<number>(`seen:${this.world.seedName}`);
     this.news = newsBetween(this.world.meta, this.world.seed, now - 24 * TICK_MS, now, this.live.caravans);
     debugState.news = this.news.map((n) => n.text);
-    const foreign = lastSeen ? foreignNews(this.state.events.filter((e) => e.pid !== this.state.pid && e.t > lastSeen), this.world.meta.settlements) : [];
+    const foreign = lastSeen ? foreignNews(this.state.events.filter((e) => e.pid !== this.state.pid && e.t > lastSeen), this.world.meta.settlements, this.world.meta.realms) : [];
     if (foreign.length) this.news.push(...foreign);
     if (lastSeen && (now - lastSeen > TICK_MS || foreign.length)) {
       const missed = [...newsBetween(this.world.meta, this.world.seed, lastSeen, now, this.live.caravans), ...foreign];
@@ -242,6 +242,7 @@ export class WorldScene extends Phaser.Scene {
       return it.id;
     };
     debugState.choose = (i: number) => this.choose(i);
+    debugState.pledge = () => this.myPledge();
     debugState.killEnemy = (id: string) => {
       const e = this.enemies.enemies.get(id);
       if (!e) return false;
@@ -272,7 +273,8 @@ export class WorldScene extends Phaser.Scene {
       return c ? caravanPos(c, worldNow()) : null;
     };
     debugState.meta = {
-      settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital })),
+      settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital, realm: s.realm })),
+      rivals: [...this.world.meta.rivals],
       obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
       ruins: this.world.meta.ruins.map((r) => ({ tx: r.tx, ty: r.ty })),
       chunkPoi: (cx: number, cy: number) => this.world.meta.chunkPoi(cx, cy),
@@ -349,7 +351,7 @@ export class WorldScene extends Phaser.Scene {
     }
     this.state.flush();
     const others = fresh.filter((e) => e.pid !== this.state.pid);
-    const news = foreignNews(others, this.world.meta.settlements);
+    const news = foreignNews(others, this.world.meta.settlements, this.world.meta.realms);
     this.news.push(...news);
     debugState.news = this.news.map((n) => n.text);
     if (!others.length) return;
@@ -466,8 +468,18 @@ export class WorldScene extends Phaser.Scene {
       this.recordQuest(delivered.giverTx, delivered.giverTy);
       return say(`Ein Brief von ${delivered.giverName}? Danke! (${r ? this.hero.reward(r) : ''})`);
     }
-    // 2. Händler
-    if (npc.spawn.role === 'merchant') return this.trade(npc.spawn.name, '', this.rankAt(npc.spawn.tx, npc.spawn.ty).discount);
+    // 2. Herrscher: Treueschwur (M15)
+    if (npc.spawn.role === 'ruler') return this.rulerTalk(npc.spawn.name, npc.spawn.tx, npc.spawn.ty);
+    // 3. Händler (Rivalen des eigenen Reichs verweigern den Handel)
+    if (npc.spawn.role === 'merchant') {
+      const realm = this.world.meta.realmAt(npc.spawn.tx, npc.spawn.ty);
+      const mine = this.myPledge();
+      if (mine !== null && this.world.meta.rivals[mine] === realm.id) {
+        return say(`Du hast ${this.world.meta.realms[mine].name} die Treue geschworen. Gefolgsleute unserer Feinde bedienen wir nicht!`);
+      }
+      const bonus = mine === realm.id ? 0.15 : 0;
+      return this.trade(npc.spawn.name, bonus ? `Willkommen, Gefolgsmann von ${realm.name}! ` : '', Math.min(0.45, this.rankAt(npc.spawn.tx, npc.spawn.ty).discount + bonus));
+    }
     // 3. Eigene Quest abgeben bzw. daran erinnern
     const own = log.active.find((q) => q.giverId === npc.spawn.id);
     if (own && isReady(own)) {
@@ -549,6 +561,45 @@ export class WorldScene extends Phaser.Scene {
     this.events.emit('quests-changed');
     this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Quest: ${offer.title}`, color: '#ffd84a' });
     this.hero.persist();
+  }
+
+  /** Reich, dem dieser Held die Treue geschworen hat (oder null). */
+  myPledge(): number | null {
+    return this.state.d.pledges.get(this.state.pid)?.realm ?? null;
+  }
+
+  /** Gespräch mit einem Herrscher: Treueschwur anbieten. */
+  private rulerTalk(name: string, tx: number, ty: number): void {
+    const m = this.world.meta;
+    const realm = m.realmAt(tx, ty);
+    const rival = m.realms[m.rivals[realm.id]];
+    const f = FACTIONS[realm.faction];
+    const mine = this.myPledge();
+    const title = `${name} · Herrscher von ${realm.name}`;
+    if (mine === realm.id) {
+      this.say(title, f.name, `${f.motto} Du bist ein treuer Gefolgsmann von ${realm.name}. Gemeinsam halten wir ${rival.name} in Schach!`);
+      return;
+    }
+    const change = mine !== null ? ` Dein Schwur gegenüber ${m.realms[mine].name} würde erlöschen.` : '';
+    this.say(
+      title,
+      f.name,
+      `${f.motto} Schwöre ${realm.name} die Treue: Unser Reich wächst, unsere Händler geben dir Rabatt. Doch ${rival.name} wird dich als Feind sehen – dort handelt niemand mehr mit dir.${change}`,
+      [
+        ['Treue schwören', () => this.pledge(realm.id)],
+        ['Bedenkzeit', () => {}],
+      ],
+    );
+  }
+
+  pledge(realmId: number): void {
+    const m = this.world.meta;
+    this.state.record({ t: Date.now(), by: this.heroName, type: 'pledge', realm: realmId });
+    this.state.flush();
+    this.events.emit('sfx', 'quest');
+    this.events.emit('banner', { title: `Treue zu ${m.realms[realmId].name}`, sub: `${m.realms[m.rivals[realmId]].name} betrachtet dich nun als Feind` });
+    this.events.emit('hero-changed');
+    void this.sync?.sync();
   }
 
   /** Händler: Trank kaufen, gewöhnliche Gegenstände verkaufen. */
@@ -688,6 +739,10 @@ export class WorldScene extends Phaser.Scene {
     const now = Date.now();
     for (const n of this.npcs.npcs.values()) {
       const id = n.spawn.id;
+      if (n.spawn.role === 'ruler') {
+        if (this.myPledge() !== this.world.meta.realmAt(n.spawn.tx, n.spawn.ty).id) this.markers.set(id, '!');
+        continue;
+      }
       if (n.spawn.role === 'merchant' && !log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id)) continue;
       const own = log.active.find((q) => q.giverId === id);
       if ((own && isReady(own)) || log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id && !isReady(q))) this.markers.set(id, '?');
@@ -841,13 +896,14 @@ export class WorldScene extends Phaser.Scene {
 }
 
 /** Taten anderer Spieler als Neuigkeiten. */
-function foreignNews(events: WorldEvent[], towns: { id: number; name: string }[]): News[] {
+function foreignNews(events: WorldEvent[], towns: { id: number; name: string }[], realms: { name: string }[] = []): News[] {
   const out: News[] = [];
   const quests = new Map<string, number>();
   for (const e of events) {
     if (e.type === 'chest') out.push({ tick: 0, text: `${e.by} hat eine Truhe geöffnet.` });
     if (e.type === 'sign') out.push({ tick: 0, text: `${e.by} hat eine Botschaft hinterlassen: „${e.text}“` });
     if (e.type === 'death') out.push({ tick: 0, text: `${e.by} ist gefallen – ein Grabstein erinnert daran.` });
+    if (e.type === 'pledge') out.push({ tick: 0, text: `${e.by} hat ${realms[e.realm]?.name ?? 'einem Reich'} die Treue geschworen.` });
     if (e.type === 'discover' && e.id.startsWith('obelisk')) out.push({ tick: 0, text: `${e.by} hat einen Obelisken entdeckt.` });
     if (e.type === 'discover' && e.id.startsWith('town')) out.push({ tick: 0, text: `${e.by} hat ${towns[Number(e.id.slice(5))]?.name ?? 'einen Ort'} besucht.` });
     if (e.type === 'quest' && e.town !== null) quests.set(`${e.by}|${e.town}`, (quests.get(`${e.by}|${e.town}`) ?? 0) + 1);

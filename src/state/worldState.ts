@@ -14,14 +14,15 @@ export type WorldEvent =
   | (Base & { type: 'discover'; id: string })
   | (Base & { type: 'quest'; town: number | null; realm: number })
   | (Base & { type: 'sign'; tx: number; ty: number; text: string })
-  | (Base & { type: 'death'; tx: number; ty: number });
+  | (Base & { type: 'death'; tx: number; ty: number })
+  | (Base & { type: 'pledge'; realm: number });
 
 export const SIGN_MAX = 80;
 export const DEATH_MS = 24 * 60 * 60_000;
 
 /** Eindeutiger Schlüssel eines Ereignisses (für konfliktfreies Zusammenführen). */
 export function eventKey(e: WorldEvent): string {
-  const target = 'id' in e ? e.id : 'tx' in e ? `${e.tx},${e.ty}` : `${e.town},${e.realm}`;
+  const target = 'id' in e ? e.id : 'tx' in e ? `${e.tx},${e.ty}` : 'town' in e ? `${e.town},${e.realm}` : `undefined,${e.realm}`;
   return `${e.pid ?? e.by}|${e.t}|${e.type}|${target}`;
 }
 
@@ -66,12 +67,14 @@ export interface Derived {
   signs: Map<string, Sign>;
   /** Gefallen-Marker */
   deaths: { tx: number; ty: number; by: string; t: number }[];
+  /** Treueschwur je Spieler (der letzte zählt) */
+  pledges: Map<string, { realm: number; by: string }>;
 }
 
 export function emptyDerived(): Derived {
   return {
     chests: new Set(), kills: new Map(), discovered: new Map(), prosperity: new Map(), reputation: new Map(),
-    chestsBy: new Map(), questsBy: new Map(), signs: new Map(), deaths: [],
+    chestsBy: new Map(), questsBy: new Map(), signs: new Map(), deaths: [], pledges: new Map(),
   };
 }
 
@@ -86,6 +89,9 @@ export function apply(d: Derived, e: WorldEvent): void {
       break;
     case 'death':
       d.deaths.push({ tx: e.tx, ty: e.ty, by: e.by, t: e.t });
+      break;
+    case 'pledge':
+      d.pledges.set(e.pid ?? e.by, { realm: e.realm, by: e.by });
       break;
     case 'kill':
       d.kills.set(e.id, e.t);
@@ -238,4 +244,15 @@ export class WorldState {
     this.store.save({ version: STATE_VERSION, seed: this.seed, events: this.events });
     this.dirty = false;
   }
+}
+
+/** Machtverschiebung durch Treueschwüre: +0,12 für das Reich, −0,06 für seinen Rivalen (je Held). */
+export function pledgeInfluence(d: Derived, realmCount: number, rivals: number[]): number[] {
+  const delta = new Array(realmCount).fill(0);
+  for (const p of d.pledges.values()) {
+    delta[p.realm] += 0.12;
+    const rival = rivals[p.realm];
+    if (rival !== undefined) delta[rival] -= 0.06;
+  }
+  return delta;
 }

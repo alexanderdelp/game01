@@ -821,6 +821,12 @@ export class UIScene extends Phaser.Scene {
       bx += b.width + 6;
     }
     y += 30;
+    const pl = ws.myPledge();
+    if (pl !== null) {
+      const m = ws.world.meta;
+      txt(12, y, `Gefolgsmann von ${m.realms[pl].name} · Feind von ${m.realms[m.rivals[pl]].name}`, '#ffd84a', 12);
+      y += 18;
+    }
     const reps = ws.world.meta.realms.map((r) => ({ r, v: ws.state.d.reputation.get(r.id) ?? 0 })).filter((x) => x.v > 0);
     if (reps.length) {
       txt(12, y, `Ansehen: ${reps.map((x) => `${x.r.name} ${reputationRank(x.v).title} (${x.v})`).join(' · ')}`, '#c4a8ff', 11).setWordWrapWidth(W - 24);
