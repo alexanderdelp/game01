@@ -12,7 +12,8 @@ export const debugState = {
   ready: false,
   spawn: { tx: 0, ty: 0 },
   focus: { tx: 0, ty: 0 },
-  player: { x: 0, y: 0, facing: 'down', moving: false },
+  /** M28: `aim` = Zielrichtung in 8 Richtungen (Arena; Welt siehe Übergabe) */
+  player: { x: 0, y: 0, facing: 'down', moving: false } as { x: number; y: number; facing: string; moving: boolean; aim?: { x: number; y: number } },
   biome: '',
   zoom: 1,
   chunksLoaded: 0,
@@ -50,6 +51,8 @@ export const debugState = {
   arenaBlocked: (_x: number, _y: number, _w: number, _h: number): boolean => false,
   arenaWalkable: (_tx: number, _ty: number): boolean => true,
   arenaSpawnAt: (_kind: string, _tx: number, _ty: number): void => {},
+  /** M28: Blickrichtung des Helden bei diagonalem Zielen (Vergleich 'side' / 'vertical') */
+  arenaDiagonal: (_mode: string): void => {},
   /** Weltpunkt → Bildschirmpunkt (für Klicks in Tests) */
   arenaToScreen: (_x: number, _y: number): { x: number; y: number } => ({ x: 0, y: 0 }),
   bannerTitle: '',
@@ -69,6 +72,8 @@ export const debugState = {
   spellCooldown: 0,
   killEnemy: (_id: string): boolean => false,
   attacks: 0,
+  /** M28: Anzahl gezeigter Schwung-Bögen (Arena) */
+  arcs: 0,
   /** M17: Hieb läuft gerade */
   swinging: false,
   maxHp: 100,

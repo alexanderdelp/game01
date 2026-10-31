@@ -1,11 +1,50 @@
 import Phaser from 'phaser';
-import { PLAYER_SWING, SPELL, attackBox, facingVector, knockback, regen, rollDamage, type Stats } from '../combat/combat';
+import { PLAYER_SWING, SPELL, attackZone, knockback, regen, rollDamage, zoneBounds, zoneHits, type Stats, type Vec } from '../combat/combat';
 import { CREATURES } from '../render/textures';
 import { mulberry32 } from '../world/rng';
 import type { Actor, MoveEnv } from './Actor';
 import type { EnemyManager } from './Enemy';
 
 const INVULN = 0.8;
+
+/** Schwung-Bogen (M28): Radius der Sichelspur um die Körpermitte und Anzahl Bilder. */
+const ARC_R = 34;
+const ARC_FRAMES = 3;
+const ARC_KEY = 'swing-arc';
+
+/**
+ * Erzeugt die Bilder des Schwung-Bogens im Code (keine Assets): eine Sichel nach rechts (Winkel 0),
+ * die von Bild zu Bild weiter durchgezogen wird; das letzte Bild ist voll, aber blasser.
+ */
+function ensureArcTextures(scene: Phaser.Scene): void {
+  if (scene.textures.exists(`${ARC_KEY}:0`)) return;
+  const size = ARC_R * 2 + 8;
+  const c = size / 2;
+  const span = Math.PI * 0.75; // ±67,5°
+  for (let f = 0; f < ARC_FRAMES; f++) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    const end = -span / 2 + (span * (f + 1)) / ARC_FRAMES;
+    const steps = 14;
+    const outer: Vec[] = [];
+    const inner: Vec[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const a = -span / 2 + (end + span / 2) * t;
+      // Dick an der Spitze der Bewegung (vorn), dünn am Anfang der Spur
+      const thick = 2 + 9 * Math.sin(Math.PI * Math.min(1, t * 0.9 + 0.1)) * (0.4 + 0.6 * t);
+      outer.push({ x: c + Math.cos(a) * ARC_R, y: c + Math.sin(a) * ARC_R });
+      inner.push({ x: c + Math.cos(a) * (ARC_R - thick), y: c + Math.sin(a) * (ARC_R - thick) });
+    }
+    const pts = [...outer, ...inner.reverse()].map((p) => new Phaser.Math.Vector2(Math.round(p.x), Math.round(p.y)));
+    g.fillStyle(0x9fe8ff, f === ARC_FRAMES - 1 ? 0.45 : 0.75);
+    g.fillPoints(pts, true);
+    // Heller Rand außen (Klingenspitze)
+    g.lineStyle(2, 0xffffff, f === ARC_FRAMES - 1 ? 0.5 : 0.95);
+    g.strokePoints(outer.map((p) => new Phaser.Math.Vector2(Math.round(p.x), Math.round(p.y))), false);
+    g.generateTexture(`${ARC_KEY}:${f}`, size, size);
+    g.destroy();
+  }
+}
 
 /** Kampfzustand des Spielers: Angriff, Leben, Unverwundbarkeit, Tod und Wiedererwachen. */
 export class PlayerCombat {
@@ -20,6 +59,10 @@ export class PlayerCombat {
   /** Hieb läuft (Figur darf dabei laufen). */
   swinging = false;
   private readonly rnd = mulberry32(Date.now() >>> 0);
+  /** Schwung-Bogen des laufenden Hiebs (folgt der Figur). */
+  private arc?: { img: Phaser.GameObjects.Image; aim: Vec; t: number };
+  /** Anzahl gezeigter Schwung-Bögen (für Tests). */
+  arcs = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -27,25 +70,29 @@ export class PlayerCombat {
     private readonly enemies: EnemyManager,
     private readonly chunks: MoveEnv,
     private readonly respawn: () => void,
-  ) {}
+  ) {
+    // Der Held zielt in 8 Richtungen und zeigt diagonal die Seitenansicht (M28).
+    actor.diagonalFacing = 'side';
+    ensureArcTextures(scene);
+  }
 
   regenRate = 3;
   /** Abklingzeit des Zaubers in Sekunden (0 = bereit) */
   spellCooldown = 0;
   private readonly bolts: { sprite: Phaser.GameObjects.Sprite; x: number; y: number; vx: number; vy: number; travelled: number; hit: Set<string> }[] = [];
 
-  /** Fernzauber „Splitterblitz“: Kristallgeschoss in Blickrichtung. */
+  /** Fernzauber „Splitterblitz“: Kristallgeschoss in Zielrichtung (8 Richtungen). */
   cast(): void {
     if (!this.alive || this.actor.busy || this.spellCooldown > 0) return;
     this.spellCooldown = SPELL.cooldown;
     this.actor.playAction('spellcast');
     this.scene.events.emit('sfx', 'cast');
+    const v = { ...this.actor.aim };
     this.scene.time.delayedCall(SPELL.castDelay * 1000, () => {
       if (!this.alive) return;
-      const v = facingVector(this.actor.facing);
       const x = this.actor.x + v.x * 18;
       const y = this.actor.y - 26 + v.y * 10;
-      const sprite = this.scene.add.sprite(x, y, CREATURES, 'bolt:0').play('bolt:loop').setTint(0xc47aff).setScale(2.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(1_000_000 - 2);
+      const sprite = this.scene.add.sprite(x, y, CREATURES, 'bolt:0').play('bolt:loop').setTint(0xc47aff).setScale(2.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(1_000_000 - 2).setRotation(Math.atan2(v.y, v.x));
       this.bolts.push({ sprite, x, y, vx: v.x * SPELL.speed, vy: v.y * SPELL.speed, travelled: 0, hit: new Set() });
     });
   }
@@ -121,12 +168,16 @@ export class PlayerCombat {
     );
     this.attacks++;
     this.scene.events.emit('player-attack');
+    // Der Hieb geht dorthin, wohin man beim Drücken zielte.
+    const aim = { ...this.actor.aim };
+    this.showArc(aim);
     this.scene.time.delayedCall(PLAYER_SWING.hitDelay * 1000, () => {
       if (!this.alive) return;
-      const box = attackBox(this.actor.x, this.actor.y, this.actor.facing);
-      for (const e of this.enemies.inBox(box)) {
+      const zone = attackZone(this.actor.x, this.actor.y, aim);
+      for (const e of this.enemies.inBox(zoneBounds(zone)).filter((en) => zoneHits(zone, en.body))) {
         const dmg = rollDamage(this.stats.attack * (this.buffTime > 0 ? 1.25 : 1), e.stats.defense, this.rnd);
-        const killed = e.hit(dmg, this.actor.x, this.actor.y);
+        // Rückstoß in Zielrichtung: Ursprung hinter dem Gegner, entgegen der Zielrichtung
+        const killed = e.hit(dmg, e.x - aim.x * 40, e.y - aim.y * 40);
         this.scene.events.emit('enemy-hit', { enemy: e.spawn.id, dmg, x: this.actor.x, y: this.actor.y });
         this.scene.events.emit('damage', { x: e.x, y: e.body.y, amount: dmg, color: '#ffffff' });
         if (killed) {
@@ -135,6 +186,40 @@ export class PlayerCombat {
         }
       }
     });
+  }
+
+  /** Zeigt die Sichelspur des Hiebs in Zielrichtung (2–3 Bilder über die Hieb-Dauer). */
+  private showArc(aim: Vec): void {
+    this.arc?.img.destroy();
+    const img = this.scene.add.image(0, 0, `${ARC_KEY}:0`).setBlendMode(Phaser.BlendModes.ADD).setRotation(Math.atan2(aim.y, aim.x));
+    this.arc = { img, aim, t: 0 };
+    this.arcs++;
+    this.placeArc();
+  }
+
+  private placeArc(): void {
+    const a = this.arc;
+    if (!a) return;
+    const cx = this.actor.x + a.aim.x * 6;
+    const cy = this.actor.y - 18 + a.aim.y * 6;
+    a.img.setPosition(Math.round(cx), Math.round(cy));
+    // Nach oben hinter der Figur, sonst davor
+    a.img.setDepth(this.actor.y + (a.aim.y < -0.1 ? -1 : 1));
+  }
+
+  private updateArc(dt: number): void {
+    const a = this.arc;
+    if (!a) return;
+    a.t += dt;
+    const total = PLAYER_SWING.frames / PLAYER_SWING.frameRate;
+    const f = Math.floor((a.t / total) * ARC_FRAMES);
+    if (f >= ARC_FRAMES || !this.alive) {
+      a.img.destroy();
+      this.arc = undefined;
+      return;
+    }
+    a.img.setTexture(`${ARC_KEY}:${f}`);
+    this.placeArc();
   }
 
   hurt(amount: number, fromX: number, fromY: number, ignoreInvuln = false): void {
@@ -176,6 +261,7 @@ export class PlayerCombat {
     this.buffTime -= dt;
     this.spellCooldown = Math.max(0, this.spellCooldown - dt);
     this.updateBolts(dt);
+    this.updateArc(dt);
     this.sinceHit += dt;
     if (!this.actor.busy) this.cooldown -= dt;
     if (this.knock.t > 0) {
