@@ -45,5 +45,5 @@ Drehen/Verzerren der Sprites sieht bei Pixel-Art schlecht aus. Viele Spiele dies
   40 px breit, gleiche Reichweite; Trennachsen-Test `zoneHits`. Rückstoß der Gegner in Zielrichtung.
 - Splitterblitz fliegt in `aim` (R2), Schwung-Bogen: 3 im Code erzeugte Sichel-Bilder in Zielrichtung (R3).
 - Tests: `tests/unit/m28.test.ts`, E2E `arena.spec.ts` › M28 (Hieb diagonal trifft, quer daneben nicht; Blitz diagonal).
-- Offen: E2E `m4-combat`, `m17-feel`, `m14-explore` in dieser Session nicht mehr ausgeführt (Nutzungslimit).
+- Integration (Koordinator): `m4-combat`, `m17-feel`, `m14-explore`, `m5-rpg`, Arena grün; M4-Sterbetest robuster gemacht (wackelte schon vorher).
 
