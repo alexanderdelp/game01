@@ -2,7 +2,7 @@ import { B, BIOMES, BUILT, type DecorKind } from '../world/biomes';
 import { Simplex2 } from '../world/noise';
 import { hash2 } from '../world/rng';
 import { CHUNK_TILES, WORLD_TILES, WorldGen, type Decoration } from '../world/WorldGen';
-import { CELL, CellKind, buildCells, type ChunkCells } from '../world/terrain';
+import { BASE_LEVEL, CELL, CellKind, buildCells, levelAt, type ChunkCells } from '../world/terrain';
 import { PATTERN, cobblePattern, dirtPattern, groundPattern } from './groundPatterns';
 import { DECOR_VARIANTS, generateDecor, type Pixels } from './procSprites';
 
@@ -35,6 +35,8 @@ const isWater = (b: number) => b === B.DeepOcean || b === B.Ocean || b === B.Riv
 /** Felsfarben der Klippen: [hell, mittel, dunkel] – Schnee-/Tundragebirge heller. */
 const ROCK = [0x9a8c7c, 0x7c6e60, 0x4e4238];
 const ROCK_COLD = [0xb4b8c0, 0x8e929c, 0x5a5e6a];
+/** Reichweite der Kantenzeichnung in Zellen (Lippe, Felsband, Schatten). */
+const EDGE_REACH = 2;
 
 /**
  * Rendert den Boden eines Chunks als RGBA-Pixel. Biomgrenzen werden auf einem 4-px-Raster mit
@@ -104,6 +106,7 @@ export class ChunkPainter {
     }
     const cells = buildCells(this.world, cx, cy, T, (tx, ty) => meta.isRoad(tx, ty));
     const CN = cells.n;
+    this.prepareEdges(cx, cy, cells);
 
     // Verwirbelte Biome auf dem Sub-Raster inkl. 1 Sub-Zelle Rand.
     const S = SUBS + 2;
@@ -236,9 +239,103 @@ export class ChunkPainter {
     if (y > 0 && cells.faceK[i - n] && cells.kind[i - n] === CellKind.Wall) return blend(c, 0x141026, ly % CELL < 2 ? 0.4 : 0.2);
     // Oberkante einer Wand: helle Lippe
     if (y + 1 < n && cells.faceK[i + n] === 1 && cells.level[i + n] < l && ly % CELL >= 2) return blend(c, 0xfff4dc, 0.28);
-    // Seitliche Stufenkante: Schatten auf der tieferen Seite
-    if ((x > 0 && cells.level[i - 1] > l) || (x + 1 < n && cells.level[i + 1] > l)) return blend(c, 0x141026, 0.35);
-    if (y > 0 && cells.level[i - n] < l && !cells.faceK[i - n]) return blend(c, 0xfff4dc, 0.2);
+    if (!this.near[i] || cells.kind[i] === CellKind.Stairs) return c;
+    return this.dropEdge(c, l, x, y, lx, ly, wx, b);
+  }
+
+  /** Stufen inkl. 2 Zellen Rand (auch aus Nachbar-Chunks) und Merker „Kante in der Nähe“ je Zelle (M26). */
+  private pad = new Uint8Array(0);
+  private near = new Uint8Array(0);
+  private padW = 0;
+
+  private prepareEdges(cx: number, cy: number, cells: ChunkCells): void {
+    const n = cells.n;
+    const P = EDGE_REACH;
+    const W = n + 2 * P;
+    this.padW = W;
+    if (this.pad.length !== W * W) this.pad = new Uint8Array(W * W);
+    if (this.near.length !== n * n) this.near = new Uint8Array(n * n);
+    const pad = this.pad;
+    const near = this.near;
+    near.fill(0);
+    // Ohne Stufenwechsel im Chunk und am Rand gibt es keine Kanten
+    let flat = cells.level.every((v) => v === BASE_LEVEL);
+    if (flat) {
+      const t0x = cx * CHUNK_TILES - 1;
+      const t0y = cy * CHUNK_TILES - 1;
+      for (let t = 0; t < CHUNK_TILES + 2 && flat; t++) {
+        if (this.world.ground(t0x + t, t0y).rug > 0 || this.world.ground(t0x + t, t0y + CHUNK_TILES + 1).rug > 0) flat = false;
+        if (this.world.ground(t0x, t0y + t).rug > 0 || this.world.ground(t0x + CHUNK_TILES + 1, t0y + t).rug > 0) flat = false;
+      }
+    }
+    if (flat) return;
+    const ox = cx * n - P;
+    const oy = cy * n - P;
+    for (let y = 0; y < W; y++) {
+      for (let x = 0; x < W; x++) {
+        const ix = x - P;
+        const iy = y - P;
+        pad[y * W + x] = ix >= 0 && iy >= 0 && ix < n && iy < n
+          ? cells.level[iy * n + ix]
+          : levelAt(this.world, ((ox + x + 0.5) * CELL) / TILE_PX, ((oy + y + 0.5) * CELL) / TILE_PX);
+      }
+    }
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const l = pad[(y + P) * W + x + P];
+        let hit = 0;
+        for (let dy = -P; dy <= P && !hit; dy++) for (let dx = -P; dx <= P; dx++) if (pad[(y + P + dy) * W + x + P + dx] !== l) { hit = 1; break; }
+        near[y * n + x] = hit;
+      }
+    }
+  }
+
+  /**
+   * Abbruchkante einer Stufe, deren tiefere Seite nördlich oder seitlich liegt (M26): auf der oberen Seite helle
+   * Lippe und schmales Felsband, auf der tieferen Seite Schatten. Abstand zu den Zellmitten statt Zellgrenzen –
+   * so wird die Kante eine zusammenhängende Linie mit weichen Ecken statt einer Treppe.
+   */
+  private dropEdge(c: number, l: number, x: number, y: number, lx: number, ly: number, wx: number, b: number): number {
+    const P = EDGE_REACH;
+    const W = this.padW;
+    const pad = this.pad;
+    const fx = lx + 0.5;
+    const fy = ly + 0.5;
+    let best = 99;
+    let north = false;
+    let lower = false;
+    for (let dy = -P; dy <= P; dy++) {
+      for (let dx = -P; dx <= P; dx++) {
+        const m = pad[(y + P + dy) * W + x + P + dx];
+        if (m === l) continue;
+        // tiefer: nur nördlich/seitlich (südlich liegt eine Felswand); höher: nur südlich/seitlich
+        if (m < l ? dy > 0 : dy < 0) continue;
+        const vx = (x + dx + 0.5) * CELL - fx;
+        const vy = (y + dy + 0.5) * CELL - fy;
+        const d = Math.sqrt(vx * vx + vy * vy) - CELL / 2;
+        if (d < best) {
+          best = d;
+          north = Math.abs(vy) >= Math.abs(vx);
+          lower = m > l;
+        }
+      }
+    }
+    if (best >= 5) return c;
+    if (lower) {
+      // tiefere Seite: die Stufe wirft Schatten
+      if (north) return blend(c, 0x141026, best < 2 ? 0.5 : 0.28);
+      return best < 2 ? blend(c, 0x141026, 0.38) : best < 3.5 ? blend(c, 0x141026, 0.18) : c;
+    }
+    const rock = b === B.Snow || b === B.Tundra ? ROCK_COLD : ROCK;
+    if (north) {
+      if (best < 1) return rock[2];
+      if (best < 3.5) return (hash2(this.world.seed, wx >> 1, 0, 33) & 3) === 0 ? rock[0] : rock[1];
+      return blend(c, 0xfff4dc, 0.5);
+    }
+    // seitlich: dieselbe Bildsprache, schmaler
+    if (best < 1) return rock[2];
+    if (best < 2.5) return blend(rock[1], c, 0.3);
+    if (best < 3.5) return blend(c, 0xfff4dc, 0.35);
     return c;
   }
 

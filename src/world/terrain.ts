@@ -73,6 +73,53 @@ export function wallAt(w: WorldGen, px: number, py: number): boolean {
   return false;
 }
 
+/** Stufen je Zelle, zwischengespeichert für edgeNear (benachbarte Dekorationen prüfen fast dieselben Zellen). */
+const cellLevels = new WeakMap<WorldGen, Map<number, number>>();
+
+/**
+ * Liegt in der Umgebung eines Weltpixels eine Höhenkante (M26)? Prüft das Rechteck `rx` Pixel links/rechts,
+ * `up` nach Norden und `down` nach Süden auf einen Stufenwechsel und darauf, ob eine Felswand von weiter nördlich
+ * hineinreicht (Wände liegen unter ihrer Oberkante). Zellraster (4 px); ohne Zerklüftung in der Nähe sofort false.
+ */
+export function edgeNear(w: WorldGen, px: number, py: number, rx: number, up: number, down: number): boolean {
+  const top = py - up;
+  const reach = FACE_CELLS * CELL;
+  const t0x = Math.floor((px - rx) / TILE) - 1;
+  const t1x = Math.floor((px + rx) / TILE) + 1;
+  const t0y = Math.floor((top - reach) / TILE) - 1;
+  const t1y = Math.floor((py + down) / TILE) + 1;
+  let rugged = false;
+  for (let ty = t0y; ty <= t1y && !rugged; ty++) for (let tx = t0x; tx <= t1x; tx++) if (w.ground(tx, ty).rug > 0) { rugged = true; break; }
+  if (!rugged) return false;
+  // Auf dem Zellraster wie buildCells (Zellmitten), damit auch kleine Stufenzipfel erkannt werden
+  let cache = cellLevels.get(w);
+  if (!cache || cache.size > 400_000) cellLevels.set(w, (cache = new Map()));
+  const memo = cache;
+  const at = (cx: number, cy: number) => {
+    const key = cx * 70_000 + cy;
+    let v = memo.get(key);
+    if (v === undefined) memo.set(key, (v = levelAt(w, ((cx + 0.5) * CELL) / TILE, ((cy + 0.5) * CELL) / TILE)));
+    return v;
+  };
+  const c0x = Math.floor((px - rx) / CELL);
+  const c1x = Math.floor((px + rx) / CELL);
+  const c0y = Math.floor(top / CELL);
+  const c1y = Math.floor((py + down) / CELL);
+  const l = at(Math.floor(px / CELL), Math.floor(py / CELL));
+  for (let cx = c0x; cx <= c1x; cx++) {
+    for (let cy = c0y; cy <= c1y; cy++) if (at(cx, cy) !== l) return true;
+    // Felswand einer höheren Stufe weiter nördlich, die bis ins Rechteck hinabreicht
+    for (let k = 1; k <= FACE_CELLS; k++) {
+      const d = at(cx, c0y - k) - l;
+      if (d > 0) {
+        if (k * CELL <= FACE_PX * Math.min(MAX_FACE_LEVELS, d)) return true;
+        break;
+      }
+    }
+  }
+  return false;
+}
+
 /** Geländeraster eines Chunks: Stufe und Zellart je 4-px-Zelle, dazu Lage in der Wand fürs Zeichnen. */
 export interface ChunkCells {
   /** Zellen je Kante. */

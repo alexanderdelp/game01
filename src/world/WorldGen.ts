@@ -4,10 +4,20 @@ const TREES = new Set<DecorKind>(['oak', 'pine', 'snowpine', 'palm', 'deadtree',
 /** Biome mit geschlossenem Baumbestand (Lichtungen statt Haine). */
 const WOODED = new Set<B>([B.Forest, B.Jungle, B.Tundra, B.Snow, B.Swamp]);
 const YOUNG: Partial<Record<DecorKind, DecorKind>> = { oak: 'youngoak', pine: 'youngpine' };
+/**
+ * Freiraum zu Höhenkanten je Dekorationsart (M26): [seitlich, nach Norden, nach Süden] in Pixeln ab dem Fußpunkt.
+ * Hohe Objekte ragen nach Norden; flache (Büschel, Blumen) dürfen nah heran. Unbekannte Arten: CLEAR_DEFAULT.
+ */
+const CLEAR: Partial<Record<DecorKind, [number, number, number]>> = {
+  oak: [32, 48, 24], palm: [32, 48, 24], pine: [28, 48, 24], snowpine: [28, 48, 24], deadtree: [28, 40, 24], pylon: [24, 40, 24],
+  youngoak: [24, 36, 24], youngpine: [24, 36, 24], cactus: [24, 36, 24], boulder: [32, 32, 24], scrap: [32, 32, 24],
+  tuft: [8, 8, 8], flowers: [8, 8, 8],
+};
+const CLEAR_DEFAULT: [number, number, number] = [24, 32, 24];
 import { Simplex2 } from './noise';
 import { WorldMeta } from './meta';
 import { hashString, rand2 } from './rng';
-import { RUGGED_H, TERRACE_SCALE, wallAt } from './terrain';
+import { RUGGED_H, TERRACE_SCALE, edgeNear, wallAt } from './terrain';
 
 export { RUGGED_H };
 
@@ -295,19 +305,23 @@ export class WorldGen {
     if (inTown && (meta.isPlaza(tx, ty) || rand2(this.seed, tx, ty, 79) < 0.85)) return null;
     const rules = BIOMES[b].decor;
     if (rules.length === 0) return null;
-    // Keine Pflanzen und Steine auf Felswänden (M24)
-    if (wallAt(this, tx * 32 + 16, ty * 32 + 24)) return null;
     const v = this.vegetation(tx, ty, b);
     let r = rand2(this.seed, tx, ty, 77);
+    // Im zerklüfteten Gebirge fällt Dekor an den Kanten weg (M26): auf den freien Terrassen dafür dichter
+    const crowd = this.ground(tx, ty).rug > 0 ? 1.5 : 1;
     for (const rule of rules) {
       const tree = TREES.has(rule.kind);
-      const density = rule.density * (tree ? v.trees : rule.kind === 'bush' ? 0.4 + v.trees * 0.5 : rule.kind === 'flowers' ? v.flowers : rule.kind === 'rock' || rule.kind === 'boulder' ? v.rocks : 1);
+      const density = crowd * rule.density * (tree ? v.trees : rule.kind === 'bush' ? 0.4 + v.trees * 0.5 : rule.kind === 'flowers' ? v.flowers : rule.kind === 'rock' || rule.kind === 'boulder' ? v.rocks : 1);
       if (r < density) {
         if (inTown && rule.kind !== 'flowers' && rule.kind !== 'tuft') return null;
         const variant = Math.floor(rand2(this.seed, tx, ty, 78) * 256);
         // Am Rand eines Hains wachsen junge, kleinere Bäume
         const young = tree && v.edge && YOUNG[rule.kind] && rand2(this.seed, tx, ty, 80) < 0.65;
-        return { tx, ty, kind: young ? YOUNG[rule.kind]! : rule.kind, variant };
+        const kind = young ? YOUNG[rule.kind]! : rule.kind;
+        // Nichts auf oder dicht an Stufenkanten und Felswänden (M24/M26): Abstand statt Verdeckung
+        const [rx, up, down] = CLEAR[kind] ?? CLEAR_DEFAULT;
+        if (edgeNear(this, tx * 32 + 16, ty * 32 + 28, rx, up, down)) return null;
+        return { tx, ty, kind, variant };
       }
       r -= density;
     }
