@@ -243,6 +243,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.spawn = spawn;
     debugState.fogKnows = (tx: number, ty: number) => this.fog.knows(tx, ty);
     debugState.fogFraction = () => this.fog.fraction;
+    debugState.fogReveal = (tx: number, ty: number, r: number) => void this.fog.reveal(tx, ty, r);
     debugState.teleport = (tx: number, ty: number) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
     debugState.findEnemy = (kind?: string) => {
       const c = { x: Math.floor(spawn.tx / CHUNK_TILES), y: Math.floor(spawn.ty / CHUNK_TILES) };
@@ -807,6 +808,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   zoom(dir: number): void {
+    // Bei offener Karte zoomt die Karte (UI-Szene), nicht die Welt
+    if (debugState.mapOpen) return;
     this.zoomIndex = Phaser.Math.Clamp(this.zoomIndex + dir, 0, ZOOMS.length - 1);
     this.cameras.main.setZoom(ZOOMS[this.zoomIndex]);
   }

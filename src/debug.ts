@@ -31,6 +31,7 @@ export const debugState = {
   /** M20: Fog of War */
   fogKnows: (_tx: number, _ty: number): boolean => false,
   fogFraction: (): number => 0,
+  fogReveal: (_tx: number, _ty: number, _r: number): void => {},
   /** Kampf-Arena */
   arenaSpawn: (_kind: string): void => {},
   arenaTune: (_id: string, _v: number): void => {},
@@ -38,6 +39,10 @@ export const debugState = {
   titleStart: (_seed: string): void => {},
   lastShareLink: '',
   mapReady: false,
+  /** Zoomstufe der Weltkarte und Auflösung des feinen Ausschnitts (Kacheln je Pixel, 0 = keiner) */
+  mapZoom: 1,
+  mapDetail: 0,
+  mapZoomBy: (_dir: number): void => {},
   teleport: (_tx: number, _ty: number): void => {},
   findShore: (): { tx: number; ty: number } | null => null,
   npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],

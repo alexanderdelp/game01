@@ -2,7 +2,7 @@
 /** Web Worker: erzeugt Chunk-Daten und Bodenpixel abseits des Haupt-Threads. */
 import { WorldGen } from '../world/WorldGen';
 import { ChunkPainter } from './chunkPixels';
-import type { ChunkRequest, ChunkResult, OverviewResult } from './chunkProtocol';
+import type { ChunkRequest, ChunkResult, OverviewResult, RegionResult } from './chunkProtocol';
 
 let world: WorldGen | null = null;
 let painter: ChunkPainter | null = null;
@@ -19,6 +19,14 @@ self.onmessage = (ev: MessageEvent<ChunkRequest>) => {
   if (msg.type === 'overview') {
     const o = world.overview(msg.step);
     const res: OverviewResult = { type: 'overview', size: o.size, biomes: o.biomes.buffer as ArrayBuffer };
+    scope.postMessage(res, [res.biomes]);
+    return;
+  }
+  if (msg.type === 'region') {
+    const biomes = new Uint8Array(msg.size * msg.size);
+    const half = msg.step >> 1;
+    for (let y = 0; y < msg.size; y++) for (let x = 0; x < msg.size; x++) biomes[y * msg.size + x] = world.biomeAt(msg.x0 + x * msg.step + half, msg.y0 + y * msg.step + half);
+    const res: RegionResult = { ...msg, biomes: biomes.buffer as ArrayBuffer };
     scope.postMessage(res, [res.biomes]);
     return;
   }
