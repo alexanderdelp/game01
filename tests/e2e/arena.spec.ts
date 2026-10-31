@@ -176,3 +176,71 @@ test('M25 R4: Gegner nach Art, Anzahl, Ort (zufällig / vorne / Klick) und als W
   await ready(page);
   await expect(page.getByRole('button', { name: 'per Klick' })).toHaveClass(/on/);
 });
+
+test('M28: diagonal zielen – Hieb und Splitterblitz treffen diagonal, Schwung-Bogen sichtbar', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/?arena=1');
+  await ready(page);
+  await G(page, "g.arenaSetLayout('open')");
+  await expect.poll(() => G<string>(page, 'g.ready && g.arenaLayout'), { timeout: 30_000 }).toBe('open');
+  await page.getByRole('checkbox', { name: 'Gegner eingefroren' }).check();
+  await page.getByRole('checkbox', { name: 'Besiegte kommen wieder' }).uncheck();
+  await page.getByRole('button', { name: 'Alle entfernen' }).click();
+  // Zielen nach unten rechts (beide Tasten), dann stehen: Ziel bleibt, Sprite zeigt die Seitenansicht
+  await G(page, 'g.teleport(20, 10)');
+  await page.keyboard.down('d');
+  await page.keyboard.down('s');
+  await expect.poll(() => G<number>(page, 'g.player.aim.x')).toBeGreaterThan(0.5);
+  await page.keyboard.up('d');
+  await page.keyboard.up('s');
+  await expect.poll(() => G<boolean>(page, 'g.player.moving')).toBe(false);
+  const S = Math.SQRT1_2;
+  expect(await G<{ x: number; y: number }>(page, 'g.player.aim')).toEqual({ x: S, y: S });
+  expect(await G<string>(page, 'g.player.facing')).toBe('right');
+  // R1: ein Schleim diagonal vorn, einer quer daneben (unten links). Gegner erscheinen nie direkt am Helden,
+  // also erst einsetzen, dann den Helden dazwischen stellen.
+  await G(page, 'g.teleport(10, 4)');
+  await G(page, "g.arenaSpawnAt('slime', 21, 11)");
+  await G(page, "g.arenaSpawnAt('slime', 19, 11)");
+  await expect.poll(() => G<number>(page, 'g.enemies.length')).toBe(2);
+  expect(await G<string>(page, "g.enemies.map((e) => Math.floor(e.x / 32) + ',' + Math.floor((e.y - 4) / 32)).sort().join(' ')")).toBe('19,11 21,11');
+  await G(page, 'g.teleport(20, 10)');
+  const hp0 = await G<{ id: string; x: number; hp: number }[]>(page, 'g.enemies.map((e) => ({ id: e.id, x: e.x, hp: e.hp }))');
+  const diag = hp0.find((e) => e.x > 20 * 32 + 16)!;
+  const side = hp0.find((e) => e.x < 20 * 32 + 16)!;
+  const hpOf = (id: string) => G<number>(page, `(g.enemies.find((e) => e.id === '${id}') || { hp: -1 }).hp`);
+  const arcs0 = await G<number>(page, 'g.arcs');
+  await page.keyboard.press('Space');
+  // R3: Schwung-Bogen erscheint – Bildschirmfoto mitten im Hieb
+  await expect.poll(() => G<number>(page, 'g.arcs')).toBe(arcs0 + 1);
+  await page.screenshot({ path: 'screenshots/m28-schwung-diagonal.png' });
+  await expect.poll(() => hpOf(diag.id)).toBeLessThan(diag.hp);
+  expect(await hpOf(side.id)).toBe(side.hp);
+  // R2: Splitterblitz fliegt diagonal und trifft einen weiter entfernten Gegner unten rechts
+  await page.getByRole('button', { name: 'Alle entfernen' }).click();
+  await G(page, 'g.teleport(20, 10)');
+  await G(page, "g.arenaSpawnAt('slime', 24, 14)");
+  expect(await G<string>(page, "g.enemies.map((e) => Math.floor(e.x / 32) + ',' + Math.floor((e.y - 4) / 32)).join(' ')")).toBe('24,14');
+  await expect.poll(() => G<number>(page, 'g.enemies.length')).toBe(1);
+  const far = (await G<{ id: string; hp: number }[]>(page, 'g.enemies.map((e) => ({ id: e.id, hp: e.hp }))'))[0];
+  await expect.poll(() => G<boolean>(page, '!g.swinging')).toBe(true);
+  await page.keyboard.press('k');
+  await expect.poll(() => hpOf(far.id), { timeout: 20_000 }).toBeLessThan(far.hp);
+  // Vergleich der Diagonal-Ansicht: Vorder-/Rückansicht statt Seitenansicht
+  await G(page, "g.arenaDiagonal('vertical')");
+  await page.getByRole('button', { name: 'Alle entfernen' }).click();
+  await G(page, 'g.teleport(20, 10)');
+  await page.keyboard.down('d');
+  await page.keyboard.down('s');
+  await expect.poll(() => G<string>(page, 'g.player.facing')).toBe('down');
+  await page.keyboard.up('d');
+  await page.keyboard.up('s');
+  await G(page, 'g.teleport(20, 10)');
+  await expect.poll(() => G<boolean>(page, '!g.swinging && !g.player.moving')).toBe(true);
+  const arcs1 = await G<number>(page, 'g.arcs');
+  await page.keyboard.press('Space');
+  await expect.poll(() => G<number>(page, 'g.arcs')).toBe(arcs1 + 1);
+  await page.screenshot({ path: 'screenshots/m28-schwung-diagonal-vorderansicht.png' });
+  expect(errors).toEqual([]);
+});

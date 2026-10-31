@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { FRAME } from '../character/lpc';
+import { aimFrom, facingForAim, facingVector, nextAim, type Vec } from '../combat/combat';
 import { TILE_PX } from '../render/chunkPixels';
 import { facingFrom, moveBox, type Box, type Facing } from '../world/collision';
 
@@ -21,6 +22,18 @@ export class Actor {
   readonly sprite: Phaser.GameObjects.Sprite;
   readonly shadow: Phaser.GameObjects.Ellipse;
   facing: Facing = 'down';
+  /**
+   * Zielrichtung in 8 Richtungen (Einheitsvektor, M28), getrennt von der Sprite-Blickrichtung `facing`
+   * (LPC kennt nur 4). Folgt beim Laufen der Eingabe, bleibt im Stand und während einer Aktion.
+   */
+  aim: Vec = { x: 0, y: 1 };
+  /**
+   * Blickrichtung bei diagonaler Eingabe: `side` = Seitenansicht (Spieler, M28), `vertical` = Vorder-/Rückansicht
+   * mit 8-Richtungs-Zielen (Vergleich in der Arena), `default` = bisheriges Verhalten (NPCs, Mitspieler).
+   */
+  diagonalFacing: 'side' | 'vertical' | 'default' = 'default';
+  /** Loslass-Toleranz der Diagonale (s), siehe `nextAim`. */
+  private aimHeld = 0;
   moving = false;
   baseSpeed = 150;
 
@@ -52,6 +65,7 @@ export class Actor {
       return;
     }
     this.moving = len > 0.15;
+    if (!this.moving) this.aimHeld = 0;
     if (this.moving) {
       const nx = dirX / Math.max(1, len);
       const ny = dirY / Math.max(1, len);
@@ -61,7 +75,13 @@ export class Actor {
       this.y = moved.y + FOOT_H;
       // Während einer Aktion bleiben Blickrichtung und Animation (der Hieb geht dorthin, wohin man beim Drücken sah).
       if (!this.busy) {
-        this.facing = facingFrom(nx, ny, this.facing);
+        if (this.diagonalFacing !== 'default') {
+          ({ aim: this.aim, held: this.aimHeld } = nextAim(this.aim, aimFrom(nx, ny), this.aimHeld, dt));
+          this.facing = facingForAim(this.aim, this.diagonalFacing);
+        } else {
+          this.facing = facingFrom(nx, ny, this.facing);
+          this.aim = facingVector(this.facing);
+        }
         this.play(`walk:${this.facing}`, sprint ? 1.5 : 1);
       }
     } else if (!this.busy) {
@@ -101,7 +121,13 @@ export class Actor {
 
   /** Dreht die Figur zu einem Punkt. */
   face(x: number, y: number): void {
-    this.facing = facingFrom(x - this.x, y - this.y, this.facing);
+    if (this.diagonalFacing !== 'default') {
+      this.aim = aimFrom(x - this.x, y - this.y) ?? this.aim;
+      this.facing = facingForAim(this.aim, this.diagonalFacing);
+    } else {
+      this.facing = facingFrom(x - this.x, y - this.y, this.facing);
+      this.aim = facingVector(this.facing);
+    }
     if (!this.busy) this.play(`idle:${this.facing}`, 1);
   }
 

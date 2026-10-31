@@ -3,7 +3,7 @@ import { buildCharacter, preloadCharacter } from '../character/CharacterFactory'
 import { dress } from '../character/outfit';
 import { RARITY_NAME, starterKit, type Item, type Slot } from '../rpg/items';
 import { ANIMS, DEFAULT_APPEARANCE, ROWS, type Appearance, type Race } from '../character/lpc';
-import { PLAYER_MOVE, PLAYER_SWING, facingVector, swingCycle } from '../combat/combat';
+import { PLAYER_MOVE, PLAYER_SWING, swingCycle } from '../combat/combat';
 import { ENEMIES, type EnemyKind } from '../combat/enemies';
 import { DEFAULTS, TUNABLES, applySnapshot, exportCode, snapshot } from '../combat/tuning';
 import { debugState } from '../debug';
@@ -190,6 +190,9 @@ export class ArenaScene extends Phaser.Scene {
     debugState.arenaBlocked = (x, y, w, h) => blockedIn(l, { x, y, w, h });
     debugState.arenaWalkable = (tx, ty) => walkableIn(l, tx, ty);
     debugState.arenaSpawnAt = (kind, tx, ty) => this.spawnGroup([kind as EnemyKind], { tx, ty });
+    debugState.arenaDiagonal = (m) => {
+      this.player.diagonalFacing = m === 'vertical' ? 'vertical' : 'side';
+    };
     debugState.teleport = (tx, ty) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 2);
     debugState.arenaToScreen = (x, y) => {
       const r = this.game.canvas.getBoundingClientRect();
@@ -260,7 +263,7 @@ export class ArenaScene extends Phaser.Scene {
       return;
     }
     if (this.place === 'front') {
-      const v = facingVector(this.player.facing);
+      const v = this.player.aim;
       const tx = Math.floor((this.player.x + v.x * 4 * TILE_PX) / TILE_PX);
       const ty = Math.floor((this.player.y - 4 + v.y * 4 * TILE_PX) / TILE_PX);
       this.spawnGroup(this.kindsFor(sel), { tx, ty });
@@ -415,7 +418,8 @@ export class ArenaScene extends Phaser.Scene {
         'WASD laufen · Leertaste Hieb · K Zauber · Mausrad Zoom',
       ].filter(Boolean).join('\n');
     }
-    debugState.player = { x: this.player.x, y: this.player.y, facing: this.player.facing, moving: this.player.moving };
+    debugState.player = { x: this.player.x, y: this.player.y, facing: this.player.facing, moving: this.player.moving, aim: { ...this.player.aim } };
+    debugState.arcs = this.combat.arcs;
     debugState.attacks = this.combat.attacks;
     debugState.swinging = this.combat.swinging;
     debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state }));
