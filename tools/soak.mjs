@@ -1,8 +1,9 @@
-// Belastungstest: simulierte Spielsitzung. Aufruf: node tools/soak.mjs <sekunden> (Vorschau-Server muss laufen)
+// Belastungstest: simulierte Spielsitzung. Aufruf: node tools/soak.mjs <sekunden> [mobile] (Vorschau-Server muss laufen)
 import { chromium } from 'playwright';
 const secs = Number(process.argv[2] ?? 180);
 const b = await chromium.launch();
-const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
+const mobile = process.argv[3] === 'mobile';
+const p = await b.newPage(mobile ? { viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true } : { viewport: { width: 1280, height: 720 } });
 const errs = [];
 p.on('pageerror', (e) => errs.push(e.message + ' @ ' + (e.stack ?? '').split('\n')[1]));
 p.on('console', (m) => m.type() === 'error' && errs.push('console: ' + m.text()));
@@ -21,6 +22,7 @@ while (Date.now() - t0 < secs * 1000) {
   await p.keyboard.up('Shift');
   await p.keyboard.up(k);
   await p.keyboard.press('Space');
+  await p.keyboard.press('k');
   await p.keyboard.press('e');
   if (i % 7 === 3) { await p.keyboard.press('m'); await p.waitForTimeout(300); await p.keyboard.press('m'); }
   if (i % 9 === 5) { await p.keyboard.press('c'); await p.waitForTimeout(200); await p.keyboard.press('c'); }
