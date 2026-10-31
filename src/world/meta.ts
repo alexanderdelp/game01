@@ -80,6 +80,15 @@ const REALM_A = ['Var', 'El', 'Thar', 'Ny', 'Kor', 'Ae', 'Zan', 'Mor', 'Ili', 'D
 const REALM_B = ['ion', 'dor', 'heim', 'ra', 'vik', 'thal', 'kor', 'esse', 'mark', 'yr', 'ane', 'gard'];
 
 const pick = <T>(rnd: () => number, a: readonly T[]) => a[Math.floor(rnd() * a.length)];
+
+/** Fisher-Yates-Mischen (deterministisch mit dem gegebenen Zufall). */
+function shuffle<T>(a: T[], rnd: () => number): T[] {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 const GOOD = new Set<B>([B.Grassland, B.Forest, B.Savanna, B.Beach, B.Tundra, B.Desert, B.CrystalGrove, B.ScrapWastes, B.Jungle, B.Snow]);
 
 export class WorldMeta {
@@ -151,7 +160,7 @@ export class WorldMeta {
   /** Reiche paarweise verfeinden (eigener Zufallsstrom, damit die übrige Welt gleich bleibt). */
   private pairRivals(): void {
     const rnd = mulberry32(this.t.seed ^ 0x77ab);
-    const ids = this.realms.map((r) => r.id).sort(() => rnd() - 0.5);
+    const ids = shuffle(this.realms.map((r) => r.id), rnd);
     for (let i = 0; i + 1 < ids.length; i += 2) {
       this.rivals[ids[i]] = ids[i + 1];
       this.rivals[ids[i + 1]] = ids[i];
@@ -352,7 +361,7 @@ export function generateLore(seed: number, meta: { realms: Realm[]; settlements:
   const artAcc = art.acc.replace('{world}', worldName);
   const threat = pick(rnd, THREATS);
   const age = 200 + Math.floor(rnd() * 800);
-  const shuffled = [...meta.realms].sort(() => rnd() - 0.5);
+  const shuffled = shuffle([...meta.realms], rnd);
   // Der Krieg der Chronik ist der Streit eines Rivalenpaares (M15)
   const r1 = shuffled[0];
   const r2 = meta.rivals?.[r1.id] !== undefined ? meta.realms[meta.rivals[r1.id]] : shuffled[1];
