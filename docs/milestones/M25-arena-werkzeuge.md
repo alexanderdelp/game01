@@ -36,4 +36,20 @@ Waffen und Werten; echte neue Waffentypen (Schwert, Speer, Bogen …) später al
 
 ## Ergebnis
 
-_offen_
+Erreicht am 2026-10-31 (Branch `modul/kampf-arena-werkzeuge`).
+
+| # | Ergebnis | Nachweis |
+|---|---|---|
+| R1 | 5 Aufbauten (Offen, Säulen, Wald & Felsen, Engpässe, Sumpf) in `src/arena/layouts.ts` als Daten (Kachelraster Boden/Mauer/Wasser/Sumpf + Dekor mit Kollisionsbox), Arena 40 × 26. Wahl gespeichert (`arena:layout`), Wechsel startet die Szene neu. | `arena.spec.ts` R1, `m25.test.ts` (alle freien Kacheln erreichbar) |
+| R2 | Gegner am Boden planen einen Umweg, wenn die gerade Linie versperrt ist (`src/combat/pathing.ts`: Sichtlinie + Breitensuche, alle 0,5 s, max. 600 Kacheln). Gilt auch in der Welt; Flieger unverändert. Ohne Umweg blieb der Räuber im Test an der Mauer stehen. | `arena.spec.ts` R2, Screenshot `m25-arena-chase.png` |
+| R3 | Waffe: ohne / Alter Dolch / Dolch gewöhnlich, selten, episch (Stufe 1–20, fester Zufall → wiederholbar). Werte über `finalStats` wie im Heldenfenster (Held Stufe 1 mit seiner übrigen Kleidung), Grafik über `dress`. Wahl gespeichert (`arena:weapon`). | `arena.spec.ts` R3, `m25.test.ts` |
+| R4 | Anzahl 1×/3×/5×, Ort zufällig / vor dem Helden / per Klick, „Welle (6 gemischt)“, Gegner-Zähler in der Statistik. Ort und Anzahl gespeichert (`arena:spawn`). | `arena.spec.ts` R4 |
+| R5 | Kampftests der Welt grün (`m4-combat`, `m17-feel`, `m14-explore`, Unit-Tests). | E2E |
+
+Weiteres: Mausrad zoomt die Arena (1× / 1,5× / 2×). Screenshots: `screenshots/m25-arena-*.png`.
+
+Entscheidungen:
+- Gegner werden im Sumpf **nicht** langsamer: Gegner nutzen `speedAt` bisher gar nicht; das zu ändern hätte den Kampf in
+  der Welt (Hänge) verändert. Nur der Held wird gebremst.
+- Arena-Held = Stufe 1 ohne Talente, damit allein die Waffe den Unterschied macht. Dadurch ist der Grundangriff jetzt
+  15 statt fest 14 (Alter Dolch +1) – genau wie im Spiel.

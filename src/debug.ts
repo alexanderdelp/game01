@@ -41,6 +41,17 @@ export const debugState = {
   /** Kampf-Arena */
   arenaSpawn: (_kind: string): void => {},
   arenaTune: (_id: string, _v: number): void => {},
+  /** M25: Gelände-Aufbau, Waffe und Gegner-Einsetzen der Arena */
+  arenaLayout: '',
+  arenaSetLayout: (_id: string): void => {},
+  arenaWeapon: null as { choice: string; level: number; name: string; attack: number; speed: number; look: string } | null,
+  arenaSetWeapon: (_choice: string, _level?: number): void => {},
+  arenaSpawnOpts: { count: 1, place: 'random' } as { count: number; place: string },
+  arenaBlocked: (_x: number, _y: number, _w: number, _h: number): boolean => false,
+  arenaWalkable: (_tx: number, _ty: number): boolean => true,
+  arenaSpawnAt: (_kind: string, _tx: number, _ty: number): void => {},
+  /** Weltpunkt → Bildschirmpunkt (für Klicks in Tests) */
+  arenaToScreen: (_x: number, _y: number): { x: number; y: number } => ({ x: 0, y: 0 }),
   bannerTitle: '',
   titleStart: (_seed: string): void => {},
   lastShareLink: '',
