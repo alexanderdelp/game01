@@ -16,14 +16,19 @@ Kontext zu haben – und mehrere Agenten gleichzeitig arbeiten lassen, ohne dass
 
 ## Module
 
-| Modul | Ordner | Isoliert starten / prüfen | Anleitung | Schnittstelle |
-|---|---|---|---|---|
-| **Kampf** | `src/combat`, `src/arena`, `src/entities/{PlayerCombat,Enemy,Actor}.ts` | `npm run arena` (Kampf-Arena) | [kampf.md](kampf.md) | `CombatTerrain`, `CombatCtx`, `PLAYER_SWING`, `PLAYER_MOVE`, `ENEMIES` |
-| Welt (Gelände) | `src/world` (ohne `meta.ts`), `src/render/chunkPixels.ts` | `npx vite-node tools/preview-area.ts`, `tools/preview-map.ts`, `tools/biome-stats.ts` | – (folgt bei Bedarf) | `WorldGen.biomeAt/decorationAt/climate` |
-| World Building | `src/world/meta.ts`, `src/world/lore` | Unit-Tests `m8`, `m14`, `m15`, `m19` | – | `WorldMeta` |
-| Figuren | `src/character` | Erschaffungsbildschirm (`?seed=neu`) | – | `Appearance`, `layersFor`, `buildCharacter` |
+| Modul | Ordner / Dateien | Isoliert prüfen | Anleitung |
+|---|---|---|---|
+| **Kampf** | `src/combat`, `src/arena`, `src/entities/{PlayerCombat,Enemy,Actor}.ts` | `npm run arena` | [kampf.md](kampf.md) |
+| **Welt** (Gelände, Höhen, Sicht, Darstellung) | `src/world` (ohne `meta.ts`, `npcs.ts`), `src/render` (ohne `TownDecor`, `Markers`), `src/scenes/world/WorldSight.ts` | `tools/preview-area.ts`, `preview-map.ts`, `biome-stats.ts` | [welt.md](welt.md) |
+| **Weltenbau** (Reiche, Orte, lebendige Welt) | `src/world/{meta,npcs}.ts`, `src/sim`, `src/state/worldState.ts`, `src/render/{TownDecor,Markers}.ts`, `src/entities/NpcManager.ts` | Unit-Tests | [weltenbau.md](weltenbau.md) |
+| **Inhalte** (Quests, Gespräche) | `src/quests`, `src/scenes/world/WorldTalk.ts` | Unit-Tests, E2E m7/m15 | [inhalte.md](inhalte.md) |
+| **Figur** (Völker, Aussehen, Ausrüstung, Fortschritt) | `src/character`, `src/rpg`, `src/entities/HeroController.ts`, `src/scenes/CreateScene.ts`, `src/ui/HeroPanel.ts` | Erschaffungsbildschirm | [figur.md](figur.md) |
+| **Oberfläche** (HUD, Karte, Menüs, Klang) | `src/scenes/{UIScene,TitleScene}.ts`, `src/ui`, `src/audio` | Spiel in Handy- und Laptop-Größe | [oberflaeche.md](oberflaeche.md) |
+| **Netz** (geteilte Welt, Live) | `src/net`, `src/state/{share,sync}.ts`, `src/entities/RemotePlayers.ts`, `src/scenes/world/WorldNet.ts`, `server/` | `node server/sync-server.mjs` | [netz.md](netz.md) |
 
-Weitere Module (Quests, Simulation, Netz, UI) bekommen eine Anleitung, sobald jemand fokussiert daran arbeiten will.
+**Knotenpunkte** (gehören dem Koordinator): `src/scenes/WorldScene.ts`, `src/main.ts`, `src/world/biomes.ts`,
+`package.json`, `tests/e2e/helpers.ts`, `CLAUDE.md`, `docs/DESIGN.md`. Wie mehrere Agenten zusammenarbeiten:
+[KOORDINATION.md](KOORDINATION.md).
 
 ## Einen fokussierten Chat starten
 
@@ -34,7 +39,8 @@ In einer neuen Claude-Code-Sitzung im Projektordner:
 ```
 
 Der Skill (`.claude/skills/kampf/SKILL.md`) lädt nur die Kampf-Anleitung, startet die Arena und arbeitet in deren
-Grenzen. Für andere Module entsprechend `/welt …` usw., sobald es sie gibt.
+Grenzen. Für die anderen Module: `/modul <name> <auftrag>` (z. B. `/modul welt Wasserfälle an Klippen`).
+Koordinieren: `/koordinieren <wunsch>`.
 
 ## Mehrere Agenten gleichzeitig
 

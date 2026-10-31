@@ -12,32 +12,27 @@ import { load, save } from '../game/save';
 import { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
 import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
-import { enemiesForChunk } from '../combat/enemies';
-import { generateItem, type Item, type Slot } from '../rpg/items';
+import type { Item, Slot } from '../rpg/items';
 import { dress } from '../character/outfit';
-import { MAX_ACTIVE, accept, isReady, offerFor, onPosition, onTalk, progressText, turnIn, type Quest } from '../quests/quests';
-import { FACTIONS, type Poi } from '../world/meta';
-import { LocalWorldStore, WorldState, isDefeated, reputationRank } from '../state/worldState';
+import { isReady, onPosition, progressText } from '../quests/quests';
+import { FACTIONS } from '../world/meta';
+import { LocalWorldStore, WorldState, isDefeated } from '../state/worldState';
 import { TownDecor } from '../render/TownDecor';
 import { LiveWorld, worldNow } from '../sim/LiveWorld';
 import { playerId } from '../game/identity';
 import { PAD_BUTTONS, padDirection } from '../game/gamepad';
 import { Markers } from '../render/Markers';
-import { decodeShare, shareLink } from '../state/share';
 import { SyncClient, syncUrlFromLocation } from '../state/sync';
-import { SIGN_MAX, type WorldEvent } from '../state/worldState';
-import { CHAT_MAX, LiveSession, type LiveMsg } from '../net/live';
+import { LiveSession } from '../net/live';
 import { RemotePlayers } from '../entities/RemotePlayers';
-import { TICK_MS, caravanPos, newsBetween, type News } from '../sim/simulation';
+import { TICK_MS, newsBetween, type News } from '../sim/simulation';
 
-const POTION_PRICE = 10;
-/** Barbier (Aussehen ändern) */
-const BARBER_PRICE = 20;
-import { addItem } from '../rpg/progression';
-import { CHUNK_TILES, WORLD_TILES, WORLD_VERSION, WorldGen } from '../world/WorldGen';
-import { ExploredMap } from '../world/fog';
-import { MAX_VIEW, sees, viewshed } from '../world/sight';
-import { tileHeight } from '../world/terrain';
+import { WORLD_TILES, WORLD_VERSION, WorldGen } from '../world/WorldGen';
+import type { ExploredMap } from '../world/fog';
+import { WorldNet, foreignNews } from './world/WorldNet';
+import { WorldSight } from './world/WorldSight';
+import { WorldTalk } from './world/WorldTalk';
+import { installDebugHooks } from './world/worldDebug';
 
 const ZOOMS = [1, 2, 3, 4];
 
@@ -49,10 +44,6 @@ interface SavedPlayer {
 }
 
 /** Die Spielwelt: Chunks, Dekorationen und die Spielfigur. */
-/** Radius des Sichtfelds um den Helden in Kacheln (M24) und Kantenlänge des Sichtrasters. */
-const SIGHT_R = 24;
-const SIGHT_N = 2 * SIGHT_R + 1;
-
 export class WorldScene extends Phaser.Scene {
   world!: WorldGen;
   chunks!: ChunkManager;
@@ -64,8 +55,12 @@ export class WorldScene extends Phaser.Scene {
   towns!: TownDecor;
   live!: LiveWorld;
   signs!: Markers;
-  /** Fog of War: was der Held schon gesehen hat (M20). */
-  fog!: ExploredMap;
+  /** Sicht und Fog of War (M20, M24) */
+  sight!: WorldSight;
+  /** Gespräche, Geheimnisse, Quest-Markierungen */
+  talk!: WorldTalk;
+  /** Mitspieler und geteilte Welt (M11, M12) */
+  net!: WorldNet;
   sync?: SyncClient;
   live2?: LiveSession;
   remote!: RemotePlayers;
@@ -74,8 +69,6 @@ export class WorldScene extends Phaser.Scene {
   private liveTimer = 0;
   hero!: HeroController;
   private combatCtx!: CombatCtx;
-  /** NPC, mit dem gerade gesprochen wird. */
-  talkingTo: Npc | null = null;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private zoomIndex = 1;
   private saveTimer = 0;
@@ -106,12 +99,9 @@ export class WorldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
     this.state = new WorldState(this.world.seedName, new LocalWorldStore(), Date.now(), playerId());
-    this.fog = ExploredMap.decode(load<string>(`fog${WORLD_VERSION}:${this.world.seedName}`));
-    this.lastFogTile = { tx: -1, ty: -1 };
-    this.heights.clear();
-    this.sightTex = this.textures.exists('sight') ? (this.textures.get('sight') as Phaser.Textures.CanvasTexture) : this.textures.createCanvas('sight', SIGHT_N, SIGHT_N)!;
-    this.sightTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
-    this.sightImg = this.add.image(0, 0, 'sight').setOrigin(0, 0).setScale(TILE_PX).setDepth(900_000).setVisible(false);
+    this.sight = new WorldSight(this, this.world);
+    this.talk = new WorldTalk(this);
+    this.net = new WorldNet(this);
     // Bekannte Orte (Wegsteine) sind auch auf der Karte bekannt, z. B. aus älteren Spielständen
     for (const t of this.world.meta.settlements) if (this.state.d.discovered.has(`town:${t.id}`)) this.fog.reveal(t.tx, t.ty, 24);
     this.npcs = new NpcManager(this, this.world, this.chunks);
@@ -146,14 +136,14 @@ export class WorldScene extends Phaser.Scene {
     this.enemies.invasion = this.live.invasion;
     this.towns = new TownDecor(this, this.world, this.chunks, this.state, () => this.heroName, (id) => this.live.drift(id));
     this.signs = new Markers(this, this.chunks, this.state);
-    void this.importFromHash();
+    void this.net.importFromHash();
     const syncUrl = syncUrlFromLocation();
     if (syncUrl) {
-      this.sync = new SyncClient(syncUrl, this.state, (fresh) => this.onForeign(fresh, false));
+      this.sync = new SyncClient(syncUrl, this.state, (fresh) => this.net.onForeign(fresh, false));
       this.sync.start();
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.sync?.stop());
       // Live-Zusammenspiel über denselben Server (M12)
-      this.live2 = new LiveSession(syncUrl, this.world.seedName, (m) => this.onLive(m));
+      this.live2 = new LiveSession(syncUrl, this.world.seedName, (m) => this.net.onLive(m));
       this.live2.start();
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.live2?.stop());
       const onAttack = () => this.live2?.send({ type: 'attack', pid: this.state.pid });
@@ -221,13 +211,13 @@ export class WorldScene extends Phaser.Scene {
       }
     });
     kb.on('keydown-ENTER', () => this.chat());
-    kb.on('keydown-ONE', () => this.pendingActions.length > 0 && this.choose(0));
-    kb.on('keydown-TWO', () => this.pendingActions.length > 1 && this.choose(1));
-    kb.on('keydown-THREE', () => this.pendingActions.length > 2 && this.choose(2));
+    kb.on('keydown-ONE', () => this.talk.pendingActions.length > 0 && this.choose(0));
+    kb.on('keydown-TWO', () => this.talk.pendingActions.length > 1 && this.choose(1));
+    kb.on('keydown-THREE', () => this.talk.pendingActions.length > 2 && this.choose(2));
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => {
-      this.saveFog();
+      this.sight.save();
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
       this.hero.persist();
       this.state.flush();
@@ -250,223 +240,7 @@ export class WorldScene extends Phaser.Scene {
       if (missed.length) this.time.delayedCall(800, () => this.events.emit('news-summary', { hours: Math.round((now - lastSeen) / TICK_MS), news: missed }));
     }
     save(`seen:${this.world.seedName}`, now);
-    debugState.seed = this.world.seedName;
-    debugState.spawn = spawn;
-    debugState.fogKnows = (tx: number, ty: number) => this.fog.knows(tx, ty);
-    debugState.heightAt = (tx: number, ty: number) => this.heightAt(tx, ty);
-    debugState.seesTile = (tx: number, ty: number) => this.seesPx(tx * TILE_PX + 16, ty * TILE_PX + 16);
-    debugState.findCliff = () => {
-      const p = this.player.tile;
-      for (let r = 0; r < 120; r++) {
-        for (let dy = -r; dy <= r; dy++) {
-          for (let dx = -r; dx <= r; dx++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-            const tx = p.tx + dx;
-            const ty = p.ty + dy;
-            // drei Kacheln breit frei, darüber über die ganze Breite Wand, kein Pfad
-            let ok = true;
-            for (let k = -1; k <= 1 && ok; k++) {
-              ok = this.world.isWalkable(tx + k, ty) && this.world.isWalkable(tx + k, ty + 1) && !this.world.isWalkable(tx + k, ty - 1) && !this.world.meta.isRoad(tx + k, ty - 1);
-            }
-            if (ok) return { tx, ty };
-          }
-        }
-      }
-      return null;
-    };
-    debugState.fogFraction = () => this.fog.fraction;
-    debugState.fogReveal = (tx: number, ty: number, r: number) => void this.fog.reveal(tx, ty, r);
-    debugState.teleport = (tx: number, ty: number) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
-    debugState.findEnemy = (kind?: string) => {
-      const c = { x: Math.floor(spawn.tx / CHUNK_TILES), y: Math.floor(spawn.ty / CHUNK_TILES) };
-      for (let r = 1; r < 30; r++) {
-        for (let cy = c.y - r; cy <= c.y + r; cy++) {
-          for (let cx = c.x - r; cx <= c.x + r; cx++) {
-            if (Math.max(Math.abs(cx - c.x), Math.abs(cy - c.y)) !== r) continue;
-            const e = enemiesForChunk(this.world, cx, cy, spawn).find((s) => !kind || s.kind === kind);
-            if (e) return { tx: e.tx, ty: e.ty, kind: e.kind };
-          }
-        }
-      }
-      return null;
-    };
-    debugState.giveItem = (slot: string, base?: string) => {
-      const it = generateItem(3, Math.random, slot as Slot);
-      if (base) it.base = base;
-      addItem(this.hero.hero, it);
-      this.events.emit('hero-changed');
-      return it.id;
-    };
-    debugState.choose = (i: number) => this.choose(i);
-    debugState.heroLook = () => this.hero.appearance();
-    debugState.pledge = () => this.myPledge();
-    debugState.killEnemy = (id: string) => {
-      const e = this.enemies.enemies.get(id);
-      if (!e) return false;
-      e.hit(e.stats.hp + 1, this.player.x, this.player.y);
-      this.enemies.kill(e);
-      this.hero.onDefeated(e);
-      return true;
-    };
-    debugState.state = () => ({
-      chests: [...this.state.d.chests],
-      discovered: Object.fromEntries(this.state.d.discovered),
-      prosperity: Object.fromEntries(this.state.d.prosperity),
-      reputation: Object.fromEntries(this.state.d.reputation),
-      events: this.state.events.length,
-    });
-    debugState.recordQuest = (tx: number, ty: number) => this.recordQuest(tx, ty);
-    debugState.travel = (id: number) => this.travel(id);
-    debugState.placeSign = (text: string) => this.placeSign(text);
-    debugState.chat = (text: string) => this.chat(text);
-    debugState.remotes = () => [...this.remote.remotes.values()].map((r) => ({ pid: r.pid, name: r.name, x: r.x, y: r.y, chat: r.chat?.text ?? '' }));
-    debugState.liveConnected = () => !!this.live2?.connected;
-    debugState.shareLink = () => this.shareLink();
-    debugState.players = () => this.players();
-    debugState.syncStatus = () => this.sync?.status ?? 'aus';
-    debugState.syncNow = () => this.sync?.sync() ?? Promise.resolve();
-    debugState.caravanAt = (i: number) => {
-      const c = this.live.caravans[i];
-      return c ? caravanPos(c, worldNow()) : null;
-    };
-    debugState.meta = {
-      settlements: this.world.meta.settlements.map((s) => ({ id: s.id, name: s.name, tx: s.tx, ty: s.ty, capital: s.capital, realm: s.realm })),
-      rivals: [...this.world.meta.rivals],
-      obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
-      ruins: this.world.meta.ruins.map((r) => ({ tx: r.tx, ty: r.ty })),
-      chunkPoi: (cx: number, cy: number) => this.world.meta.chunkPoi(cx, cy),
-    };
-    debugState.damagePlayer = (n: number) => this.combat.hurt(n, this.player.x + 1, this.player.y, true);
-    debugState.findShore = () => {
-      // Nach rechts laufen, bis Wasser kommt: Kachel davor ist begehbar, ihr rechter Nachbar Wasser.
-      const { tx, ty } = this.player.tile;
-      for (let k = 0; k < 40; k++) {
-        const y = ty + (k % 2 ? -1 : 1) * Math.ceil(k / 2) * 7;
-        for (let x = tx; x < WORLD_TILES; x++) {
-          if (this.world.biomeAt(x + 1, y) > 1) continue;
-          if (this.world.isWalkable(x, y) && this.world.isWalkable(x, y + 1) && this.world.isWalkable(x - 1, y)) return { tx: x, ty: y };
-          break;
-        }
-      }
-      return null;
-    };
-  }
-
-  /** Live-Nachricht eines Mitspielers verarbeiten. */
-  private onLive(m: LiveMsg): void {
-    const r = this.remote.onMsg(m);
-    if (m.pid === this.state.pid) return;
-    if (m.type === 'hit') {
-      const e = this.enemies.enemies.get(m.enemy);
-      if (!e) return;
-      const killed = e.hit(m.dmg, m.x, m.y);
-      this.events.emit('damage', { x: e.x, y: e.body.y, amount: m.dmg, color: '#a8d8ff' });
-      if (killed) {
-        this.enemies.kill(e);
-        if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < 15 * TILE_PX) this.hero.shareXp(e);
-      }
-    }
-    if (m.type === 'chat') {
-      this.news.push({ tick: 0, text: `${m.name}: „${m.text}“` });
-      debugState.news = this.news.map((n) => n.text);
-    }
-    if (m.type === 'state' && r && !this.knownLive.has(m.pid)) {
-      this.knownLive.add(m.pid);
-      this.events.emit('float', { x: this.player.x, y: this.player.y - 60, text: `${m.name} ist da!`, color: '#2fe0d8' });
-    }
-  }
-
-  private readonly knownLive = new Set<string>();
-
-  /** Kurze Nachricht an alle live verbundenen Mitspieler. */
-  chat(text?: string): void {
-    const msg = (text ?? window.prompt(`Nachricht an Mitspieler (max. ${CHAT_MAX} Zeichen):`) ?? '').trim().slice(0, CHAT_MAX);
-    if (!msg) return;
-    this.myChat = { text: msg, until: Date.now() + 6000 };
-    this.live2?.send({ type: 'chat', pid: this.state.pid, name: this.heroName, text: msg });
-  }
-
-  /** Botschaft an der aktuellen Stelle hinterlassen (für Mitspieler). */
-  placeSign(text?: string): void {
-    const t = this.player.tile;
-    const msg = (text ?? window.prompt(`Botschaft für andere Spieler (max. ${SIGN_MAX} Zeichen):`) ?? '').trim().slice(0, SIGN_MAX);
-    if (!msg) return;
-    this.state.record({ t: Date.now(), by: this.heroName, type: 'sign', tx: t.tx, ty: t.ty, text: msg });
-    this.state.flush();
-    this.signs.refresh();
-    this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: 'Schild aufgestellt', color: '#ffd84a' });
-    void this.sync?.sync();
-  }
-
-  /** Fremde Ereignisse wurden übernommen: Darstellung auffrischen und berichten. */
-  onForeign(fresh: WorldEvent[], announce: boolean): void {
-    this.signs.refresh();
-    this.towns.refreshAll();
-    for (const id of this.state.d.chests) {
-      const [tx, ty] = id.slice(6).split(',');
-      this.chunks.builtImages.get(`${tx},${ty}`)?.setFrame('chest:1');
-    }
-    this.state.flush();
-    const others = fresh.filter((e) => e.pid !== this.state.pid);
-    const news = foreignNews(others, this.world.meta.settlements, this.world.meta.realms);
-    this.news.push(...news);
-    debugState.news = this.news.map((n) => n.text);
-    if (!others.length) return;
-    const names = [...new Set(others.map((e) => e.by))].join(', ');
-    if (announce) this.events.emit('news-summary', { hours: 0, title: `Welt von ${names} übernommen (${others.length} Ereignisse)`, news });
-    else this.events.emit('float', { x: this.player.x, y: this.player.y - 60, text: `Neues von ${names}`, color: '#2fe0d8' });
-  }
-
-  /** Teilen-Link im Anker übernehmen (#w=…). */
-  private async importFromHash(): Promise<void> {
-    const m = /^#w=(.+)$/.exec(location.hash);
-    if (!m) return;
-    history.replaceState(null, '', `${location.pathname}${location.search}`);
-    const p = await decodeShare(m[1]);
-    if (!p || p.seed !== this.world.seedName) return;
-    const fresh = this.state.mergeIn(p.events);
-    this.onForeign(fresh, true);
-  }
-
-  async shareLink(): Promise<string> {
-    this.state.flush();
-    return shareLink({ seed: this.world.seedName, events: this.state.events });
-  }
-
-  /** Datei-Import (Weltpaket). */
-  async importFile(file: File): Promise<number> {
-    try {
-      const p = JSON.parse(await file.text()) as { seed: string; events: WorldEvent[] };
-      if (p.seed !== this.world.seedName) return -1;
-      const fresh = this.state.mergeIn(p.events);
-      this.onForeign(fresh, true);
-      return fresh.length;
-    } catch {
-      return -1;
-    }
-  }
-
-  exportFile(): void {
-    this.state.flush();
-    const blob = new Blob([JSON.stringify({ seed: this.world.seedName, events: this.state.events })], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `welt-${this.world.seedName}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  }
-
-  /** Mitspieler (aus dem Protokoll). */
-  players(): { pid: string; name: string; events: number }[] {
-    const map = new Map<string, { pid: string; name: string; events: number }>();
-    for (const e of this.state.events) {
-      const pid = e.pid ?? e.by;
-      const p = map.get(pid) ?? { pid, name: e.by, events: 0 };
-      p.name = e.by || p.name;
-      p.events++;
-      map.set(pid, p);
-    }
-    return [...map.values()].filter((p) => p.name);
+    installDebugHooks(this, spawn);
   }
 
   /** Zurück zum Titelbildschirm (alles wird gespeichert). */
@@ -500,322 +274,65 @@ export class WorldScene extends Phaser.Scene {
     this.scene.start('create', { seed: this.world.seedName, edit: true, cost });
   }
 
-  /** Spricht den nächsten NPC an bzw. blättert/schließt den Dialog. */
-  interact(): void {
-    if (this.dialogOpen) return this.endTalk();
-    const mk = this.signs.nearest(this.player.x, this.player.y);
-    const poi = this.nearestPoi();
-    const npc = this.npcs.nearest(this.player);
-    const npcDist = npc ? Math.hypot(npc.actor.x - this.player.x, npc.actor.y - this.player.y) : Infinity;
-    if (mk && mk.dist < (poi?.dist ?? Infinity) && mk.dist < npcDist) {
-      return this.say(mk.kind === 'sign' ? `Botschaft von ${mk.by}` : 'Grabstein', mk.kind === 'sign' ? 'Schild' : 'Erinnerung', mk.text);
-    }
-    if (poi && (!npc || poi.dist < Math.hypot(npc.actor.x - this.player.x, npc.actor.y - this.player.y))) return this.usePoi(poi.poi);
-    if (!npc) return;
-    npc.talking = true;
-    this.talkingTo = npc;
-    this.player.face(npc.actor.x, npc.actor.y);
-    const log = this.hero.quests;
-    const now = Date.now();
-    const say = (text: string, choices?: [string, () => void][]) => this.say(npc.spawn.name, npc.role.name, text, choices);
-    // 1. Botengang an diesen NPC
-    const delivered = onTalk(log, npc.spawn.id);
-    if (delivered) {
-      const r = turnIn(log, delivered.id, now);
-      this.recordQuest(delivered.giverTx, delivered.giverTy);
-      return say(`Ein Brief von ${delivered.giverName}? Danke! (${r ? this.hero.reward(r) : ''})`);
-    }
-    // 2. Herrscher: Treueschwur (M15)
-    if (npc.spawn.role === 'ruler') return this.rulerTalk(npc.spawn.name, npc.spawn.tx, npc.spawn.ty);
-    // 3. Barbier: Aussehen ändern gegen Splitter (Feedback: nicht einfach im Heldenfenster)
-    if (npc.spawn.role === 'barber') {
-      const h = this.hero.hero;
-      if (h.shards < BARBER_PRICE) return say(`Ein neuer Schnitt kostet ${BARBER_PRICE} ◆. Komm wieder, wenn du genug Splitter hast.`);
-      return say(`Neue Frisur oder neue Kleider gefällig? Kostet ${BARBER_PRICE} ◆ – nur, wenn du etwas änderst.`, [
-        [`Zum Spiegel (${BARBER_PRICE} ◆)`, () => this.editAppearance(BARBER_PRICE)],
-        ['Nein danke', () => {}],
-      ]);
-    }
-    // 3. Händler (Rivalen des eigenen Reichs verweigern den Handel)
-    if (npc.spawn.role === 'merchant') {
-      const realm = this.world.meta.realmAt(npc.spawn.tx, npc.spawn.ty);
-      const mine = this.myPledge();
-      if (mine !== null && this.world.meta.rivals[mine] === realm.id) {
-        return say(`Du hast ${this.world.meta.realms[mine].name} die Treue geschworen. Gefolgsleute unserer Feinde bedienen wir nicht!`);
-      }
-      const bonus = mine === realm.id ? 0.15 : 0;
-      return this.trade(npc.spawn.name, bonus ? `Willkommen, Gefolgsmann von ${realm.name}! ` : '', Math.min(0.45, this.rankAt(npc.spawn.tx, npc.spawn.ty).discount + bonus));
-    }
-    // 3. Eigene Quest abgeben bzw. daran erinnern
-    const own = log.active.find((q) => q.giverId === npc.spawn.id);
-    if (own && isReady(own)) {
-      const r = turnIn(log, own.id, now)!;
-      this.recordQuest(own.giverTx, own.giverTy);
-      return say(`Großartig, du hast es geschafft! Belohnung: ${this.hero.reward(r)}`);
-    }
-    if (own) return say(`${own.text} (${progressText(own)})`);
-    // 4. Neues Angebot
-    const offer = this.cachedOffer(npc.spawn, now);
-    if (offer && log.active.length < MAX_ACTIVE) {
-      return say(`${offer.title} – ${offer.text}`, [
-        ['Annehmen', () => this.acceptOffer(offer)],
-        ['Ablehnen', () => {}],
-      ]);
-    }
-    // 5. Plaudern (mit Bezug auf Reich und Ort)
-    const line = npc.role.lines[npc.talks % npc.role.lines.length];
-    npc.talks++;
-    const rank = this.rankAt(npc.spawn.tx, npc.spawn.ty);
-    const greet = rank.rank > 0 ? `Ah, ${rank.title === 'Held' ? 'der Held' : rank.title === 'Freund' ? 'ein Freund' : 'ein bekanntes Gesicht'} von ${rank.realm.name}! ` : '';
-    say(greet + this.fillLore(line, npc.spawn.tx, npc.spawn.ty));
-  }
-
   get heroName(): string {
     return this.hero?.hero.name ?? 'Held';
   }
 
-  /** Erledigte Quest: Wohlstand des Orts und Ansehen beim Reich steigen. */
-  private recordQuest(tx: number, ty: number): void {
-    const m = this.world.meta;
-    const town = m.settlementNear(tx, ty, 8);
-    const before = town ? (this.state.d.prosperity.get(town.id) ?? 0) : 0;
-    this.state.record({ t: Date.now(), by: this.heroName, type: 'quest', town: town?.id ?? null, realm: m.realmAt(tx, ty).id });
-    this.events.emit('sfx', 'quest');
-    if (town) {
-      this.towns.refresh(town.id);
-      const lv = (n: number) => (n >= 10 ? 3 : n >= 5 ? 2 : n >= 2 ? 1 : 0);
-      if (lv(before + 1) > lv(before)) {
-        const text = ['', 'Laternen erhellen jetzt die Gassen.', 'Neue Häuser werden gebaut!', `Die Bewohner errichten dir eine Statue!`][lv(before + 1)];
-        this.events.emit('banner', { title: `${town.name} blüht auf`, sub: text });
-      }
-    }
-    this.state.flush();
+  // Öffentliche Schnittstelle für UI-Szene und Tests (Umsetzung in ./world/*)
+  get fog(): ExploredMap {
+    return this.sight.fog;
   }
-
-  /** Ansehen beim Reich an einer Position. */
-  rankAt(tx: number, ty: number) {
-    const realm = this.world.meta.realmAt(tx, ty);
-    return { realm, ...reputationRank(this.state.d.reputation.get(realm.id) ?? 0) };
+  get talkingTo(): Npc | null {
+    return this.talk.talkingTo;
   }
-
-  /** Setzt Orts- und Reichsnamen in NPC-Sätze ein. */
-  private fillLore(line: string, tx: number, ty: number): string {
-    const m = this.world.meta;
-    const realm = m.realmAt(tx, ty);
-    const town = m.settlementNear(tx, ty, 4);
-    const f = FACTIONS[realm.faction];
-    return line
-      .replace('{town}', town?.name ?? realm.name)
-      .replace('{realm}', realm.name)
-      .replace('{faction}', f.name)
-      .replace('{motto}', f.motto)
-      .replace('{capital}', m.settlements[realm.capital]?.name ?? realm.name)
-      .replace('{world}', m.lore.worldName);
+  get dialogOpen(): boolean {
+    return this.talk.dialogOpen;
   }
-
-  private say(name: string, role: string, text: string, choices?: [string, () => void][]): void {
-    this.dialogOpen = true;
-    this.pendingActions = choices?.map((c) => c[1]) ?? [];
-    const d = { name, role, text, choices: choices?.map((c) => c[0]) };
-    this.events.emit('talk', d);
-    debugState.dialog = d;
+  get markers(): Map<string, '!' | '?'> {
+    return this.talk.markers;
   }
-
-  private acceptOffer(offer: Quest): void {
-    if (!accept(this.hero.quests, offer)) return;
-    this.events.emit('sfx', 'quest');
-    this.events.emit('quests-changed');
-    this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Quest: ${offer.title}`, color: '#ffd84a' });
-    this.hero.persist();
+  interact(): void {
+    this.talk.interact();
   }
-
-  /** Reich, dem dieser Held die Treue geschworen hat (oder null). */
+  choose(i: number): void {
+    this.talk.choose(i);
+  }
+  endTalk(): void {
+    this.talk.endTalk();
+  }
   myPledge(): number | null {
-    return this.state.d.pledges.get(this.state.pid)?.realm ?? null;
+    return this.talk.myPledge();
   }
-
-  /** Gespräch mit einem Herrscher: Treueschwur anbieten. */
-  private rulerTalk(name: string, tx: number, ty: number): void {
-    const m = this.world.meta;
-    const realm = m.realmAt(tx, ty);
-    const rival = m.realms[m.rivals[realm.id]];
-    const f = FACTIONS[realm.faction];
-    const mine = this.myPledge();
-    const title = `${name} · Herrscher von ${realm.name}`;
-    if (mine === realm.id) {
-      this.say(title, f.name, `${f.motto} Du bist ein treuer Gefolgsmann von ${realm.name}. Gemeinsam halten wir ${rival.name} in Schach!`);
-      return;
-    }
-    const change = mine !== null ? ` Dein Schwur gegenüber ${m.realms[mine].name} würde erlöschen.` : '';
-    this.say(
-      title,
-      f.name,
-      `${f.motto} Schwöre ${realm.name} die Treue: Unser Reich wächst, unsere Händler geben dir Rabatt. Doch ${rival.name} wird dich als Feind sehen – dort handelt niemand mehr mit dir.${change}`,
-      [
-        ['Treue schwören', () => this.pledge(realm.id)],
-        ['Bedenkzeit', () => {}],
-      ],
-    );
-  }
-
   pledge(realmId: number): void {
-    const m = this.world.meta;
-    this.state.record({ t: Date.now(), by: this.heroName, type: 'pledge', realm: realmId });
-    this.state.flush();
-    this.events.emit('sfx', 'quest');
-    this.events.emit('banner', { title: `Treue zu ${m.realms[realmId].name}`, sub: `${m.realms[m.rivals[realmId]].name} betrachtet dich nun als Feind` });
-    this.events.emit('hero-changed');
-    void this.sync?.sync();
+    this.talk.pledge(realmId);
+  }
+  rankAt(tx: number, ty: number) {
+    return this.talk.rankAt(tx, ty);
+  }
+  chat(text?: string): void {
+    this.net.chat(text);
+  }
+  placeSign(text?: string): void {
+    this.net.placeSign(text);
+  }
+  shareLink(): Promise<string> {
+    return this.net.shareLink();
+  }
+  importFile(file: File): Promise<number> {
+    return this.net.importFile(file);
+  }
+  exportFile(): void {
+    this.net.exportFile();
+  }
+  players(): { pid: string; name: string; events: number }[] {
+    return this.net.players();
   }
 
-  /** Händler: Trank kaufen, gewöhnliche Gegenstände verkaufen. */
-  private trade(name: string, note = '', discount = 0): void {
-    const h = this.hero.hero;
-    const price = Math.max(1, Math.round(POTION_PRICE * (1 - discount)));
-    const commons = h.inventory.filter((i) => i.rarity === 'common');
-    const value = commons.reduce((s, i) => s + 3 + i.level * 2, 0);
-    this.say(name, 'Händlerin', `${note}Was darf's sein? Du hast ${h.shards} ◆.`, [
-      [`Heiltrank kaufen (${price} ◆${discount ? `, −${Math.round(discount * 100)} %` : ''})`, () => {
-        if (h.shards < price) return this.trade(name, 'Dafür reicht es leider nicht. ', discount);
-        h.shards -= price;
-        h.potions++;
-        this.hero.persist();
-        this.events.emit('hero-changed');
-        this.trade(name, 'Bitte sehr! ', discount);
-      }],
-      [commons.length ? `${commons.length} Gewöhnliche verkaufen (+${value} ◆)` : 'Nichts zu verkaufen', () => {
-        if (!commons.length) return;
-        h.inventory = h.inventory.filter((i) => i.rarity !== 'common');
-        h.shards += value;
-        this.hero.persist();
-        this.events.emit('hero-changed');
-        this.trade(name, `Gutes Geschäft! +${value} ◆. `, discount);
-      }],
-      ['Tschüss', () => {}],
-    ]);
-  }
-
-  /** Nächstes Geheimnis (Truhe, Schrein, Obelisk) in Reichweite. */
-  private nearestPoi(): { poi: Poi; dist: number } | null {
-    const { tx, ty } = this.player.tile;
-    let best: { poi: Poi; dist: number } | null = null;
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        const p = this.world.meta.poiAt(tx + dx, ty + dy);
-        if (!p) continue;
-        const dist = Math.hypot(p.tx * TILE_PX + TILE_PX / 2 - this.player.x, p.ty * TILE_PX + TILE_PX - this.player.y);
-        if (dist < 56 && (!best || dist < best.dist)) best = { poi: p, dist };
-      }
-    }
-    return best;
-  }
-
-  private usePoi(p: Poi): void {
-    const h = this.hero.hero;
-    h.chronicle ??= [];
-    if (p.kind === 'chest') {
-      if (this.state.d.chests.has(p.id)) {
-        const by = this.state.d.chestsBy.get(p.id);
-        return this.say('Truhe', 'leer', by && by !== this.heroName ? `Die Truhe ist leer – ${by} war schneller.` : 'Die Truhe ist leer.');
-      }
-      this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id: p.id });
-      this.events.emit('sfx', 'open');
-      this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('chest:1');
-      this.hero.lootChest(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
-      this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: 'Truhe geöffnet!', color: '#ffd84a' });
-      this.hero.persist();
-      return;
-    }
-    if (p.kind === 'ruinchest') {
-      if (this.state.d.chests.has(p.id)) {
-        const by = this.state.d.chestsBy.get(p.id);
-        return this.say('Ruinentruhe', 'leer', by && by !== this.heroName ? `Leer – ${by} hat sie bereits geplündert.` : 'Die Ruinentruhe ist leer.');
-      }
-      const guardian = [...this.enemies.enemies.values()].find((e) => e.spawn.id.startsWith('g') && e.alive && Math.hypot(e.x - this.player.x, e.y - this.player.y) < 12 * TILE_PX);
-      if (guardian) return this.say('Ruinentruhe', 'versiegelt', 'Ein Wächter bewacht diese Truhe. Besiege ihn zuerst!');
-      this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id: p.id });
-      this.events.emit('sfx', 'open');
-      this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('ruinchest:1');
-      this.hero.lootRuin(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
-      this.events.emit('banner', { title: 'Ruinenschatz!', sub: 'Ein seltener Fund aus der alten Zeit' });
-      this.hero.persist();
-      return;
-    }
-    if (p.kind === 'shrine') {
-      const now = this.time.now;
-      if ((this.shrineCooldown.get(p.id) ?? 0) > now) return this.say('Schrein', 'ruhend', 'Das Licht des Schreins sammelt sich noch.');
-      this.shrineCooldown.set(p.id, now + 5 * 60_000);
-      this.combat.heal(this.combat.stats.maxHp);
-      this.combat.buff(60);
-      return this.say('Schrein', 'Kristall', 'Warmes Licht durchströmt dich. Volle Heilung und +25 % Angriff für eine Minute.');
-    }
-    // Obelisk: Chronik-Fragment
-    const i = p.fragment ?? 0;
-    const frag = this.world.meta.lore.fragments[i];
-    const isNew = !h.chronicle.includes(i);
-    if (!this.state.d.discovered.has(`obelisk:${i}`)) this.state.record({ t: Date.now(), by: this.heroName, type: 'discover', id: `obelisk:${i}` });
-    let extra = '';
-    if (isNew) {
-      h.chronicle.push(i);
-      extra = ` (+${this.hero.reward({ xp: 30 + h.level * 5, shards: 0, item: false }).split(',')[0]})`;
-      if (h.chronicle.length === this.world.meta.lore.fragments.length) {
-        h.title = 'Chronist';
-        extra += ` – Du kennst nun die ganze Chronik von ${this.world.meta.lore.worldName}! Titel „Chronist“, +${this.hero.reward({ xp: 200, shards: 200, item: true })}`;
-        this.events.emit('banner', { title: 'Chronik vollständig!', sub: `Titel: Chronist von ${this.world.meta.lore.worldName}` });
-      }
-      this.hero.persist();
-      this.events.emit('chronicle-changed');
-    }
-    this.say(`Obelisk · ${frag.title}`, `${h.chronicle.length}/${this.world.meta.lore.fragments.length}`, `${frag.text}${extra}`);
-  }
-
-  private readonly shrineCooldown = new Map<string, number>();
   news: News[] = [];
   private lastRealm = -1;
   private lastTown = -1;
-  dialogOpen = false;
-  private pendingActions: (() => void)[] = [];
 
-  /** Auswahl im Dialog. */
-  choose(i: number): void {
-    const action = this.pendingActions[i];
-    this.pendingActions = [];
-    this.endTalk();
-    action?.();
-  }
-
-  /** Quest-Markierung je geladenem NPC: "!" Angebot, "?" Abgabe/Ziel. */
-  readonly markers = new Map<string, '!' | '?'>();
   private markerTimer = 0;
-
-  private readonly offerCache = new Map<string, Quest | null>();
-
-  /** Angebot eines NPC mit Zwischenspeicher (die Erzeugung sucht Ziele in der Welt und ist nicht billig). */
-  private cachedOffer(npc: Npc['spawn'], now: number): Quest | null {
-    const log = this.hero.quests;
-    if (log.active.some((q) => q.giverId === npc.id) || (log.cooldown[npc.id] ?? 0) > now) return null;
-    const key = `${npc.id}:${log.next[npc.id] ?? 0}:${this.hero.hero.level}`;
-    if (!this.offerCache.has(key)) this.offerCache.set(key, offerFor(this.world, log, npc, this.hero.hero.level, now));
-    return this.offerCache.get(key) ?? null;
-  }
-
-  private updateMarkers(): void {
-    this.markers.clear();
-    const log = this.hero.quests;
-    const now = Date.now();
-    for (const n of this.npcs.npcs.values()) {
-      const id = n.spawn.id;
-      if (n.spawn.role === 'ruler') {
-        if (this.myPledge() !== this.world.meta.realmAt(n.spawn.tx, n.spawn.ty).id) this.markers.set(id, '!');
-        continue;
-      }
-      const service = n.spawn.role === 'merchant' || n.spawn.role === 'barber';
-      if (service && !log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id)) continue;
-      const own = log.active.find((q) => q.giverId === id);
-      if ((own && isReady(own)) || log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id && !isReady(q))) this.markers.set(id, '?');
-      else if (!service && !own && log.active.length < MAX_ACTIVE && this.cachedOffer(n.spawn, now)) this.markers.set(id, '!');
-    }
-  }
 
   cast(): void {
     if (this.dialogOpen) return this.endTalk();
@@ -827,16 +344,7 @@ export class WorldScene extends Phaser.Scene {
     this.combat.attack();
   }
 
-  endTalk(): void {
-    this.dialogOpen = false;
-    this.pendingActions = [];
-    if (this.talkingTo) this.talkingTo.talking = false;
-    this.talkingTo = null;
-    this.events.emit('talk', null);
-    debugState.dialog = null;
-  }
-
-  private get saveKey(): string {
+  get saveKey(): string {
     return `player:${this.world.seedName}`;
   }
 
@@ -848,61 +356,6 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Mittelpunkt des Interesses (die Figur) in Kachelkoordinaten. */
-  private lastFogTile = { tx: -1, ty: -1 };
-  /** Höhen je Kachel (M24), zwischengespeichert für Sichtlinien. */
-  private readonly heights = new Map<number, number>();
-  /** Sichtfeld um den Helden (M24): 1 = sichtbar. */
-  private sight: { ox: number; oy: number; vis: Uint8Array } | null = null;
-  private sightTex!: Phaser.Textures.CanvasTexture;
-  private sightImg!: Phaser.GameObjects.Image;
-
-  /** Gesamthöhe einer Kachel (Hang + Stufen). */
-  readonly heightAt = (tx: number, ty: number): number => {
-    const k = tx * 16384 + ty;
-    let h = this.heights.get(k);
-    if (h === undefined) {
-      if (this.heights.size > 250_000) this.heights.clear();
-      h = tileHeight(this.world, tx, ty);
-      this.heights.set(k, h);
-    }
-    return h;
-  };
-
-  /** Ist der Weltpixel vom Helden aus sichtbar? Außerhalb des Sichtfelds: ja (ohnehin nicht im Bild). */
-  seesPx(x: number, y: number): boolean {
-    const s = this.sight;
-    if (!s) return true;
-    const dx = Math.floor(x / TILE_PX) - s.ox + SIGHT_R;
-    const dy = Math.floor(y / TILE_PX) - s.oy + SIGHT_R;
-    if (dx < 0 || dy < 0 || dx >= SIGHT_N || dy >= SIGHT_N) return true;
-    return s.vis[dy * SIGHT_N + dx] === 1;
-  }
-
-  /** Sichtfeld neu berechnen und als weichen Schatten über verdecktes Gelände legen. */
-  private updateSight(tx: number, ty: number): void {
-    const vis = viewshed(this.heightAt, tx, ty, SIGHT_R);
-    this.sight = { ox: tx, oy: ty, vis };
-    const ctx = this.sightTex.getContext();
-    const img = ctx.createImageData(SIGHT_N, SIGHT_N);
-    for (let i = 0; i < vis.length; i++) {
-      img.data[i * 4] = 12;
-      img.data[i * 4 + 1] = 14;
-      img.data[i * 4 + 2] = 34;
-      img.data[i * 4 + 3] = vis[i] ? 0 : 150;
-    }
-    ctx.putImageData(img, 0, 0);
-    this.sightTex.refresh();
-    this.sightTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
-    // Texel-Mitten liegen auf Kachelmitten
-    this.sightImg.setPosition((tx - SIGHT_R) * TILE_PX, (ty - SIGHT_R) * TILE_PX).setVisible(true);
-    debugState.sightHidden = vis.length - vis.reduce((a, v) => a + v, 0);
-  }
-
-  private saveFog(): void {
-    if (!this.fog.dirty) return;
-    this.fog.dirty = false;
-    save(`fog${WORLD_VERSION}:${this.world.seedName}`, this.fog.encode());
-  }
 
   get focusTile(): { tx: number; ty: number } {
     return this.player.tile;
@@ -939,7 +392,7 @@ export class WorldScene extends Phaser.Scene {
         this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Gefunden: ${progressText(visited)}`, color: '#ffd84a' });
         this.events.emit('quests-changed');
       }
-      this.updateMarkers();
+      this.talk.updateMarkers();
       // Reichs- und Ortswechsel ankündigen
       const realm = this.world.meta.realmAt(t.tx, t.ty);
       const town = this.world.meta.settlementNear(t.tx, t.ty, 2);
@@ -988,21 +441,13 @@ export class WorldScene extends Phaser.Scene {
     if (this.talkingTo && Math.hypot(this.talkingTo.actor.x - this.player.x, this.talkingTo.actor.y - this.player.y) > 90) this.endTalk();
     if (this.dialogOpen && !this.talkingTo && this.player.moving) this.endTalk();
 
-    // Fog of War: Umgebung aufdecken, sobald der Held eine neue Kachel betritt
-    const pt = this.player.tile;
-    if (pt.tx !== this.lastFogTile.tx || pt.ty !== this.lastFogTile.ty) {
-      this.lastFogTile = pt;
-      this.fog.revealVisible(pt.tx, pt.ty, (x, y) => sees(this.heightAt, pt.tx, pt.ty, x, y), MAX_VIEW);
-      this.updateSight(pt.tx, pt.ty);
-    }
-    // Verdeckte Gegner und NPCs sind unsichtbar (M24)
-    for (const n of this.npcs.npcs.values()) n.setSeen(this.seesPx(n.actor.x, n.actor.y - 4));
-    for (const e of this.enemies.enemies.values()) e.setSeen(this.seesPx(e.x, e.y - 4));
+    // Fog of War und Sicht (M20, M24)
+    this.sight.update();
 
     this.saveTimer += delta;
     if (this.saveTimer > 2000) {
       this.saveTimer = 0;
-      this.saveFog();
+      this.sight.save();
       this.state.flush();
       save(`seen:${this.world.seedName}`, worldNow());
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
@@ -1033,24 +478,4 @@ export class WorldScene extends Phaser.Scene {
     debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state, seen: e.seen }));
     debugState.ready = this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0;
   }
-}
-
-/** Taten anderer Spieler als Neuigkeiten. */
-function foreignNews(events: WorldEvent[], towns: { id: number; name: string }[], realms: { name: string }[] = []): News[] {
-  const out: News[] = [];
-  const quests = new Map<string, number>();
-  for (const e of events) {
-    if (e.type === 'chest') out.push({ tick: 0, text: `${e.by} hat eine Truhe geöffnet.` });
-    if (e.type === 'sign') out.push({ tick: 0, text: `${e.by} hat eine Botschaft hinterlassen: „${e.text}“` });
-    if (e.type === 'death') out.push({ tick: 0, text: `${e.by} ist gefallen – ein Grabstein erinnert daran.` });
-    if (e.type === 'pledge') out.push({ tick: 0, text: `${e.by} hat ${realms[e.realm]?.name ?? 'einem Reich'} die Treue geschworen.` });
-    if (e.type === 'discover' && e.id.startsWith('obelisk')) out.push({ tick: 0, text: `${e.by} hat einen Obelisken entdeckt.` });
-    if (e.type === 'discover' && e.id.startsWith('town')) out.push({ tick: 0, text: `${e.by} hat ${towns[Number(e.id.slice(5))]?.name ?? 'einen Ort'} besucht.` });
-    if (e.type === 'quest' && e.town !== null) quests.set(`${e.by}|${e.town}`, (quests.get(`${e.by}|${e.town}`) ?? 0) + 1);
-  }
-  for (const [k, n] of quests) {
-    const [by, town] = k.split('|');
-    out.push({ tick: 0, text: `${by} hat in ${towns[Number(town)]?.name ?? 'einem Ort'} ${n} Quest${n > 1 ? 's' : ''} erledigt.` });
-  }
-  return out;
 }

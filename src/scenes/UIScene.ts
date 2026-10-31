@@ -1,42 +1,28 @@
 import Phaser from 'phaser';
 import { debugState } from '../debug';
 import { TILE_PX } from '../render/chunkPixels';
-import type { ChunkRequest, OverviewResult, RegionResult } from '../render/chunkProtocol';
 import { touchInput } from '../game/input';
-import { iconFor } from '../entities/HeroController';
-import { ATLAS } from '../render/textures';
-import { RARITY_COLOR, RARITY_NAME, SLOTS, SLOT_NAME, describeBonus, type Item } from '../rpg/items';
-import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
-import { RACES } from '../rpg/races';
-import { AREA_RADIUS, MAX_ACTIVE, abandon, areaText, isReady, progressText, questTarget, type QuestTarget } from '../quests/quests';
+import { xpToNext } from '../rpg/progression';
+import { MAX_ACTIVE, abandon, areaText, isReady, progressText, questTarget, type QuestTarget } from '../quests/quests';
 import { BannerQueue, type BannerItem } from '../ui/bannerQueue';
-import { reputationRank } from '../state/worldState';
+import { WorldMap } from '../ui/WorldMap';
+import { HeroPanel } from '../ui/HeroPanel';
 import { worldNow } from '../sim/LiveWorld';
-import { caravanPos, clockText, daylight, type News } from '../sim/simulation';
+import { clockText, daylight, type News } from '../sim/simulation';
 import { audio } from '../audio/audio';
 import { load, save } from '../game/save';
-import { B, BIOMES } from '../world/biomes';
+import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
-import { WORLD_TILES } from '../world/WorldGen';
 import type { WorldScene } from './WorldScene';
 
-const MAP_STEP = 16;
-/** Minimap: Bildschirmpixel je Pixel der Übersichtskarte (1 Pixel = MAP_STEP Kacheln). */
-const MINI_ZOOM = 6;
-/** Fog of War: unerkundet bzw. Rand zum Erkundeten. */
-const FOG_COLOR = '#17131f';
-const FOG_EDGE = 'rgba(23, 19, 31, 0.55)';
 const FONT = { fontFamily: 'monospace', fontSize: '14px', color: '#f4f0e8' };
 
 /** HUD und Weltkarte, gezeichnet ohne Kamera-Zoom über der Welt. */
 export class UIScene extends Phaser.Scene {
   private hud!: Phaser.GameObjects.Text;
   private help!: Phaser.GameObjects.Text;
-  private map?: Phaser.GameObjects.Container;
-  private marker?: Phaser.GameObjects.Rectangle;
-  private mapWorker?: Worker;
-  private mapTex = '';
-  private mapSize = 0;
+  /** Weltkarte und Minimap (src/ui/WorldMap.ts) */
+  private worldMap!: WorldMap;
   private seed = '';
 
   constructor() {
@@ -48,9 +34,6 @@ export class UIScene extends Phaser.Scene {
     // Szene kann neu gestartet werden: Verweise auf alte (zerstörte) Objekte verwerfen.
     this.hpText = undefined;
     this.xpText = undefined;
-    this.panel = undefined;
-    this.map = undefined;
-    this.marker = undefined;
     this.dialog = undefined;
     this.attackButton = undefined;
     this.attackLabel = undefined;
@@ -68,23 +51,15 @@ export class UIScene extends Phaser.Scene {
     this.drops = [];
     this.bannerObj = undefined;
     this.banners = new BannerQueue();
-    this.mini = undefined;
-    this.miniG = undefined;
-    this.miniFg = undefined;
-    this.miniFog = undefined;
-    this.fogTex = undefined;
     this.lastPos = null;
     this.markerTexts = [];
-    this.mapSize = 0;
-    this.selected = null;
-    debugState.mapOpen = false;
-    debugState.mapReady = false;
     debugState.panelOpen = false;
     debugState.tipsShown = 0;
     debugState.menuOpen = false;
   }
 
   create(): void {
+    this.heroPanel = new HeroPanel(this);
     debugState.clickPanel = (name: string) => this.clickPanel(name);
     this.createAtmosphere();
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
@@ -98,7 +73,7 @@ export class UIScene extends Phaser.Scene {
       .setOrigin(0, 1);
 
     const kb = this.input.keyboard!;
-    kb.on('keydown-M', () => this.toggleMap());
+    kb.on('keydown-M', () => this.worldMap.toggle());
     kb.on('keydown-N', () => {
       const url = new URL(location.href);
       url.searchParams.set('seed', randomSeedName());
@@ -116,7 +91,7 @@ export class UIScene extends Phaser.Scene {
     const onDamage = (d: { x: number; y: number; amount: number; color: string }) => this.floatText({ ...d, text: String(d.amount) });
     const onFloat = (d: { x: number; y: number; text: string; color: string }) => this.floatText({ ...d, small: true });
     const onLevel = (lvl: number) => this.banner(`Stufe ${lvl}!`, 'Talentpunkt erhalten – C: Heldenfenster');
-    const onHero = () => this.panel && this.buildPanel();
+    const onHero = () => this.panel && this.heroPanel.build();
     ws.events.on('damage', onDamage);
     ws.events.on('float', onFloat);
     ws.events.on('level-up', onLevel);
@@ -175,7 +150,7 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-I', () => this.togglePanel());
     kb.on('keydown-ESC', () => {
       if (this.panel) this.togglePanel();
-      else if (this.map) this.closeMap();
+      else if (this.worldMap.isOpen) this.worldMap.close();
     });
     const onDied = () => {
       const t = this.add.text(this.scale.width / 2, this.scale.height / 2, 'Du bist gefallen …', { ...FONT, fontSize: '22px' }).setOrigin(0.5).setDepth(40);
@@ -187,25 +162,7 @@ export class UIScene extends Phaser.Scene {
     ws.events.on('talk', onTalk);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('talk', onTalk));
 
-    // Übersichtskarte im Hintergrund erzeugen.
-    this.mapWorker = undefined;
-    this.detail = null;
-    this.ensureMapWorker().postMessage({ type: 'overview', step: MAP_STEP } satisfies ChunkRequest);
-    debugState.mapZoomBy = (dir: number) => this.zoomMap(dir);
-    // Karte: Ziehen und Mausrad
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!this.map || !this.mapDrag || !p.isDown) return;
-      const k = this.mapK;
-      this.mapCenter = { tx: this.mapDrag.cx - (p.x - this.mapDrag.x) / k, ty: this.mapDrag.cy - (p.y - this.mapDrag.y) / k };
-      this.layoutMap();
-    });
-    this.input.on('pointerup', () => (this.mapDrag = null));
-    this.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.map && this.zoomMap(dy < 0 ? 1 : -1, { x: p.x, y: p.y }));
-    kb.on('keydown-PLUS', () => this.zoomMap(1));
-    kb.on('keydown-NUMPAD_ADD', () => this.zoomMap(1));
-    kb.on('keydown-MINUS', () => this.zoomMap(-1));
-    kb.on('keydown-NUMPAD_SUBTRACT', () => this.zoomMap(-1));
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.mapWorker?.terminate());
+    this.worldMap = new WorldMap(this, this.seed, () => 8 + (this.touchButtons.length ? Math.ceil(this.touchButtons.length / 3) * 40 : 0));
   }
 
   /** Virtueller Stick (Ziehen irgendwo auf dem Bildschirm) und Buttons für Touch-Geräte. */
@@ -215,7 +172,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle || this.newsPanel || this.sharePanel || this.menu) return;
+      if (pointerId !== -1 || onButton(p) || this.worldMap.isOpen || this.panel || this.questLog || this.chronicle || this.newsPanel || this.sharePanel || this.menu) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -259,7 +216,7 @@ export class UIScene extends Phaser.Scene {
     this.potionButton.on('pointerdown', () => ws().hero.drink());
     this.potionLabel = this.add.text(0, 0, '♥', { ...FONT, fontSize: '16px' }).setOrigin(0.5).setDepth(31);
     const buttons: [string, () => void][] = [
-      ['Karte', () => this.toggleMap()],
+      ['Karte', () => this.worldMap.toggle()],
       ['☰', () => this.toggleMenu()],
     ];
     buttons.forEach(([label, fn], i) => {
@@ -301,7 +258,7 @@ export class UIScene extends Phaser.Scene {
       ['Quests (L)', close(() => this.toggleQuestLog())],
       ['Chronik (B)', close(() => this.toggleChronicle())],
       ['Neuigkeiten (U)', close(() => this.toggleNews())],
-      ['Karte (M)', close(() => this.toggleMap())],
+      ['Karte (M)', close(() => this.worldMap.toggle())],
       ['Teilen (G)', close(() => this.toggleShare())],
       ['Schild (T)', close(() => ws.placeSign())],
       ['Chat (Enter)', close(() => ws.chat())],
@@ -598,16 +555,6 @@ export class UIScene extends Phaser.Scene {
   private bannerObj?: Phaser.GameObjects.Container;
   private banners = new BannerQueue();
   private lastPos: { x: number; y: number } | null = null;
-  private mini?: Phaser.GameObjects.Image;
-  private miniG?: Phaser.GameObjects.Graphics;
-  private miniFg?: Phaser.GameObjects.Graphics;
-  private miniFog?: Phaser.GameObjects.Image;
-  /** Nebel-Textur (1 Pixel = 1 Erkundungszelle = 1 Pixel der Übersichtskarte). */
-  private fogTex?: Phaser.Textures.CanvasTexture;
-  private fogRefreshAt = 0;
-  private fogChanged = false;
-  /** Aktuelles Questziel für die Minimap (area = nur ungefähres Gebiet). */
-  private miniTarget: { tx: number; ty: number; area: boolean } | null = null;
   chronicle?: Phaser.GameObjects.Container;
 
   toggleChronicle(): void {
@@ -656,9 +603,6 @@ export class UIScene extends Phaser.Scene {
     });
     this.chronicle = c;
   }
-  panel?: Phaser.GameObjects.Container;
-  private selected: string | null = null;
-  private lastItemClick = 0;
 
   private tracker!: Phaser.GameObjects.Text;
   private arrow!: Phaser.GameObjects.Graphics;
@@ -719,11 +663,11 @@ export class UIScene extends Phaser.Scene {
     const log = ws.hero.quests;
     const q = log.active.find((a) => isReady(a)) ?? log.active[0];
     const cam = ws.cameras.main;
-    const top = this.miniBottom() + 6;
+    const top = this.worldMap.miniBottom() + 6;
     this.tracker.setPosition(this.scale.width - 8, top).setVisible(!!q && !this.panel && !this.questLog);
     this.arrow.clear();
     this.arrowLabel.setVisible(false);
-    this.miniTarget = null;
+    this.worldMap.miniTarget = null;
     debugState.questPointer = 'none';
     const guide = q ? null : this.guideTarget(ws);
     const t = q ? questTarget(q) : guide;
@@ -732,11 +676,11 @@ export class UIScene extends Phaser.Scene {
       // NPC-Ziele: Pfeil nur auf den NPC selbst; ist er nicht geladen, nur ein ungefähres Gebiet (Feedback Punkt 2).
       const npc = t.npcId ? ws.npcs.npcs.get(t.npcId) : undefined;
       const area = !!t.npcId && !npc;
-      this.miniTarget = { tx: t.tx, ty: t.ty, area };
+      this.worldMap.miniTarget = { tx: t.tx, ty: t.ty, area };
       if (area) {
         debugState.questPointer = 'area';
         trackerText += `\n${areaText(ws.world.meta.settlements, t, ws.player.tile)}`;
-      } else if (!this.map && !this.panel && !this.questLog) {
+      } else if (!this.worldMap.isOpen && !this.panel && !this.questLog) {
         debugState.questPointer = npc ? 'npc' : 'place';
         const wx = npc ? npc.actor.x : t.tx * TILE_PX + TILE_PX / 2;
         const wy = npc ? npc.actor.y - 20 : t.ty * TILE_PX + TILE_PX / 2;
@@ -752,7 +696,7 @@ export class UIScene extends Phaser.Scene {
       const sx = (r.x - cam.worldView.x) * cam.zoom;
       const sy = (r.y - 56 - cam.worldView.y) * cam.zoom;
       const t = (this.remoteTexts[ri] ??= this.add.text(0, 0, '', { ...FONT, fontSize: '12px', color: '#2fe0d8', backgroundColor: '#0b0b14aa', padding: { x: 4, y: 2 } }).setOrigin(0.5, 1).setDepth(5));
-      t.setText(`${r.name}  ${Math.round((r.hp / r.maxHp) * 100)}%`).setPosition(Math.round(sx), Math.round(sy)).setVisible(!this.map);
+      t.setText(`${r.name}  ${Math.round((r.hp / r.maxHp) * 100)}%`).setPosition(Math.round(sx), Math.round(sy)).setVisible(!this.worldMap.isOpen);
       ri++;
       if (r.chat && r.chat.until > nowMs) bubbles.push({ x: sx, y: sy - 22, text: r.chat.text, color: '#f4f0e8' });
     }
@@ -761,7 +705,7 @@ export class UIScene extends Phaser.Scene {
     let bi = 0;
     for (const b of bubbles) {
       const t = (this.bubbleTexts[bi] ??= this.add.text(0, 0, '', { ...FONT, fontSize: '13px', backgroundColor: '#f4f0e8', padding: { x: 6, y: 3 } }).setOrigin(0.5, 1).setDepth(6));
-      t.setText(b.text).setColor('#0b0b14').setBackgroundColor(b.color).setPosition(Math.round(b.x), Math.round(b.y)).setVisible(!this.map);
+      t.setText(b.text).setColor('#0b0b14').setBackgroundColor(b.color).setPosition(Math.round(b.x), Math.round(b.y)).setVisible(!this.worldMap.isOpen);
       bi++;
     }
     for (; bi < this.bubbleTexts.length; bi++) this.bubbleTexts[bi].setVisible(false);
@@ -770,7 +714,7 @@ export class UIScene extends Phaser.Scene {
     let i = 0;
     for (const n of ws.npcs.npcs.values()) {
       const m = ws.markers.get(n.spawn.id);
-      if (!m || this.map || !n.seen) continue;
+      if (!m || this.worldMap.isOpen || !n.seen) continue;
       const t = (this.markerTexts[i] ??= this.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '22px', stroke: '#0b0b14', strokeThickness: 5 }).setOrigin(0.5, 1).setDepth(5));
       const bob = Math.sin(this.time.now / 200) * 3;
       t.setText(m).setColor(m === '!' ? '#ffd84a' : '#4cb53e').setPosition((n.actor.x - cam.worldView.x) * cam.zoom, (n.actor.y - 66 - cam.worldView.y) * cam.zoom + bob).setVisible(true);
@@ -811,159 +755,7 @@ export class UIScene extends Phaser.Scene {
     this.arrowLabel.setText(onScreen ? label : `${label} · ${dist}`).setPosition(ax - Math.cos(ang) * 30, ay - Math.sin(ang) * 30).setVisible(true);
   }
 
-  /** Größe der Minimap (Seitenlänge in Pixeln). */
-  private miniSide(): number {
-    return this.scale.width < 500 ? 104 : 150;
-  }
 
-  /** Oberkante der Minimap: unter den Handy-Knöpfen oben rechts. */
-  private miniTop(): number {
-    return 8 + (this.touchButtons.length ? Math.ceil(this.touchButtons.length / 3) * 40 : 0);
-  }
-
-  private miniBottom(): number {
-    return this.mini?.visible ? this.miniTop() + this.miniSide() + 4 : this.miniTop() - 6;
-  }
-
-  /** Minimap oben rechts: Ausschnitt der Übersichtskarte um den Helden mit Orten, Questziel, Mitspielern. */
-  private drawMinimap(ws: WorldScene): void {
-    if (!this.mapSize) return;
-    const S = this.miniSide();
-    const x0 = this.scale.width - 8 - S;
-    const y0 = this.miniTop();
-    this.mini ??= this.add.image(0, 0, this.mapTex).setOrigin(0).setDepth(4.1).setScale(MINI_ZOOM);
-    this.miniG ??= this.add.graphics().setDepth(4);
-    const show = !this.map && !this.panel && !this.questLog;
-    this.updateFog(ws);
-    this.miniFog ??= this.add.image(0, 0, this.fogKey).setOrigin(0).setDepth(4.15).setScale(MINI_ZOOM);
-    this.mini.setVisible(show);
-    this.miniFog.setVisible(show);
-    this.miniG.clear().setVisible(show);
-    debugState.minimap = show;
-    this.miniFg?.clear();
-    if (!show) return;
-    const { tx, ty } = ws.player.tile;
-    // linke obere Ecke des Ausschnitts in Pixeln der Übersichtskarte
-    const half = S / 2 / MINI_ZOOM;
-    const ox = tx / MAP_STEP - half;
-    const oy = ty / MAP_STEP - half;
-    // Grund (Ozean) unter dem Kartenbild, falls der Ausschnitt über den Weltrand reicht
-    this.miniG.fillStyle(0x1c3a66, 1).fillRect(x0, y0, S, S);
-    const cx0 = Math.max(0, ox);
-    const cy0 = Math.max(0, oy);
-    const cw = Math.min(this.mapSize, ox + 2 * half) - cx0;
-    const ch = Math.min(this.mapSize, oy + 2 * half) - cy0;
-    this.mini.setCrop(cx0, cy0, Math.max(0, cw), Math.max(0, ch)).setPosition(x0 - ox * MINI_ZOOM, y0 - oy * MINI_ZOOM);
-    this.miniFog.setCrop(cx0, cy0, Math.max(0, cw), Math.max(0, ch)).setPosition(x0 - ox * MINI_ZOOM, y0 - oy * MINI_ZOOM);
-    const fg = (this.miniFg ??= this.add.graphics().setDepth(4.2)).clear().setVisible(true);
-    const px = (t: number) => x0 + (t / MAP_STEP - ox) * MINI_ZOOM;
-    const py = (t: number) => y0 + (t / MAP_STEP - oy) * MINI_ZOOM;
-    const inside = (x: number, y: number, m = 0) => x >= x0 + m && y >= y0 + m && x <= x0 + S - m && y <= y0 + S - m;
-    for (const st of ws.world.meta.settlements) {
-      const x = px(st.tx);
-      const y = py(st.ty);
-      if (!inside(x, y, 3) || !ws.fog.knows(st.tx, st.ty)) continue;
-      const known = ws.state.d.discovered.has(`town:${st.id}`);
-      const sz = st.capital ? 6 : 4;
-      fg.fillStyle(known ? 0x2fe0d8 : st.capital ? 0xffd84a : 0xf4f0e8, 1).fillRect(x - sz / 2, y - sz / 2, sz, sz);
-      fg.lineStyle(1, 0x0b0b14, 1).strokeRect(x - sz / 2, y - sz / 2, sz, sz);
-    }
-    for (const car of ws.live.caravans) {
-      const p = caravanPos(car, worldNow());
-      const x = px(p.tx);
-      const y = py(p.ty);
-      if (inside(x, y, 2) && ws.fog.knows(p.tx, p.ty)) fg.fillStyle(0xf08a3a, 1).fillTriangle(x, y - 3, x - 3, y + 3, x + 3, y + 3);
-    }
-    for (const r of ws.remote.remotes.values()) {
-      const x = px(r.x / TILE_PX);
-      const y = py(r.y / TILE_PX);
-      if (inside(x, y, 2)) fg.fillStyle(0x2fe0d8, 1).fillCircle(x, y, 3).lineStyle(1, 0x0b0b14, 1).strokeCircle(x, y, 3);
-    }
-    const t = this.miniTarget;
-    if (t) {
-      let x = px(t.tx);
-      let y = py(t.ty);
-      if (t.area) {
-        // Ungefähres Gebiet (Kreis); außerhalb des Ausschnitts am Rand angedeutet
-        const r = Math.max(6, (AREA_RADIUS / MAP_STEP) * MINI_ZOOM);
-        x = Phaser.Math.Clamp(x, x0 + r + 1, x0 + S - r - 1);
-        y = Phaser.Math.Clamp(y, y0 + r + 1, y0 + S - r - 1);
-        fg.fillStyle(0xffd84a, 0.25).fillCircle(x, y, r).lineStyle(1, 0xffd84a, 0.9).strokeCircle(x, y, r);
-      } else {
-        x = Phaser.Math.Clamp(x, x0 + 4, x0 + S - 4);
-        y = Phaser.Math.Clamp(y, y0 + 4, y0 + S - 4);
-        fg.fillStyle(0xffd84a, 1).fillCircle(x, y, 3.5).lineStyle(1, 0x0b0b14, 1).strokeCircle(x, y, 3.5);
-      }
-    }
-    // Held in der Mitte, Rahmen
-    const hx = x0 + S / 2;
-    const hy = y0 + S / 2;
-    fg.fillStyle(0xff3355, 1).fillCircle(hx, hy, 3.5).lineStyle(1.5, 0xffffff, 1).strokeCircle(hx, hy, 3.5);
-    fg.lineStyle(2, 0x0b0b14, 1).strokeRect(x0, y0, S, S).lineStyle(1, 0xffd84a, 0.6).strokeRect(x0 - 1, y0 - 1, S + 2, S + 2);
-  }
-
-  private get fogKey(): string {
-    return `fog:${this.seed}`;
-  }
-
-  /** Nebel-Textur anlegen bzw. um neu erkundete Zellen ergänzen (Ränder halbtransparent). */
-  private updateFog(ws: WorldScene): void {
-    const fog = ws.fog;
-    const n = fog.size;
-    if (!this.fogTex) {
-      if (this.textures.exists(this.fogKey)) this.textures.remove(this.fogKey);
-      this.fogTex = this.textures.createCanvas(this.fogKey, n, n)!;
-      const ctx = this.fogTex.context;
-      ctx.fillStyle = FOG_COLOR;
-      ctx.fillRect(0, 0, n, n);
-      for (let cy = 0; cy < n; cy++) for (let cx = 0; cx < n; cx++) if (fog.isExplored(cx, cy)) this.paintFogAround(fog, cx, cy);
-      fog.fresh.length = 0;
-      this.refreshFog();
-      return;
-    }
-    if (fog.fresh.length) {
-      for (const i of fog.fresh) this.paintFogAround(fog, i % n, Math.floor(i / n));
-      fog.fresh.length = 0;
-      this.fogChanged = true;
-    }
-    // Hochladen der Textur höchstens alle 300 ms
-    if (this.fogChanged && this.time.now - this.fogRefreshAt > 300) {
-      this.fogChanged = false;
-      this.fogRefreshAt = this.time.now;
-      this.refreshFog();
-    }
-  }
-
-  /** Nebel-Textur hochladen; weich gefiltert, damit bei starker Vergrößerung keine Treppenkanten entstehen. */
-  private refreshFog(): void {
-    if (!this.fogTex) return;
-    this.fogTex.refresh();
-    this.fogTex.setFilter(Phaser.Textures.FilterMode.LINEAR);
-  }
-
-  /** Zelle und Nachbarn neu zeichnen: erkundet = frei, an Erkundetes grenzend = halbtransparent, sonst Nebel. */
-  private paintFogAround(fog: WorldScene['fog'], cx: number, cy: number): void {
-    const ctx = this.fogTex!.context;
-    for (let y = cy - 1; y <= cy + 1; y++) {
-      for (let x = cx - 1; x <= cx + 1; x++) {
-        if (x < 0 || y < 0 || x >= fog.size || y >= fog.size) continue;
-        ctx.clearRect(x, y, 1, 1);
-        if (fog.isExplored(x, y)) continue;
-        ctx.fillStyle = FOG_EDGE;
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
-  }
-
-  /** Symbol eines Gegenstands, Kleidung in ihrer Farbe getönt. */
-  private itemIcon(it: Item, x: number, y: number): Phaser.GameObjects.Image {
-    const img = this.add.image(x, y, ATLAS, `icon:${iconFor(it)}`);
-    const pal = this.cache.json.get('lpc-palettes') as Record<string, Record<string, string[]>> | undefined;
-    const tintable = it.slot === 'legs' || it.slot === 'feet' || (it.slot === 'armor' && it.base !== 'leather' && it.base !== 'plate');
-    const hex = it.color && pal?.cloth[it.color]?.[4];
-    if (tintable && hex) img.setTint(parseInt(hex.slice(1), 16));
-    return img;
-  }
 
   /** Ohne Quest: nächster noch nicht besuchter Ort (Wegstein) als Ziel. */
   private guideTarget(ws: WorldScene): QuestTarget | null {
@@ -983,145 +775,29 @@ export class UIScene extends Phaser.Scene {
 
   /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster (oder der Karte) aus. */
   clickPanel(name: string): boolean {
-    const o = (this.panel?.getByName(name) ?? this.map?.getByName(name) ?? this.mapLayer?.getByName(name) ?? this.sharePanel?.getByName(name) ?? this.menu?.getByName(name) ?? this.children.getByName(name)) as Phaser.GameObjects.GameObject | null;
+    const o = (this.panel?.getByName(name) ?? this.worldMap.find(name) ?? this.sharePanel?.getByName(name) ?? this.menu?.getByName(name) ?? this.children.getByName(name)) as Phaser.GameObjects.GameObject | null;
     if (!o) return false;
     o.emit('pointerdown');
     return true;
   }
 
-  togglePanel(): void {
-    if (this.panel) {
-      this.panel.destroy();
-      this.panel = undefined;
-      debugState.panelOpen = false;
-      return;
-    }
-    if (this.map) this.closeMap();
-    this.buildPanel();
+  /** Für Gamepad-Steuerung aus der Welt-Szene. */
+  toggleMapPublic(): void {
+    this.worldMap.toggle();
   }
 
-  /** Heldenfenster: Werte, Talente, Ausrüstung, Inventar. Wird bei jeder Änderung neu aufgebaut. */
-  buildPanel(): void {
-    this.panel?.destroy();
-    debugState.panelOpen = true;
-    const ws = this.scene.get('world') as WorldScene;
-    const hc = ws.hero;
-    const h = hc.hero;
-    const fs = finalStats(h);
-    const W = Math.min(this.scale.width - 16, 400);
-    const x0 = Math.round((this.scale.width - W) / 2);
-    const c = this.add.container(x0, 8).setDepth(50);
-    const H = Math.min(this.scale.height - 16, 660);
-    c.add(this.add.rectangle(0, 0, W, H, 0x0b0b14, 0.94).setOrigin(0).setStrokeStyle(2, 0x2fe0d8, 0.8).setInteractive());
-    const txt = (x: number, y: number, s: string, color = '#f4f0e8', size = 13) => {
-      const t = this.add.text(x, y, s, { ...FONT, fontSize: `${size}px`, color });
-      c.add(t);
-      return t;
-    };
-    const button = (x: number, y: number, label: string, cb: () => void, enabled = true, name?: string) => {
-      const b = this.add
-        .text(x, y, label, { ...FONT, fontSize: '13px', color: enabled ? '#0b0b14' : '#6a6a7a', backgroundColor: enabled ? '#2fe0d8' : '#2a2a36', padding: { x: 6, y: 3 } })
-        .setInteractive({ useHandCursor: enabled });
-      if (name) b.setName(name);
-      if (enabled) b.on('pointerdown', cb);
-      c.add(b);
-      return b;
-    };
-    let y = 10;
-    txt(12, y, `${h.name ?? 'Held'} · ${RACES[h.race ?? 'human'].name} · Stufe ${h.level}`, '#2fe0d8', 17);
-    button(W - 34, 8, '✕', () => this.togglePanel(), true, 'close');
-    y += 26;
-    txt(12, y, `EP ${h.xp}/${xpToNext(h.level)}   ◆ ${h.shards} Splitter   Tränke ${h.potions}`, '#ffd84a');
-    y += 22;
-    txt(12, y, `LP ${fs.maxHp}   Angriff ${fs.attack}   Vert. ${fs.defense}`);
-    y += 18;
-    txt(12, y, `Tempo ${Math.round(fs.speed * 100)} %   Regeneration ${fs.regen.toFixed(1)} LP/s`);
-    y += 26;
-    txt(12, y, `Talentpunkte: ${h.talentPoints}`, h.talentPoints ? '#ffd84a' : '#8a8aa0');
-    y += 20;
-    let bx = 12;
-    for (const t of Object.keys(TALENTS) as Talent[]) {
-      const b = button(bx, y, `+ ${TALENTS[t].name} (${h.talents[t]})`, () => hc.spend(t), h.talentPoints > 0, `talent-${t}`);
-      bx += b.width + 6;
-    }
-    y += 30;
-    const pl = ws.myPledge();
-    if (pl !== null) {
-      const m = ws.world.meta;
-      txt(12, y, `Gefolgsmann von ${m.realms[pl].name} · Feind von ${m.realms[m.rivals[pl]].name}`, '#ffd84a', 12);
-      y += 18;
-    }
-    const reps = ws.world.meta.realms.map((r) => ({ r, v: ws.state.d.reputation.get(r.id) ?? 0 })).filter((x) => x.v > 0);
-    if (reps.length) {
-      txt(12, y, `Ansehen: ${reps.map((x) => `${x.r.name} ${reputationRank(x.v).title} (${x.v})`).join(' · ')}`, '#c4a8ff', 11).setWordWrapWidth(W - 24);
-      y += reps.length > 2 ? 30 : 18;
-    }
-    y += 4;
-    txt(12, y, 'Ausrüstung (antippen = ablegen)', '#8a8aa0', 12);
-    y += 18;
-    for (const slot of SLOTS) {
-      const label = SLOT_NAME[slot];
-      const it = h.equipped[slot];
-      const row = this.add.rectangle(12, y, W - 24, 24, 0xffffff, 0.04).setOrigin(0).setInteractive({ useHandCursor: !!it }).setName(`slot-${slot}`);
-      if (it) row.on('pointerdown', () => hc.unequip(slot));
-      c.add(row);
-      if (it) c.add(this.itemIcon(it, 24, y + 12));
-      txt(38, y + 5, it ? `${it.name}` : `${label}: –`, it ? RARITY_COLOR[it.rarity] : '#6a6a7a', 12);
-      if (it) txt(W - 16, y + 5, describeBonus(it.bonus), '#8a8aa0', 11).setOrigin(1, 0);
-      y += 26;
-    }
-    y += 8;
-    txt(12, y, `Inventar ${h.inventory.length}/${INVENTORY_SIZE}`, '#8a8aa0', 12);
-    y += 18;
-    // Raster passt sich der Höhe an, damit Details und „Anlegen“ immer im Fenster bleiben (niedrige Laptop-Fenster)
-    const cell = Math.max(24, Math.min(44, Math.floor((W - 24) / 6), Math.floor((H - y - 72) / 4)));
-    for (let i = 0; i < INVENTORY_SIZE; i++) {
-      const cx = 12 + (i % 6) * cell;
-      const cy = y + Math.floor(i / 6) * cell;
-      const it = h.inventory[i];
-      const sel = it && it.id === this.selected;
-      const r = this.add
-        .rectangle(cx, cy, cell - 4, cell - 4, 0xffffff, sel ? 0.18 : 0.05)
-        .setOrigin(0)
-        .setStrokeStyle(1, it ? Phaser.Display.Color.HexStringToColor(RARITY_COLOR[it.rarity]).color : 0x2a2a36, it ? 0.9 : 0.6)
-        .setName(`inv-${i}`);
-      c.add(r);
-      if (it) {
-        r.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
-          // Doppelklick/-tipp legt direkt an
-          const now = this.time.now;
-          if (this.selected === it.id && now - this.lastItemClick < 400) {
-            hc.equip(it.id);
-            this.selected = null;
-            return;
-          }
-          this.lastItemClick = now;
-          this.selected = it.id;
-          this.buildPanel();
-        });
-        c.add(this.itemIcon(it, cx + (cell - 4) / 2, cy + (cell - 4) / 2).setScale(cell >= 40 ? 2 : 1.5));
-      }
-    }
-    y += 4 * cell + 6;
-    const sel = h.inventory.find((i) => i.id === this.selected);
-    if (sel) {
-      txt(12, y, sel.name, RARITY_COLOR[sel.rarity], 14);
-      y += 18;
-      txt(12, y, `Stufe ${sel.level} · ${RARITY_NAME[sel.rarity]} · ${describeBonus(sel.bonus)}`, '#c0c0cc', 12);
-      y += 20;
-      const b = button(12, y, 'Anlegen', () => {
-        hc.equip(sel.id);
-        this.selected = null;
-      }, true, 'equip');
-      button(12 + b.width + 8, y, 'Wegwerfen', () => {
-        hc.discard(sel.id);
-        this.selected = null;
-      }, true, 'discard');
-    } else {
-      txt(12, y, h.inventory.length ? 'Antippen: Details · doppelt: anlegen' : 'Besiege Gegner, um Beute zu finden.', '#6a6a7a', 12);
-    }
-    this.panel = c;
+  /** Heldenfenster (src/ui/HeroPanel.ts) */
+  private heroPanel!: HeroPanel;
+  get panel(): Phaser.GameObjects.Container | undefined {
+    return this.heroPanel?.container;
   }
+
+  togglePanel(): void {
+    if (this.panel) return this.heroPanel.close();
+    if (this.worldMap.isOpen) this.worldMap.close();
+    this.heroPanel.build();
+  }
+
 
   private hpText?: Phaser.GameObjects.Text;
   private attackLabel?: Phaser.GameObjects.Text;
@@ -1178,280 +854,6 @@ export class UIScene extends Phaser.Scene {
     this.dialog = c;
   }
 
-  /** Färbt Biome einer Karte (Ausschnitt ab x0/y0 in Kacheln, je Pixel `step` Kacheln); Reiche getönt, Grenzen dunkel. */
-  private paintBiomes(biomes: Uint8Array, size: number, x0: number, y0: number, step: number): HTMLCanvasElement {
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    const img = ctx.createImageData(size, size);
-    const meta = (this.scene.get('world') as WorldScene).world.meta;
-    const land = (b: number) => b > 1 && b !== B.River;
-    const realm = new Int8Array(biomes.length).fill(-1);
-    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (land(biomes[y * size + x])) realm[y * size + x] = meta.realmAt(x0 + x * step + step / 2, y0 + y * step + step / 2).id;
-    for (let i = 0; i < biomes.length; i++) {
-      let c = BIOMES[biomes[i]].mapColor;
-      const r = realm[i];
-      if (r >= 0) {
-        const rc = meta.realms[r].color;
-        const t = 0.22;
-        c = (Math.round((c >> 16) * (1 - t) + (rc >> 16) * t) << 16) | (Math.round(((c >> 8) & 255) * (1 - t) + ((rc >> 8) & 255) * t) << 8) | Math.round((c & 255) * (1 - t) + (rc & 255) * t);
-        const x = i % size;
-        if ((x + 1 < size && realm[i + 1] >= 0 && realm[i + 1] !== r) || (realm[i + size] !== undefined && realm[i + size] >= 0 && realm[i + size] !== r)) c = 0x1a1424;
-      }
-      img.data[i * 4] = c >> 16;
-      img.data[i * 4 + 1] = (c >> 8) & 255;
-      img.data[i * 4 + 2] = c & 255;
-      img.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    return canvas;
-  }
-
-  private buildMap(o: OverviewResult): void {
-    const canvas = this.paintBiomes(new Uint8Array(o.biomes), o.size, 0, 0, WORLD_TILES / o.size);
-    this.mapTex = `map:${this.seed}`;
-    if (this.textures.exists(this.mapTex)) this.textures.remove(this.mapTex);
-    this.textures.addCanvas(this.mapTex, canvas);
-    this.mapSize = o.size;
-    debugState.mapReady = true;
-    if (debugState.mapOpen) {
-      this.closeMap();
-      this.openMap();
-    }
-  }
-
-  /** Feiner Kartenausschnitt vom Worker angekommen (nur den neuesten verwenden). */
-  private onRegion(r: RegionResult): void {
-    if (r.id !== this.regionId) return;
-    const key = `mapdetail:${this.seed}`;
-    if (this.textures.exists(key)) this.textures.remove(key);
-    this.textures.addCanvas(key, this.paintBiomes(new Uint8Array(r.biomes), r.size, r.x0, r.y0, r.step));
-    this.detail = { x0: r.x0, y0: r.y0, step: r.step, size: r.size };
-    debugState.mapDetail = r.step;
-    if (this.map) this.layoutMap();
-  }
-
-  /** Für Gamepad-Steuerung aus der Welt-Szene. */
-  toggleMapPublic(): void {
-    this.toggleMap();
-  }
-
-  private toggleMap(): void {
-    if (this.map) this.closeMap();
-    else this.openMap();
-  }
-
-  /** Zoomstufen der Weltkarte. */
-  private static readonly MAP_ZOOMS = [1, 2, 4, 8, 16];
-
-  private openMap(): void {
-    debugState.mapOpen = true;
-    const { width, height } = this.scale;
-    // Über Hinweis-Bannern (35), unter Fenstern wie Heldenfenster (50)
-    const c = this.add.container(0, 0).setDepth(40);
-    c.add(this.add.rectangle(0, 0, width, height, 0x05050c, 0.88).setOrigin(0).setInteractive());
-    this.map = c;
-    if (!this.mapSize) {
-      c.add(this.add.text(width / 2, height / 2, 'Karte wird gezeichnet …', FONT).setOrigin(0.5));
-      return;
-    }
-    const ws = this.scene.get('world') as WorldScene;
-    const side = Math.min(width, height) - 90;
-    this.mapView = { x: width / 2 - side / 2, y: height / 2 - side / 2 + 10, side };
-    // Beim Öffnen auf den Helden zentriert (Zoom bleibt wie zuletzt)
-    this.mapCenter = { ...ws.player.tile };
-    c.add(this.add.text(width / 2, this.mapView.y - 20, `${ws.world.meta.lore.worldName} – Welt „${this.seed}“`, { ...FONT, fontSize: '16px' }).setOrigin(0.5));
-    this.mapInfo = this.add.text(width / 2, this.mapView.y + side + 14, '', { ...FONT, fontSize: '12px', color: '#2fe0d8' }).setOrigin(0.5);
-    c.add(this.mapInfo);
-    // Inhalt der Karte (wird bei Zoom/Verschieben neu gesetzt), auf das Kartenfenster beschnitten
-    this.mapLayer = this.add.container(0, 0);
-    const shape = this.make.graphics({}, false).fillStyle(0xffffff).fillRect(this.mapView.x, this.mapView.y, side, side);
-    this.mapLayer.setMask(shape.createGeometryMask());
-    c.add(this.mapLayer);
-    c.add(this.add.rectangle(this.mapView.x, this.mapView.y, side, side).setOrigin(0).setStrokeStyle(1, 0x2fe0d8, 0.6));
-    // Knöpfe: + − ◎
-    const bx = this.mapView.x + side + 8;
-    const btn = (y: number, label: string, fn: () => void, name: string) => {
-      const b = this.add.text(Math.min(bx, width - 36), y, label, { ...FONT, fontSize: '18px', color: '#0b0b14', backgroundColor: '#2fe0d8', padding: { x: 8, y: 2 } }).setInteractive({ useHandCursor: true }).setName(name);
-      b.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e?: Phaser.Types.Input.EventData) => {
-        e?.stopPropagation();
-        fn();
-      });
-      c.add(b);
-    };
-    btn(this.mapView.y, '+', () => this.zoomMap(1), 'map-zoom-in');
-    btn(this.mapView.y + 34, '−', () => this.zoomMap(-1), 'map-zoom-out');
-    btn(this.mapView.y + 68, '◎', () => {
-      this.mapCenter = { ...ws.player.tile };
-      this.layoutMap();
-    }, 'map-center');
-    // Ziehen verschiebt die Karte, Mausrad zoomt zur Mausposition
-    const bg = c.getAt(0) as Phaser.GameObjects.Rectangle;
-    bg.on('pointerdown', (p: Phaser.Input.Pointer) => (this.mapDrag = { x: p.x, y: p.y, cx: this.mapCenter.tx, cy: this.mapCenter.ty }));
-    this.marker = this.add.rectangle(0, 0, 8, 8).setStrokeStyle(2, 0xff3355);
-    c.add(this.marker);
-    this.layoutMap();
-  }
-
-  private mapView = { x: 0, y: 0, side: 1 };
-  private mapCenter = { tx: 0, ty: 0 };
-  private mapZoomIndex = 0;
-  private mapLayer?: Phaser.GameObjects.Container;
-  private mapInfo?: Phaser.GameObjects.Text;
-  private mapDrag: { x: number; y: number; cx: number; cy: number } | null = null;
-  private detail: { x0: number; y0: number; step: number; size: number } | null = null;
-  private regionId = 0;
-  private regionTimer?: Phaser.Time.TimerEvent;
-
-  /** Bildschirmpixel je Kachel bei der aktuellen Zoomstufe. */
-  private get mapK(): number {
-    return (this.mapView.side * UIScene.MAP_ZOOMS[this.mapZoomIndex]) / WORLD_TILES;
-  }
-
-  /** Kachel → Bildschirmposition in der Kartenansicht. */
-  private mapToScreen(tx: number, ty: number): { x: number; y: number } {
-    const k = this.mapK;
-    return { x: this.mapView.x + this.mapView.side / 2 + (tx - this.mapCenter.tx) * k, y: this.mapView.y + this.mapView.side / 2 + (ty - this.mapCenter.ty) * k };
-  }
-
-  /** Zoomt um eine Stufe; mit Bildschirmpunkt bleibt die Stelle darunter stehen (Mausrad). */
-  private zoomMap(dir: number, at?: { x: number; y: number }): void {
-    if (!this.map || !this.mapLayer) return;
-    const before = this.mapK;
-    this.mapZoomIndex = Phaser.Math.Clamp(this.mapZoomIndex + dir, 0, UIScene.MAP_ZOOMS.length - 1);
-    if (at) {
-      const cx = this.mapView.x + this.mapView.side / 2;
-      const cy = this.mapView.y + this.mapView.side / 2;
-      const tx = this.mapCenter.tx + (at.x - cx) / before;
-      const ty = this.mapCenter.ty + (at.y - cy) / before;
-      this.mapCenter = { tx: tx - (at.x - cx) / this.mapK, ty: ty - (at.y - cy) / this.mapK };
-    }
-    this.layoutMap();
-  }
-
-  /** Setzt Kartenbild, Ausschnitt, Nebel und Markierungen für Zoom und Mittelpunkt neu. */
-  private layoutMap(): void {
-    const layer = this.mapLayer;
-    if (!layer) return;
-    const ws = this.scene.get('world') as WorldScene;
-    const meta = ws.world.meta;
-    const z = UIScene.MAP_ZOOMS[this.mapZoomIndex];
-    const k = this.mapK;
-    const { side } = this.mapView;
-    // Mittelpunkt so begrenzen, dass die Karte das Fenster füllt
-    const halfSpan = side / 2 / k;
-    this.mapCenter.tx = Phaser.Math.Clamp(this.mapCenter.tx, halfSpan, WORLD_TILES - halfSpan);
-    this.mapCenter.ty = Phaser.Math.Clamp(this.mapCenter.ty, halfSpan, WORLD_TILES - halfSpan);
-    debugState.mapZoom = z;
-    layer.removeAll(true);
-    const o = this.mapToScreen(0, 0);
-    layer.add(this.add.image(o.x, o.y, this.mapTex).setOrigin(0).setDisplaySize(WORLD_TILES * k, WORLD_TILES * k));
-    // Feiner Ausschnitt ab 4×, sobald der Worker ihn geliefert hat
-    const d = this.detail;
-    if (z >= 4 && d && this.textures.exists(`mapdetail:${this.seed}`)) {
-      const p = this.mapToScreen(d.x0, d.y0);
-      layer.add(this.add.image(p.x, p.y, `mapdetail:${this.seed}`).setOrigin(0).setDisplaySize(d.size * d.step * k, d.size * d.step * k));
-    }
-    if (z >= 4) this.requestRegion();
-    // Fog of War darüber
-    this.updateFog(ws);
-    this.refreshFog();
-    layer.add(this.add.image(o.x, o.y, this.fogKey).setOrigin(0).setDisplaySize(WORLD_TILES * k, WORLD_TILES * k));
-
-    const v = this.mapView;
-    const inView = (x: number, y: number) => x >= v.x - 4 && y >= v.y - 4 && x <= v.x + side + 4 && y <= v.y + side + 4;
-    const knows = (tx: number, ty: number) => ws.fog.knows(tx, ty);
-    const small = side < 500 && z < 4;
-    for (const r of meta.realms) {
-      const p = this.mapToScreen(r.tx, r.ty);
-      if (!knows(r.tx, r.ty) || !inView(p.x, p.y)) continue;
-      layer.add(this.add.text(p.x, p.y - (small ? 14 : 22), r.name.toUpperCase(), { fontFamily: 'monospace', fontSize: small ? '9px' : '12px', color: '#ffffff', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0.5).setAlpha(0.85));
-    }
-    for (const s of meta.settlements) {
-      const p = this.mapToScreen(s.tx, s.ty);
-      if (!knows(s.tx, s.ty) || !inView(p.x, p.y)) continue;
-      const known = ws.state.d.discovered.has(`town:${s.id}`);
-      const sz = (s.capital ? 7 : 4) + (z >= 8 ? 2 : 0);
-      layer.add(this.add.rectangle(p.x, p.y, sz, sz, s.capital ? 0xffd84a : 0xf4f0e8).setStrokeStyle(1, 0x0b0b14));
-      if (known) {
-        // Wegstein: anklickbar für Schnellreise
-        const hit = this.add.circle(p.x, p.y, 12, 0x2fe0d8, 0.25).setStrokeStyle(1, 0x2fe0d8).setInteractive({ useHandCursor: true }).setName(`travel-${s.id}`);
-        hit.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e?: Phaser.Types.Input.EventData) => {
-          e?.stopPropagation();
-          if (ws.travel(s.id)) this.closeMap();
-        });
-        layer.add(hit);
-      }
-      if (s.capital || !small) layer.add(this.add.text(p.x + 6, p.y, s.name, { fontFamily: 'monospace', fontSize: small ? '9px' : '11px', color: s.capital ? '#ffd84a' : '#e0e0e8', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0, 0.5));
-    }
-    for (const r of meta.ruins) {
-      if (!ws.state.d.discovered.has(`ruin:${r.id}`)) continue;
-      const p = this.mapToScreen(r.tx, r.ty);
-      if (!inView(p.x, p.y)) continue;
-      const looted = ws.state.d.chests.has(`ruinchest:${r.tx + 2},${r.ty + 1}`);
-      layer.add(this.add.triangle(p.x, p.y, 0, 8, 4, 0, 8, 8, looted ? 0x8a8aa0 : 0x3fc4d4).setStrokeStyle(1, 0x0b0b14));
-    }
-    const found = new Set(ws.hero.hero.chronicle ?? []);
-    for (const ob of meta.obelisks) {
-      const p = this.mapToScreen(ob.tx, ob.ty);
-      if (found.has(ob.fragment ?? -1) && inView(p.x, p.y)) layer.add(this.add.star(p.x, p.y, 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
-    }
-    for (const q of ws.hero.quests.active) {
-      const t = questTarget(q);
-      if (!t) continue;
-      const p = this.mapToScreen(t.tx, t.ty);
-      if (!inView(p.x, p.y)) continue;
-      if (t.npcId && !ws.npcs.npcs.has(t.npcId)) layer.add(this.add.circle(p.x, p.y, Math.max(7, AREA_RADIUS * k), 0xffd84a, 0.25).setStrokeStyle(1, 0xffd84a));
-      else layer.add(this.add.circle(p.x, p.y, 4, 0xffd84a).setStrokeStyle(1, 0x0b0b14));
-    }
-    for (const car of ws.live.caravans) {
-      const cp = caravanPos(car, worldNow());
-      const p = this.mapToScreen(cp.tx, cp.ty);
-      if (knows(cp.tx, cp.ty) && inView(p.x, p.y)) layer.add(this.add.triangle(p.x, p.y, 0, 6, 3, 0, 6, 6, 0xf08a3a).setStrokeStyle(1, 0x0b0b14));
-    }
-    this.mapInfo?.setText(`Zoom ${z}× · Erkundet: ${(ws.fog.fraction * 100).toFixed(2)} % · Ziehen: verschieben · Rad/+/−: zoomen · türkis: Schnellreise`);
-  }
-
-  /** Feinen Ausschnitt um den sichtbaren Bereich anfordern (verzögert, nur wenn der vorhandene nicht reicht). */
-  private requestRegion(): void {
-    const k = this.mapK;
-    const span = this.mapView.side / k;
-    // ~2,5 Bildschirmpixel je Kartenpixel, aber nie feiner als 2 Kacheln
-    const step = Math.max(2, Math.pow(2, Math.round(Math.log2(span / (this.mapView.side / 2.5)))));
-    const x0 = this.mapCenter.tx - span / 2;
-    const y0 = this.mapCenter.ty - span / 2;
-    const d = this.detail;
-    if (d && d.step === step && d.x0 <= x0 && d.y0 <= y0 && d.x0 + d.size * step >= x0 + span && d.y0 + d.size * step >= y0 + span) return;
-    this.regionTimer?.remove();
-    this.regionTimer = this.time.delayedCall(150, () => {
-      // 1,6-facher Sichtbereich, damit kleines Verschieben ohne neue Berechnung geht
-      const size = Math.ceil((span * 1.6) / step);
-      const rx = Math.max(0, Math.round((this.mapCenter.tx - (size * step) / 2) / step) * step);
-      const ry = Math.max(0, Math.round((this.mapCenter.ty - (size * step) / 2) / step) * step);
-      this.ensureMapWorker().postMessage({ type: 'region', id: ++this.regionId, x0: rx, y0: ry, step, size } satisfies ChunkRequest);
-    });
-  }
-
-  /** Der Karten-Worker bleibt nach der Übersicht für Ausschnitte bestehen. */
-  private ensureMapWorker(): Worker {
-    if (!this.mapWorker) {
-      this.mapWorker = new Worker(new URL('../render/chunkWorker.ts', import.meta.url), { type: 'module' });
-      this.mapWorker.onmessage = (ev: MessageEvent<OverviewResult | RegionResult>) => (ev.data.type === 'overview' ? this.buildMap(ev.data) : this.onRegion(ev.data));
-      this.mapWorker.postMessage({ type: 'init', seed: this.seed } satisfies ChunkRequest);
-    }
-    return this.mapWorker;
-  }
-
-  private closeMap(): void {
-    debugState.mapOpen = false;
-    this.map?.destroy();
-    this.map = undefined;
-    this.marker = undefined;
-    this.mapLayer = undefined;
-    this.mapInfo = undefined;
-    this.mapDrag = null;
-  }
 
   update(): void {
     const ws = this.scene.get('world') as WorldScene;
@@ -1473,7 +875,8 @@ export class UIScene extends Phaser.Scene {
     this.drawHp();
     this.stepBanners(ws);
     this.drawQuests(ws);
-    this.drawMinimap(ws);
+    this.worldMap.drawMinimap(ws, !this.panel && !this.questLog);
+    this.worldMap.updateMarker(ws);
     if (this.attackButton) {
       const ax = this.scale.width - 60;
       const ay = this.scale.height - 90;
@@ -1500,7 +903,7 @@ export class UIScene extends Phaser.Scene {
 
     // Namensschild über dem nächsten ansprechbaren NPC
     const near = ws.talkingTo ?? ws.npcs.nearest(ws.player, 80);
-    if (near && !this.map) {
+    if (near && !this.worldMap.isOpen) {
       const cam = ws.cameras.main;
       const sx = (near.actor.x - cam.worldView.x) * cam.zoom;
       const sy = (near.actor.y - 52 - cam.worldView.y) * cam.zoom;
@@ -1510,15 +913,5 @@ export class UIScene extends Phaser.Scene {
       this.nameTag.setVisible(false);
     }
 
-    if (this.marker && this.mapLayer) {
-      const v = ws.cameras.main.worldView;
-      const k = this.mapK;
-      const p = this.mapToScreen(v.centerX / TILE_PX, v.centerY / TILE_PX);
-      const w = Math.max(6, (v.width / TILE_PX) * k);
-      const h = Math.max(6, (v.height / TILE_PX) * k);
-      const mv = this.mapView;
-      this.marker.setPosition(p.x, p.y).setSize(w, h).setDisplayOrigin(w / 2, h / 2);
-      this.marker.setVisible(p.x > mv.x && p.y > mv.y && p.x < mv.x + mv.side && p.y < mv.y + mv.side);
-    }
   }
 }
