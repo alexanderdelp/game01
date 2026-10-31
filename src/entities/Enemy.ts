@@ -10,14 +10,24 @@ import { moveBox, overlaps, type Box, type Facing, facingFrom } from '../world/c
 import { hash2, mulberry32 } from '../world/rng';
 import { wanderTarget } from '../world/npcs';
 import type { WorldGen } from '../world/WorldGen';
-import { Actor } from './Actor';
+import { Actor, type MoveEnv } from './Actor';
 
 const LEASH = 12 * TILE_PX;
 
+/**
+ * Das Gelände, das der Kampf braucht – mehr nicht. In der Welt liefern es Chunks und Weltgenerator,
+ * in der Kampf-Arena eine einfache Fläche (siehe `src/arena`).
+ */
+export interface CombatTerrain extends MoveEnv {
+  /** Biom einer Kachel; undefined = (noch) nicht geladen. */
+  biomeAt(tx: number, ty: number): number | undefined;
+  terrainBlocked(b: Box): boolean;
+  isWalkable(tx: number, ty: number): boolean;
+}
+
 /** Was ein Gegner von der Welt braucht. */
 export interface CombatCtx {
-  chunks: ChunkManager;
-  world: WorldGen;
+  terrain: CombatTerrain;
   player: Actor;
   playerAlive: boolean;
   /** Live-Mitspieler (M12): Gegner verfolgen den nächsten Spieler. */
@@ -130,12 +140,12 @@ export class Enemy {
   private move(dx: number, dy: number, ctx: CombatCtx): void {
     if (this.def.flying) {
       // Fliegende Gegner ignorieren Hindernisse, bleiben aber in geladenen Bereichen.
-      if (ctx.chunks.biomeAt(Math.floor((this.x + dx) / TILE_PX), Math.floor((this.y + dy) / TILE_PX)) === undefined) return;
+      if (ctx.terrain.biomeAt(Math.floor((this.x + dx) / TILE_PX), Math.floor((this.y + dy) / TILE_PX)) === undefined) return;
       this.x += dx;
       this.y += dy;
       return;
     }
-    const m = moveBox(this.foot, dx, dy, (b) => ctx.chunks.blocked(b), (b) => ctx.chunks.terrainBlocked(b));
+    const m = moveBox(this.foot, dx, dy, (b) => ctx.terrain.blocked(b), (b) => ctx.terrain.terrainBlocked(b));
     this.x = m.x + 7;
     this.y = m.y + 6;
   }
@@ -181,7 +191,7 @@ export class Enemy {
             break;
           }
           if (!this.target && this.timer <= 0) {
-            const t = wanderTarget(this.spawn, 4, this.rnd, (x, y) => this.def.flying || ctx.world.isWalkable(x, y));
+            const t = wanderTarget(this.spawn, 4, this.rnd, (x, y) => this.def.flying || ctx.terrain.isWalkable(x, y));
             this.target = t ? { x: t.tx * TILE_PX + 16, y: t.ty * TILE_PX + 30 } : null;
             this.timer = 2 + this.rnd() * 3;
           }
@@ -284,7 +294,7 @@ export class Enemy {
       // Räuber: Bewegung und Animation über die LPC-Figur
       this.actor.x = this.x;
       this.actor.y = this.y;
-      if (!this.actor.busy) this.actor.update(mx, my, false, dt, { blocked: (b) => ctx.chunks.blocked(b), speedAt: () => speed / this.def.speed });
+      if (!this.actor.busy) this.actor.update(mx, my, false, dt, { blocked: (b) => ctx.terrain.blocked(b), speedAt: () => speed / this.def.speed });
       this.x = this.actor.x;
       this.y = this.actor.y;
     } else if (mx || my) {
@@ -351,22 +361,33 @@ export class EnemyManager {
   onKilled: (e: Enemy) => void = () => {};
   private readonly bars: Phaser.GameObjects.Graphics;
 
+  /**
+   * Ohne `source` erscheinen Gegner nur über `add` (Kampf-Arena); mit `source` seed-basiert mit den Chunks der Welt.
+   */
   constructor(
     private readonly scene: Phaser.Scene,
-    private readonly world: WorldGen,
-    chunks: ChunkManager,
-    private readonly spawnTile: { tx: number; ty: number },
+    private readonly seed: number,
+    private readonly source?: { world: WorldGen; chunks: ChunkManager; spawnTile: { tx: number; ty: number } },
   ) {
-    chunks.onLoad.push((cx, cy) => this.spawnChunk(cx, cy));
-    chunks.onUnload.push((cx, cy) => this.despawnChunk(cx, cy));
+    source?.chunks.onLoad.push((cx, cy) => this.spawnChunk(cx, cy));
+    source?.chunks.onUnload.push((cx, cy) => this.despawnChunk(cx, cy));
     this.bars = scene.add.graphics().setDepth(1_000_000);
   }
 
+  /** Setzt einen Gegner direkt ein (Kampf-Arena). */
+  add(spawn: EnemySpawn): Enemy {
+    this.enemies.get(spawn.id)?.destroy();
+    const e = new Enemy(this.scene, spawn, this.seed);
+    this.enemies.set(spawn.id, e);
+    return e;
+  }
+
   private spawnChunk(cx: number, cy: number): void {
+    const { world, spawnTile } = this.source!;
     const ids: string[] = [];
-    for (const s of enemiesForChunk(this.world, cx, cy, this.spawnTile, this.invasion)) {
+    for (const s of enemiesForChunk(world, cx, cy, spawnTile, this.invasion)) {
       if (this.enemies.has(s.id) || this.isDefeated(s.id)) continue;
-      this.enemies.set(s.id, new Enemy(this.scene, s, this.world.seed));
+      this.enemies.set(s.id, new Enemy(this.scene, s, this.seed));
       ids.push(s.id);
     }
     this.byChunk.set(`${cx},${cy}`, ids);

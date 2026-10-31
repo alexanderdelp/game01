@@ -47,6 +47,11 @@ export const PLAYER_SWING = {
   knockLock: 0.1,
 };
 
+/** Bewegung des Helden (Grundtempo in px/s, vor Volks- und Ausrüstungsboni). */
+export const PLAYER_MOVE = {
+  speed: 150,
+};
+
 /** Zeit vom Tastendruck bis der nächste Hieb möglich ist (s). */
 export function swingCycle(s = PLAYER_SWING): number {
   return s.frames / s.frameRate + s.cooldown;

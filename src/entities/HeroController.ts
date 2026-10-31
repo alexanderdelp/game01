@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PLAYER_MOVE } from '../combat/combat';
 import { buildCharacter } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
 import { load, save } from '../game/save';
@@ -22,7 +23,6 @@ interface Pickup {
   age: number;
 }
 
-const BASE_SPEED = 150;
 
 /** Held: Fortschritt, Beute, Ausrüstung, Speichern. Verbindet die reine RPG-Logik mit Szene und Figur. */
 export class HeroController {
@@ -82,7 +82,7 @@ export class HeroController {
     const s = finalStats(this.hero);
     this.combat.applyStats(s);
     if (initial) this.combat.heal(s.maxHp);
-    this.actor.baseSpeed = BASE_SPEED * s.speed;
+    this.actor.baseSpeed = PLAYER_MOVE.speed * s.speed;
     this.actor.setPrefix(buildCharacter(this.scene, this.appearance()));
     this.dirty = true;
     this.scene.events.emit('hero-changed');

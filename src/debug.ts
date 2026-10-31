@@ -28,6 +28,12 @@ export const debugState = {
   /** M16: Ziel des Questpfeils ('npc' = auf den NPC selbst, 'place' = Ort, 'area' = kein Pfeil, nur Gebiet) */
   questPointer: 'none' as 'none' | 'npc' | 'place' | 'area',
   minimap: false,
+  /** M20: Fog of War */
+  fogKnows: (_tx: number, _ty: number): boolean => false,
+  fogFraction: (): number => 0,
+  /** Kampf-Arena */
+  arenaSpawn: (_kind: string): void => {},
+  arenaTune: (_id: string, _v: number): void => {},
   bannerTitle: '',
   titleStart: (_seed: string): void => {},
   lastShareLink: '',

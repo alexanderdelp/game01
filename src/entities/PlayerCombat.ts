@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
 import { PLAYER_SWING, SPELL, attackBox, facingVector, knockback, regen, rollDamage, type Stats } from '../combat/combat';
 import { CREATURES } from '../render/textures';
-import type { ChunkManager } from '../render/ChunkManager';
 import { mulberry32 } from '../world/rng';
-import type { Actor } from './Actor';
+import type { Actor, MoveEnv } from './Actor';
 import type { EnemyManager } from './Enemy';
 
 const INVULN = 0.8;
@@ -26,7 +25,7 @@ export class PlayerCombat {
     private readonly scene: Phaser.Scene,
     private readonly actor: Actor,
     private readonly enemies: EnemyManager,
-    private readonly chunks: ChunkManager,
+    private readonly chunks: MoveEnv,
     private readonly respawn: () => void,
   ) {}
 

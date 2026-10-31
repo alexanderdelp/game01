@@ -34,6 +34,7 @@ const POTION_PRICE = 10;
 const BARBER_PRICE = 20;
 import { addItem } from '../rpg/progression';
 import { CHUNK_TILES, WORLD_TILES, WORLD_VERSION, WorldGen } from '../world/WorldGen';
+import { ExploredMap } from '../world/fog';
 
 const ZOOMS = [1, 2, 3, 4];
 
@@ -56,6 +57,8 @@ export class WorldScene extends Phaser.Scene {
   towns!: TownDecor;
   live!: LiveWorld;
   signs!: Markers;
+  /** Fog of War: was der Held schon gesehen hat (M20). */
+  fog!: ExploredMap;
   sync?: SyncClient;
   live2?: LiveSession;
   remote!: RemotePlayers;
@@ -97,9 +100,13 @@ export class WorldScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
     this.state = new WorldState(this.world.seedName, new LocalWorldStore(), Date.now(), playerId());
+    this.fog = ExploredMap.decode(load<string>(`fog:${this.world.seedName}`));
+    this.lastFogTile = { tx: -1, ty: -1 };
+    // Bekannte Orte (Wegsteine) sind auch auf der Karte bekannt, z. B. aus älteren Spielständen
+    for (const t of this.world.meta.settlements) if (this.state.d.discovered.has(`town:${t.id}`)) this.fog.reveal(t.tx, t.ty, 24);
     this.npcs = new NpcManager(this, this.world, this.chunks);
     const spawn = this.world.findSpawn();
-    this.enemies = new EnemyManager(this, this.world, this.chunks, spawn);
+    this.enemies = new EnemyManager(this, this.world.seed, { world: this.world, chunks: this.chunks, spawnTile: spawn });
     this.enemies.isDefeated = (id) => isDefeated(this.state.d, id, Date.now());
     this.enemies.onKilled = (e) => this.state.record({ t: Date.now(), by: this.heroName, type: 'kill', id: e.spawn.id, realm: this.world.meta.realmAt(e.spawn.tx, e.spawn.ty).id });
     // Gespeicherte Position nur, wenn sie aus derselben Weltversion stammt und begehbar ist
@@ -150,9 +157,16 @@ export class WorldScene extends Phaser.Scene {
     const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
     this.events.on('defeated', onDefeated);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('defeated', onDefeated));
+    const chunks = this.chunks;
+    const world = this.world;
     this.combatCtx = {
-      chunks: this.chunks,
-      world: this.world,
+      terrain: {
+        biomeAt: (tx, ty) => chunks.biomeAt(tx, ty),
+        blocked: (b) => chunks.blocked(b),
+        terrainBlocked: (b) => chunks.terrainBlocked(b),
+        speedAt: (x, y) => chunks.speedAt(x, y),
+        isWalkable: (tx, ty) => world.isWalkable(tx, ty),
+      },
       player: this.player,
       playerAlive: true,
       hurtPlayer: (a, x, y) => this.combat.hurt(a, x, y),
@@ -202,6 +216,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => {
+      this.saveFog();
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
       this.hero.persist();
       this.state.flush();
@@ -226,6 +241,8 @@ export class WorldScene extends Phaser.Scene {
     save(`seen:${this.world.seedName}`, now);
     debugState.seed = this.world.seedName;
     debugState.spawn = spawn;
+    debugState.fogKnows = (tx: number, ty: number) => this.fog.knows(tx, ty);
+    debugState.fogFraction = () => this.fog.fraction;
     debugState.teleport = (tx: number, ty: number) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
     debugState.findEnemy = (kind?: string) => {
       const c = { x: Math.floor(spawn.tx / CHUNK_TILES), y: Math.floor(spawn.ty / CHUNK_TILES) };
@@ -795,6 +812,14 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /** Mittelpunkt des Interesses (die Figur) in Kachelkoordinaten. */
+  private lastFogTile = { tx: -1, ty: -1 };
+
+  private saveFog(): void {
+    if (!this.fog.dirty) return;
+    this.fog.dirty = false;
+    save(`fog:${this.world.seedName}`, this.fog.encode());
+  }
+
   get focusTile(): { tx: number; ty: number } {
     return this.player.tile;
   }
@@ -879,9 +904,17 @@ export class WorldScene extends Phaser.Scene {
     if (this.talkingTo && Math.hypot(this.talkingTo.actor.x - this.player.x, this.talkingTo.actor.y - this.player.y) > 90) this.endTalk();
     if (this.dialogOpen && !this.talkingTo && this.player.moving) this.endTalk();
 
+    // Fog of War: Umgebung aufdecken, sobald der Held eine neue Kachel betritt
+    const pt = this.player.tile;
+    if (pt.tx !== this.lastFogTile.tx || pt.ty !== this.lastFogTile.ty) {
+      this.lastFogTile = pt;
+      this.fog.reveal(pt.tx, pt.ty);
+    }
+
     this.saveTimer += delta;
     if (this.saveTimer > 2000) {
       this.saveTimer = 0;
+      this.saveFog();
       this.state.flush();
       save(`seen:${this.world.seedName}`, worldNow());
       save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);

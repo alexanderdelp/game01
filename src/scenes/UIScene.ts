@@ -23,6 +23,9 @@ import type { WorldScene } from './WorldScene';
 const MAP_STEP = 16;
 /** Minimap: Bildschirmpixel je Pixel der Übersichtskarte (1 Pixel = MAP_STEP Kacheln). */
 const MINI_ZOOM = 6;
+/** Fog of War: unerkundet bzw. Rand zum Erkundeten. */
+const FOG_COLOR = '#17131f';
+const FOG_EDGE = 'rgba(23, 19, 31, 0.55)';
 const FONT = { fontFamily: 'monospace', fontSize: '14px', color: '#f4f0e8' };
 
 /** HUD und Weltkarte, gezeichnet ohne Kamera-Zoom über der Welt. */
@@ -70,6 +73,8 @@ export class UIScene extends Phaser.Scene {
     this.mini = undefined;
     this.miniG = undefined;
     this.miniFg = undefined;
+    this.miniFog = undefined;
+    this.fogTex = undefined;
     this.lastPos = null;
     this.markerTexts = [];
     this.mapSize = 0;
@@ -585,6 +590,11 @@ export class UIScene extends Phaser.Scene {
   private mini?: Phaser.GameObjects.Image;
   private miniG?: Phaser.GameObjects.Graphics;
   private miniFg?: Phaser.GameObjects.Graphics;
+  private miniFog?: Phaser.GameObjects.Image;
+  /** Nebel-Textur (1 Pixel = 1 Erkundungszelle = 1 Pixel der Übersichtskarte). */
+  private fogTex?: Phaser.Textures.CanvasTexture;
+  private fogRefreshAt = 0;
+  private fogChanged = false;
   /** Aktuelles Questziel für die Minimap (area = nur ungefähres Gebiet). */
   private miniTarget: { tx: number; ty: number; area: boolean } | null = null;
   chronicle?: Phaser.GameObjects.Container;
@@ -812,7 +822,10 @@ export class UIScene extends Phaser.Scene {
     this.mini ??= this.add.image(0, 0, this.mapTex).setOrigin(0).setDepth(4.1).setScale(MINI_ZOOM);
     this.miniG ??= this.add.graphics().setDepth(4);
     const show = !this.map && !this.panel && !this.questLog;
+    this.updateFog(ws);
+    this.miniFog ??= this.add.image(0, 0, this.fogKey).setOrigin(0).setDepth(4.15).setScale(MINI_ZOOM);
     this.mini.setVisible(show);
+    this.miniFog.setVisible(show);
     this.miniG.clear().setVisible(show);
     debugState.minimap = show;
     this.miniFg?.clear();
@@ -829,6 +842,7 @@ export class UIScene extends Phaser.Scene {
     const cw = Math.min(this.mapSize, ox + 2 * half) - cx0;
     const ch = Math.min(this.mapSize, oy + 2 * half) - cy0;
     this.mini.setCrop(cx0, cy0, Math.max(0, cw), Math.max(0, ch)).setPosition(x0 - ox * MINI_ZOOM, y0 - oy * MINI_ZOOM);
+    this.miniFog.setCrop(cx0, cy0, Math.max(0, cw), Math.max(0, ch)).setPosition(x0 - ox * MINI_ZOOM, y0 - oy * MINI_ZOOM);
     const fg = (this.miniFg ??= this.add.graphics().setDepth(4.2)).clear().setVisible(true);
     const px = (t: number) => x0 + (t / MAP_STEP - ox) * MINI_ZOOM;
     const py = (t: number) => y0 + (t / MAP_STEP - oy) * MINI_ZOOM;
@@ -836,7 +850,7 @@ export class UIScene extends Phaser.Scene {
     for (const st of ws.world.meta.settlements) {
       const x = px(st.tx);
       const y = py(st.ty);
-      if (!inside(x, y, 3)) continue;
+      if (!inside(x, y, 3) || !ws.fog.knows(st.tx, st.ty)) continue;
       const known = ws.state.d.discovered.has(`town:${st.id}`);
       const sz = st.capital ? 6 : 4;
       fg.fillStyle(known ? 0x2fe0d8 : st.capital ? 0xffd84a : 0xf4f0e8, 1).fillRect(x - sz / 2, y - sz / 2, sz, sz);
@@ -846,7 +860,7 @@ export class UIScene extends Phaser.Scene {
       const p = caravanPos(car, worldNow());
       const x = px(p.tx);
       const y = py(p.ty);
-      if (inside(x, y, 2)) fg.fillStyle(0xf08a3a, 1).fillTriangle(x, y - 3, x - 3, y + 3, x + 3, y + 3);
+      if (inside(x, y, 2) && ws.fog.knows(p.tx, p.ty)) fg.fillStyle(0xf08a3a, 1).fillTriangle(x, y - 3, x - 3, y + 3, x + 3, y + 3);
     }
     for (const r of ws.remote.remotes.values()) {
       const x = px(r.x / TILE_PX);
@@ -874,6 +888,52 @@ export class UIScene extends Phaser.Scene {
     const hy = y0 + S / 2;
     fg.fillStyle(0xff3355, 1).fillCircle(hx, hy, 3.5).lineStyle(1.5, 0xffffff, 1).strokeCircle(hx, hy, 3.5);
     fg.lineStyle(2, 0x0b0b14, 1).strokeRect(x0, y0, S, S).lineStyle(1, 0xffd84a, 0.6).strokeRect(x0 - 1, y0 - 1, S + 2, S + 2);
+  }
+
+  private get fogKey(): string {
+    return `fog:${this.seed}`;
+  }
+
+  /** Nebel-Textur anlegen bzw. um neu erkundete Zellen ergänzen (Ränder halbtransparent). */
+  private updateFog(ws: WorldScene): void {
+    const fog = ws.fog;
+    const n = fog.size;
+    if (!this.fogTex) {
+      if (this.textures.exists(this.fogKey)) this.textures.remove(this.fogKey);
+      this.fogTex = this.textures.createCanvas(this.fogKey, n, n)!;
+      const ctx = this.fogTex.context;
+      ctx.fillStyle = FOG_COLOR;
+      ctx.fillRect(0, 0, n, n);
+      for (let cy = 0; cy < n; cy++) for (let cx = 0; cx < n; cx++) if (fog.isExplored(cx, cy)) this.paintFogAround(fog, cx, cy);
+      fog.fresh.length = 0;
+      this.fogTex.refresh();
+      return;
+    }
+    if (fog.fresh.length) {
+      for (const i of fog.fresh) this.paintFogAround(fog, i % n, Math.floor(i / n));
+      fog.fresh.length = 0;
+      this.fogChanged = true;
+    }
+    // Hochladen der Textur höchstens alle 300 ms
+    if (this.fogChanged && this.time.now - this.fogRefreshAt > 300) {
+      this.fogChanged = false;
+      this.fogRefreshAt = this.time.now;
+      this.fogTex.refresh();
+    }
+  }
+
+  /** Zelle und Nachbarn neu zeichnen: erkundet = frei, an Erkundetes grenzend = halbtransparent, sonst Nebel. */
+  private paintFogAround(fog: WorldScene['fog'], cx: number, cy: number): void {
+    const ctx = this.fogTex!.context;
+    for (let y = cy - 1; y <= cy + 1; y++) {
+      for (let x = cx - 1; x <= cx + 1; x++) {
+        if (x < 0 || y < 0 || x >= fog.size || y >= fog.size) continue;
+        ctx.clearRect(x, y, 1, 1);
+        if (fog.isExplored(x, y)) continue;
+        ctx.fillStyle = FOG_EDGE;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
   }
 
   /** Ohne Quest: nächster noch nicht besuchter Ort (Wegstein) als Ziel. */
@@ -1145,6 +1205,11 @@ export class UIScene extends Phaser.Scene {
     this.mapImage = this.add.image(width / 2, height / 2 + 10, this.mapTex).setDisplaySize(side, side);
     c.add(this.mapImage);
     const ws = this.scene.get('world') as WorldScene;
+    // Fog of War: Unerkundetes bleibt verborgen (M20)
+    this.updateFog(ws);
+    this.fogTex?.refresh();
+    c.add(this.add.image(this.mapImage.x, this.mapImage.y, this.fogKey).setDisplaySize(side, side));
+    const knows = (tx: number, ty: number) => ws.fog.knows(tx, ty);
     const meta = ws.world.meta;
     c.add(this.add.text(width / 2, height / 2 - side / 2 - 18, `${meta.lore.worldName} – Welt „${this.seed}“`, { ...FONT, fontSize: '16px' }).setOrigin(0.5));
     const k = side / WORLD_TILES;
@@ -1152,9 +1217,11 @@ export class UIScene extends Phaser.Scene {
     const my = (ty: number) => this.mapImage!.y - side / 2 + ty * k;
     const small = side < 500;
     for (const r of meta.realms) {
+      if (!knows(r.tx, r.ty)) continue;
       c.add(this.add.text(mx(r.tx), my(r.ty) - (small ? 14 : 22), r.name.toUpperCase(), { fontFamily: 'monospace', fontSize: small ? '9px' : '12px', color: '#ffffff', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0.5).setAlpha(0.85));
     }
     for (const s of meta.settlements) {
+      if (!knows(s.tx, s.ty)) continue;
       const known = ws.state.d.discovered.has(`town:${s.id}`);
       const sz = s.capital ? 7 : 4;
       const dot = this.add.rectangle(mx(s.tx), my(s.ty), sz, sz, s.capital ? 0xffd84a : 0xf4f0e8).setStrokeStyle(1, 0x0b0b14);
@@ -1184,9 +1251,9 @@ export class UIScene extends Phaser.Scene {
     }
     for (const car of ws.live.caravans) {
       const p = caravanPos(car, worldNow());
-      c.add(this.add.triangle(mx(p.tx), my(p.ty), 0, 6, 3, 0, 6, 6, 0xf08a3a).setStrokeStyle(1, 0x0b0b14));
+      if (knows(p.tx, p.ty)) c.add(this.add.triangle(mx(p.tx), my(p.ty), 0, 6, 3, 0, 6, 6, 0xf08a3a).setStrokeStyle(1, 0x0b0b14));
     }
-    c.add(this.add.text(width / 2, height / 2 + side / 2 + 16, 'Türkise Orte: Wegstein aktiv – antippen für Schnellreise', { ...FONT, fontSize: '12px', color: '#2fe0d8' }).setOrigin(0.5));
+    c.add(this.add.text(width / 2, height / 2 + side / 2 + 16, `Erkundet: ${(ws.fog.fraction * 100).toFixed(2)} % · Türkise Orte: Wegstein – antippen für Schnellreise`, { ...FONT, fontSize: '12px', color: '#2fe0d8' }).setOrigin(0.5));
     this.marker = this.add.rectangle(0, 0, 8, 8).setStrokeStyle(2, 0xff3355);
     c.add(this.marker);
     this.map = c;

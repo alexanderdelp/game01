@@ -9,7 +9,8 @@
     "preview": "vite preview --port 4173 --strictPort",
     "test": "vitest run",
     "e2e": "playwright test",
-    "check": "npm run test && npm run build && npm run e2e"
+    "check": "npm run test && npm run build && npm run e2e",
+    "arena": "vite --open /?arena=1"
   },
   "dependencies": {
     "phaser": "^3.87.0"

@@ -5,6 +5,7 @@ import { CreateScene } from './scenes/CreateScene';
 import { GAME_TITLE, TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
+import { ArenaScene } from './arena/ArenaScene';
 import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
 
@@ -27,9 +28,12 @@ const game = new Phaser.Game({
   scene: [],
 });
 
+// Kampf-Arena: nur der Kampf, ohne Welt (zum Ausprobieren von Steuerung und Kampfgefühl)
+const arena = params.get('arena') === '1';
 const hasHero = !!seed && !!load<Hero>(`hero:${seed}`)?.appearance;
-game.scene.add('world', WorldScene, !!seed && hasHero, { seed });
+game.scene.add('world', WorldScene, !arena && !!seed && hasHero, { seed });
 game.scene.add('ui', UIScene, false);
-game.scene.add('create', CreateScene, !!seed && !hasHero, { seed });
-game.scene.add('title', TitleScene, !seed);
+game.scene.add('create', CreateScene, !arena && !!seed && !hasHero, { seed });
+game.scene.add('title', TitleScene, !arena && !seed);
+game.scene.add('arena', ArenaScene, arena);
 document.title = GAME_TITLE;

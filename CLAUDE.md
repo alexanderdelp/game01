@@ -69,6 +69,8 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
   - **M17 „Kampfgefühl“**: Bewegung während des Schlags, kürzere Verzögerungen, direkte Steuerung (Leitbild Super Mario World). Arena nur bei Bedarf.
   - **M18 „Charaktereditor 2“**: Umfärbe-/Ebenen-Fehler beheben, Völker deutlicher, weibliche Statur, neue Frisuren, Synth mit Implantaten statt Kleidung, Aussehen nur noch beim Barbier.
   - **M19 „Organische, weite Welt“**: Biome für 1–2 min Durchquerung, natürliche Häufung, Bodendetails, Flüsse/Pfade, weiche Übergänge.
+- 2026-10-31 – **Zusätzlicher Meilenstein 20 „Fog of War“** (Nutzerwunsch: erkunden statt alles sehen).
+- 2026-10-31 – **Zusätzlicher Meilenstein 21 „Kampf-Arena & Module“** (Nutzerwunsch: isoliert und mit mehreren Agenten am Kampf arbeiten), siehe `docs/modules/README.md`.
 
 ## Vorgehen
 
@@ -133,6 +135,9 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – Telegram-Bot für Updates und Fragen an den Nutzer (`tools/telegram.mjs`). Token und Chat-ID liegen außerhalb des Repos in `~/.config/game01/telegram.env` (nie committen).
 - 2026-10-31 – (M18) Synth trägt keine Kleidung, sondern Implantate/Panzerung; Aussehen nach der Erschaffung nur beim Barbier (Splitter), Volk/Körper fest (Nutzerentscheidung).
 - 2026-10-31 – (M19) Ziel: ein Biom in 1–2 min durchqueren (Nutzerentscheidung).
+- 2026-10-31 – (M19) Welt 8192 × 8192 Kacheln, Flüsse mit Brücken an Pfaden; Weltversion 2 (alte Positionen verfallen). Vom Nutzer freigegeben.
+- 2026-10-31 – (M20) Fog of War pro Spieler (nicht im geteilten Weltzustand), Zellen à 16 Kacheln, Sichtweite 20 Kacheln.
+- 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.
