@@ -6,6 +6,8 @@ const G = <T>(page: Page, expr: string) => page.evaluate(`(() => { const g = win
 test('M23: Startkleidung je Volk, angelegte Kleidung bestimmt das Aussehen', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  // Niedriges Laptop-Fenster: „Anlegen“ muss trotzdem im Heldenfenster sichtbar sein
+  await page.setViewportSize({ width: 1280, height: 560 });
   await page.goto('/?seed=kleidung-test&test=1');
   await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 30_000 }).toBe('create');
   await expect.poll(() => G<unknown>(page, 'g.createLook()')).not.toBeNull();
@@ -25,6 +27,11 @@ test('M23: Startkleidung je Volk, angelegte Kleidung bestimmt das Aussehen', asy
   expect(await G<string>(page, 'g.heroLook().legsColor')).toBe(color);
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'screenshots/m23-panel.png' });
+  // Doppelklick auf einen Gegenstand legt ihn direkt an
+  const id2 = await G<string>(page, "g.giveItem('feet')");
+  expect(await G<boolean>(page, "g.clickPanel('inv-1')")).toBe(true);
+  expect(await G<boolean>(page, "g.clickPanel('inv-1')")).toBe(true);
+  expect(await G<string>(page, 'g.hero.equipped.feet.id')).toBe(id2);
   // Schuhe ablegen → barfuß
   expect(await G<boolean>(page, "g.clickPanel('slot-feet')")).toBe(true);
   expect(await G<string>(page, 'g.heroLook().shoes')).toBe('none');

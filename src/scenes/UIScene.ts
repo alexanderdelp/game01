@@ -658,6 +658,7 @@ export class UIScene extends Phaser.Scene {
   }
   panel?: Phaser.GameObjects.Container;
   private selected: string | null = null;
+  private lastItemClick = 0;
 
   private tracker!: Phaser.GameObjects.Text;
   private arrow!: Phaser.GameObjects.Graphics;
@@ -1072,7 +1073,8 @@ export class UIScene extends Phaser.Scene {
     y += 8;
     txt(12, y, `Inventar ${h.inventory.length}/${INVENTORY_SIZE}`, '#8a8aa0', 12);
     y += 18;
-    const cell = Math.min(44, Math.floor((W - 24) / 6));
+    // Raster passt sich der Höhe an, damit Details und „Anlegen“ immer im Fenster bleiben (niedrige Laptop-Fenster)
+    const cell = Math.max(24, Math.min(44, Math.floor((W - 24) / 6), Math.floor((H - y - 72) / 4)));
     for (let i = 0; i < INVENTORY_SIZE; i++) {
       const cx = 12 + (i % 6) * cell;
       const cy = y + Math.floor(i / 6) * cell;
@@ -1086,10 +1088,18 @@ export class UIScene extends Phaser.Scene {
       c.add(r);
       if (it) {
         r.setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+          // Doppelklick/-tipp legt direkt an
+          const now = this.time.now;
+          if (this.selected === it.id && now - this.lastItemClick < 400) {
+            hc.equip(it.id);
+            this.selected = null;
+            return;
+          }
+          this.lastItemClick = now;
           this.selected = it.id;
           this.buildPanel();
         });
-        c.add(this.itemIcon(it, cx + (cell - 4) / 2, cy + (cell - 4) / 2).setScale(2));
+        c.add(this.itemIcon(it, cx + (cell - 4) / 2, cy + (cell - 4) / 2).setScale(cell >= 40 ? 2 : 1.5));
       }
     }
     y += 4 * cell + 6;
@@ -1108,7 +1118,7 @@ export class UIScene extends Phaser.Scene {
         this.selected = null;
       }, true, 'discard');
     } else {
-      txt(12, y, h.inventory.length ? 'Gegenstand antippen für Details.' : 'Besiege Gegner, um Beute zu finden.', '#6a6a7a', 12);
+      txt(12, y, h.inventory.length ? 'Antippen: Details · doppelt: anlegen' : 'Besiege Gegner, um Beute zu finden.', '#6a6a7a', 12);
     }
     this.panel = c;
   }
