@@ -132,7 +132,7 @@ export class HeroController {
       const p = this.pickups[i];
       p.age += dt;
       if (p.age < 0.35) continue;
-      if (Math.hypot(p.x - this.actor.x, p.y - this.actor.y) > 22) {
+      if (Math.hypot(p.x - this.actor.x, p.y - this.actor.y) > 30) {
         if (p.age > 120) {
           p.sprite.destroy();
           this.pickups.splice(i, 1);

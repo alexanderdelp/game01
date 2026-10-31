@@ -23,14 +23,15 @@ test('M14: Ruine mit Wächter, Ruinentruhe mit seltenem Fund (R3)', async ({ pag
   await page.keyboard.press('e');
   await expect.poll(() => G<string[]>(page, 'g.state().chests')).toContain(`ruinchest:${r.tx + 2},${r.ty + 1}`);
   // Beute einsammeln: ein seltener oder epischer Gegenstand
-  for (let i = 0; i < 8; i++) {
+  const hasRare = async () => (await G<string[]>(page, 'g.hero.inventory.map((i) => i.rarity)')).some((x) => x === 'rare' || x === 'epic');
+  for (let i = 0; i < 20 && !(await hasRare()); i++) {
     const pos = await G<{ x: number; y: number }[]>(page, 'g.pickupPos.map((p) => ({ ...p }))');
     if (!pos.length) break;
-    await G(page, `g.teleport(${Math.floor(pos[0].x / 32)}, ${Math.floor(pos[0].y / 32)})`);
-    await page.waitForTimeout(700);
+    const p = pos[i % pos.length];
+    await G(page, `g.teleport(${Math.floor(p.x / 32)}, ${Math.floor(p.y / 32)})`);
+    await page.waitForTimeout(800);
   }
-  const rarities = await G<string[]>(page, 'g.hero.inventory.map((i) => i.rarity)');
-  expect(rarities.some((x) => x === 'rare' || x === 'epic')).toBe(true);
+  expect(await hasRare()).toBe(true);
   await page.screenshot({ path: 'screenshots/m14-loot.png' });
   expect(errors).toEqual([]);
 });

@@ -11,7 +11,7 @@ Gamepad: Stick laufen, A Angriff, RT Zauber, X Reden, Y Trank, Start Menü, Sele
 
 ## Stand
 
-Siehe [Meilensteine](docs/milestones/) und [Design-Dokument](docs/DESIGN.md). Arbeitsregeln und Entscheidungen: [CLAUDE.md](CLAUDE.md).
+Alle 12 Meilensteine + 2 Zusatz-Meilensteine erreicht – siehe [Nachtbericht](docs/BERICHT-2026-10-31.md), [Meilensteine](docs/milestones/) und [Design-Dokument](docs/DESIGN.md). Arbeitsregeln und Entscheidungen: [CLAUDE.md](CLAUDE.md).
 
 ## Entwicklung
 
