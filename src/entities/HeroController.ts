@@ -168,6 +168,7 @@ export class HeroController {
       color = { common: '#f4f0e8', rare: '#5aa8ff', epic: '#c47aff' }[d.item.rarity];
     }
     this.scene.events.emit('float', { x: this.actor.x, y: this.actor.y - 50, text, color });
+    this.scene.events.emit('sfx', 'pickup');
     this.dirty = true;
     this.scene.events.emit('hero-changed');
     return true;

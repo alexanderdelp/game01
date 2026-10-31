@@ -83,6 +83,9 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     debugState.scene = 'world';
+    // Zuletzt gespielte Welten für den Titelbildschirm
+    const recent = (load<string[]>('recent') ?? []).filter((s) => s !== this.world.seedName);
+    save('recent', [this.world.seedName, ...recent].slice(0, 6));
     createDecorAtlas(this);
     createCreatureAtlas(this);
     this.chunks = new ChunkManager(this, this.world.seedName);
@@ -381,6 +384,15 @@ export class WorldScene extends Phaser.Scene {
     return [...map.values()].filter((p) => p.name);
   }
 
+  /** Zurück zum Titelbildschirm (alles wird gespeichert). */
+  toTitle(): void {
+    save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+    this.hero.persist();
+    this.state.flush();
+    this.scene.stop('ui');
+    this.scene.start('title');
+  }
+
   /** Schnellreise zu einem entdeckten Ort (Wegstein). */
   travel(townId: number): boolean {
     const s = this.world.meta.settlements[townId];
@@ -464,6 +476,7 @@ export class WorldScene extends Phaser.Scene {
     const town = m.settlementNear(tx, ty, 8);
     const before = town ? (this.state.d.prosperity.get(town.id) ?? 0) : 0;
     this.state.record({ t: Date.now(), by: this.heroName, type: 'quest', town: town?.id ?? null, realm: m.realmAt(tx, ty).id });
+    this.events.emit('sfx', 'quest');
     if (town) {
       this.towns.refresh(town.id);
       const lv = (n: number) => (n >= 10 ? 3 : n >= 5 ? 2 : n >= 2 ? 1 : 0);
@@ -506,6 +519,7 @@ export class WorldScene extends Phaser.Scene {
 
   private acceptOffer(offer: Quest): void {
     if (!accept(this.hero.quests, offer)) return;
+    this.events.emit('sfx', 'quest');
     this.events.emit('quests-changed');
     this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Quest: ${offer.title}`, color: '#ffd84a' });
     this.hero.persist();
@@ -562,6 +576,7 @@ export class WorldScene extends Phaser.Scene {
         return this.say('Truhe', 'leer', by && by !== this.heroName ? `Die Truhe ist leer – ${by} war schneller.` : 'Die Truhe ist leer.');
       }
       this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id: p.id });
+      this.events.emit('sfx', 'open');
       this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('chest:1');
       this.hero.lootChest(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
       this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: 'Truhe geöffnet!', color: '#ffd84a' });

@@ -59,7 +59,9 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 
 ### Dokumentation vorgenommener Anpassungen
 
-- Bisher keine Anpassung der Meilensteinreihenfolge.
+- 2026-10-30 – M2: Maßstab auf 32-px-Kacheln geändert (LPC), siehe `docs/milestones/M02-avatar.md`.
+- 2026-10-31 – M11/M12: Online-Teil zweistufig (Link-Teilen ohne Server + optionaler eigener Sync-Server), weil ein dauerhafter Server ein Konto des Nutzers braucht.
+- 2026-10-31 – **Zusätzlicher Meilenstein 13 „Feinschliff & Spielgefühl“** (Titelbildschirm, Handy-Menü, Musik/Klänge, Einstiegshinweise): alle 12 Meilensteine waren um 01:54 erreicht; die Restzeit fließt in „casual“ und „immersiv“.
 
 ## Vorgehen
 
@@ -81,7 +83,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-30 – Commits als `alexanderdelp` mit GitHub-noreply-Adresse, direkt auf `main` (mit Nutzer abgestimmt; ein Entwickler, keine Reviews nötig).
 - 2026-10-30 – Spielsprache Deutsch, Texte so gehalten, dass Übersetzung nachrüstbar ist (mit Nutzer abgestimmt).
 - 2026-10-30 – Nach jedem Meilenstein Kurz-Update an den Nutzer (Link, 1–4 Screenshots, 3 Punkte) (Nutzerwunsch).
-- 2026-10-30 – Arbeitstitel „Game01“; ein Name entsteht mit dem World Building (M8).
+- 2026-10-30 – Arbeitstitel „Game01“; ein Name entsteht mit dem World Building (M8). → 2026-10-31: Name **„Splitterwelten“** (Repo bleibt `game01`).
 - 2026-10-30 – Code unter MIT-Lizenz; externe Assets behalten ihre Lizenz und stehen in `CREDITS.md`.
 - 2026-10-30 – Dokumentation: `docs/DESIGN.md` (Gesamtdesign) und `docs/milestones/Mxx-*.md` (Anforderungen + Ergebnis je Meilenstein).
 
@@ -119,6 +121,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M10) Lebendige Welt als **reine Funktion von Seed + echter Uhrzeit** (statt Tick-für-Tick-Nachrechnen, wie ursprünglich angenommen): kein Server nötig, keine Wartezeit nach langer Pause, und alle Spieler sehen dieselbe Welt (Basis für M11). 1 Spieltag = 24 min, 1 Simulationsschritt = 1 h. Spielerhandlungen (M9) fließen als Einfluss ein.
 - 2026-10-31 – (M11) Geteilte Welt in zwei Stufen, weil ein Online-Server ein Konto des Nutzers braucht: (1) **Teilen per Link/Datei** ohne Server (Ereignisprotokoll komprimiert im URL-Anker, Zusammenführen konfliktfrei), (2) optionaler **Sync-Server** (`server/sync-server.mjs`, ohne Abhängigkeiten) über `?sync=<URL>`. Keine Fremddienste ohne Zustimmung des Nutzers.
 - 2026-10-31 – (M12) Live-Zusammenspiel über den Referenz-Server (Server-Sent Events + POST), „Lite-Koop“: Präsenz, gemeinsame Treffer (Gegner sind seed-gleich), Gruppenerfahrung, Chat. WebRTC ohne Server wäre möglich, bräuchte aber einen STUN-Dienst eines Dritten → nicht ohne Zustimmung eingebaut.
+- 2026-10-31 – (M13) Musik und Klänge prozedural per Web Audio (keine Audiodateien/Lizenzen), abschaltbar im Menü.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.

@@ -12,6 +12,8 @@ import { MAX_ACTIVE, abandon, isReady, progressText, questTarget } from '../ques
 import { reputationRank } from '../state/worldState';
 import { worldNow } from '../sim/LiveWorld';
 import { caravanPos, clockText, daylight, type News } from '../sim/simulation';
+import { audio } from '../audio/audio';
+import { load, save } from '../game/save';
 import { BIOMES } from '../world/biomes';
 import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
@@ -55,6 +57,9 @@ export class UIScene extends Phaser.Scene {
     this.chronicle = undefined;
     this.newsPanel = undefined;
     this.sharePanel = undefined;
+    this.menu = undefined;
+    this.actionButton = undefined;
+    this.potionButton = undefined;
     this.drops = [];
     this.bannerObj = undefined;
     this.markerTexts = [];
@@ -63,6 +68,8 @@ export class UIScene extends Phaser.Scene {
     debugState.mapOpen = false;
     debugState.mapReady = false;
     debugState.panelOpen = false;
+    debugState.tipsShown = 0;
+    debugState.menuOpen = false;
   }
 
   create(): void {
@@ -70,7 +77,7 @@ export class UIScene extends Phaser.Scene {
     this.createAtmosphere();
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · E reden · Q Trank · C Held · L Quests · B Chronik · U News · M Karte · T Schild · G Teilen', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · E reden/benutzen · Q Trank · M Karte · H Menü (alle Fenster)', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -113,10 +120,29 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-B', () => this.toggleChronicle());
     kb.on('keydown-U', () => this.toggleNews());
     kb.on('keydown-G', () => this.toggleShare());
+    kb.on('keydown-H', () => this.toggleMenu());
     const onSummary = (d: { hours: number; news: News[]; title?: string }) => this.showNews(d.title ?? `Während du weg warst (${d.hours} Std.) …`, d.news);
     ws.events.on('news-summary', onSummary);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('news-summary', onSummary));
     const onBanner = (b: { title: string; sub: string }) => this.banner(b.title, b.sub, true);
+    // Klänge
+    const onSfx = (n: Parameters<typeof audio.sfx>[0]) => audio.sfx(n);
+    const onAtk = () => audio.sfx('attack');
+    const onDmg = (d: { color: string }) => audio.sfx(d.color === '#ff6070' ? 'hurt' : 'hit');
+    const onLvl = () => audio.sfx('levelup');
+    ws.events.on('sfx', onSfx);
+    ws.events.on('player-attack', onAtk);
+    ws.events.on('damage', onDmg);
+    ws.events.on('level-up', onLvl);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      ws.events.off('sfx', onSfx);
+      ws.events.off('player-attack', onAtk);
+      ws.events.off('damage', onDmg);
+      ws.events.off('level-up', onLvl);
+    });
+    this.input.on('pointerdown', () => audio.unlock());
+    kb.on('keydown', () => audio.unlock());
+    this.startTips(ws);
     const onChron = () => this.chronicle && this.buildChronicle();
     ws.events.on('banner', onBanner);
     ws.events.on('chronicle-changed', onChron);
@@ -161,7 +187,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle || this.newsPanel || this.sharePanel) return;
+      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle || this.newsPanel || this.sharePanel || this.menu) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -194,19 +220,16 @@ export class UIScene extends Phaser.Scene {
     this.attackButton = this.add.circle(0, 0, 36, 0xe04a5a, 0.45).setStrokeStyle(3, 0xffffff, 0.6).setDepth(30).setInteractive();
     this.attackButton.on('pointerdown', () => ws().attack());
     this.attackLabel = this.add.text(0, 0, '⚔', { ...FONT, fontSize: '26px' }).setOrigin(0.5).setDepth(31);
+    // Aktionsknopf (Reden/Benutzen) und Trank links daneben
+    this.actionButton = this.add.circle(0, 0, 26, 0x2fe0d8, 0.4).setStrokeStyle(3, 0xffffff, 0.6).setDepth(30).setInteractive().setName('action');
+    this.actionButton.on('pointerdown', () => ws().interact());
+    this.actionLabel = this.add.text(0, 0, 'E', { ...FONT, fontSize: '22px' }).setOrigin(0.5).setDepth(31);
+    this.potionButton = this.add.circle(0, 0, 20, 0xe04a5a, 0.35).setStrokeStyle(2, 0xffffff, 0.5).setDepth(30).setInteractive();
+    this.potionButton.on('pointerdown', () => ws().hero.drink());
+    this.potionLabel = this.add.text(0, 0, '♥', { ...FONT, fontSize: '16px' }).setOrigin(0.5).setDepth(31);
     const buttons: [string, () => void][] = [
       ['Karte', () => this.toggleMap()],
-      ['Reden', () => ws().interact()],
-      ['Held', () => this.togglePanel()],
-      ['Quests', () => this.toggleQuestLog()],
-      ['Chronik', () => this.toggleChronicle()],
-      ['News', () => this.toggleNews()],
-      ['Teilen', () => this.toggleShare()],
-      ['Schild', () => ws().placeSign()],
-      ['Chat', () => ws().chat()],
-      ['Trank', () => ws().hero.drink()],
-      ['+', () => ws().zoom(1)],
-      ['−', () => ws().zoom(-1)],
+      ['☰', () => this.toggleMenu()],
     ];
     buttons.forEach(([label, fn], i) => {
       const b = this.add
@@ -220,6 +243,60 @@ export class UIScene extends Phaser.Scene {
   }
 
   private touchButtons: { b: Phaser.GameObjects.Text; i: number }[] = [];
+  private actionButton?: Phaser.GameObjects.Arc;
+  private actionLabel?: Phaser.GameObjects.Text;
+  private potionButton?: Phaser.GameObjects.Arc;
+  private potionLabel?: Phaser.GameObjects.Text;
+  menu?: Phaser.GameObjects.Container;
+
+  /** Menü mit allen Fenstern und Einstellungen (Handy: ☰, Desktop: H). */
+  toggleMenu(): void {
+    if (this.menu) {
+      this.menu.destroy();
+      this.menu = undefined;
+      debugState.menuOpen = false;
+      return;
+    }
+    debugState.menuOpen = true;
+    const ws = this.scene.get('world') as WorldScene;
+    const close = (fn: () => void) => () => {
+      this.toggleMenu();
+      fn();
+    };
+    const entries: [string, () => void][] = [
+      ['Held (C)', close(() => this.togglePanel())],
+      ['Quests (L)', close(() => this.toggleQuestLog())],
+      ['Chronik (B)', close(() => this.toggleChronicle())],
+      ['Neuigkeiten (U)', close(() => this.toggleNews())],
+      ['Karte (M)', close(() => this.toggleMap())],
+      ['Teilen (G)', close(() => this.toggleShare())],
+      ['Schild (T)', close(() => ws.placeSign())],
+      ['Chat (Enter)', close(() => ws.chat())],
+      ['Zoom +', () => ws.zoom(1)],
+      ['Zoom −', () => ws.zoom(-1)],
+      [`Musik: ${audio.enabled ? 'an' : 'aus'}`, close(() => audio.toggle())],
+      ['Titelbildschirm', close(() => ws.toTitle())],
+    ];
+    const cols = this.scale.width < 500 ? 2 : 3;
+    const bw = Math.min(170, Math.floor((this.scale.width - 40) / cols) - 8);
+    const W = cols * (bw + 8) + 16;
+    const rows = Math.ceil(entries.length / cols);
+    const c = this.add.container(Math.round((this.scale.width - W) / 2), 60).setDepth(60);
+    c.add(this.add.rectangle(0, 0, W, rows * 44 + 56, 0x0b0b14, 0.95).setOrigin(0).setStrokeStyle(2, 0x2fe0d8, 0.9).setInteractive());
+    c.add(this.add.text(12, 10, 'Menü', { ...FONT, fontSize: '17px', color: '#2fe0d8' }));
+    const x = this.add.text(W - 34, 8, '✕', { ...FONT, color: '#0b0b14', backgroundColor: '#2fe0d8', padding: { x: 6, y: 3 } }).setInteractive({ useHandCursor: true });
+    x.on('pointerdown', () => this.toggleMenu());
+    c.add(x);
+    entries.forEach(([label, fn], i) => {
+      const bx = 8 + (i % cols) * (bw + 8);
+      const by = 44 + Math.floor(i / cols) * 44;
+      const r = this.add.rectangle(bx + 4, by, bw, 36, 0x1c1c2a, 1).setOrigin(0).setStrokeStyle(1, 0x2fe0d8, 0.5).setInteractive({ useHandCursor: true }).setName(`menu-${i}`);
+      r.on('pointerdown', fn);
+      c.add(r);
+      c.add(this.add.text(bx + 4 + bw / 2, by + 18, label, { ...FONT, fontSize: '13px' }).setOrigin(0.5));
+    });
+    this.menu = c;
+  }
   private hpBar!: Phaser.GameObjects.Graphics;
   private attackButton?: Phaser.GameObjects.Arc;
 
@@ -278,6 +355,27 @@ export class UIScene extends Phaser.Scene {
   private weatherG!: Phaser.GameObjects.Graphics;
   private drops: { x: number; y: number; s: number }[] = [];
   private flash = 0;
+
+  /** Einstiegshinweise beim allerersten Spielen (danach nie wieder). */
+  private startTips(ws: WorldScene): void {
+    if (load<boolean>('tips')) return;
+    save('tips', true);
+    const touch = this.sys.game.device.input.touch;
+    const tips: [string, string][] = [
+      [`Willkommen in ${ws.world.meta.lore.worldName}!`, touch ? 'Ziehen = laufen · ⚔ = angreifen · E = reden/benutzen' : 'WASD = laufen · Leertaste = angreifen · E = reden/benutzen'],
+      ['Gelbes ! über einem Kopf', 'Diese Person hat einen Auftrag für dich.'],
+      ['Folge dem gelben Pfeil', 'Er führt zu Quests oder zum nächsten Ort mit Händler und Wegstein.'],
+      ['Alles wird gespeichert', `Kurz spielen, jederzeit aufhören. ${touch ? '☰' : 'H'} öffnet das Menü.`],
+    ];
+    debugState.tipsShown = 0;
+    tips.forEach(([t, s], i) =>
+      this.time.delayedCall(1200 + i * 5200, () => {
+        this.banner(t, s, true);
+        debugState.tipsShown = i + 1;
+      }),
+    );
+  }
+  private moodAt = 0;
 
   /** Nachtdunkel, Lichtschein um die Figur, Wetter-Ebene (unter allen Anzeigen). */
   private createAtmosphere(): void {
@@ -565,9 +663,10 @@ export class UIScene extends Phaser.Scene {
     this.tracker.setPosition(this.scale.width - 8, top).setVisible(!!q && !this.panel && !this.questLog);
     this.arrow.clear();
     this.arrowLabel.setVisible(false);
-    if (q) {
-      this.tracker.setText(`${q.title}\n${progressText(q)}${log.active.length > 1 ? `  (+${log.active.length - 1})` : ''}`);
-      const t = questTarget(q);
+    const guide = q ? null : this.guideTarget(ws);
+    if (q || guide) {
+      if (q) this.tracker.setText(`${q.title}\n${progressText(q)}${log.active.length > 1 ? `  (+${log.active.length - 1})` : ''}`);
+      const t = q ? questTarget(q) : guide;
       if (t && !this.map && !this.panel && !this.questLog) {
         const wx = t.tx * TILE_PX + TILE_PX / 2;
         const wy = t.ty * TILE_PX + TILE_PX / 2;
@@ -635,9 +734,25 @@ export class UIScene extends Phaser.Scene {
     for (; i < this.markerTexts.length; i++) this.markerTexts[i].setVisible(false);
   }
 
+  /** Ohne Quest: nächster noch nicht besuchter Ort (Wegstein) als Ziel. */
+  private guideTarget(ws: WorldScene): { tx: number; ty: number; label: string } | null {
+    const { tx, ty } = ws.player.tile;
+    let best: { tx: number; ty: number; label: string } | null = null;
+    let bd = 450;
+    for (const s of ws.world.meta.settlements) {
+      if (ws.state.d.discovered.has(`town:${s.id}`)) continue;
+      const d = Math.hypot(s.tx - tx, s.ty - ty);
+      if (d < bd) {
+        bd = d;
+        best = { tx: s.tx, ty: s.ty, label: `Ort: ${s.name}` };
+      }
+    }
+    return best;
+  }
+
   /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster (oder der Karte) aus. */
   clickPanel(name: string): boolean {
-    const o = (this.panel?.getByName(name) ?? this.map?.getByName(name) ?? this.sharePanel?.getByName(name)) as Phaser.GameObjects.GameObject | null;
+    const o = (this.panel?.getByName(name) ?? this.map?.getByName(name) ?? this.sharePanel?.getByName(name) ?? this.menu?.getByName(name) ?? this.children.getByName(name)) as Phaser.GameObjects.GameObject | null;
     if (!o) return false;
     o.emit('pointerdown');
     return true;
@@ -932,11 +1047,17 @@ export class UIScene extends Phaser.Scene {
     const b = ws.chunks.biomeAt(tx, ty);
     const biomeName = b === undefined ? '…' : BIOMES[b].name;
     debugState.biome = biomeName;
-    this.hud.setText(
-      [`${ws.hero.hero.name ?? 'Held'} · Welt: ${this.seed}`, `${clockText(worldNow())} Uhr · ${ws.live.weather}`, `Position: ${tx}, ${ty}`, `Gebiet: ${biomeName}`, `FPS: ${Math.round(this.game.loop.actualFps)}`].join('\n'),
-    );
+    const narrow = this.scale.width < 500;
+    const lines = [`${ws.hero.hero.name ?? 'Held'} · ${narrow ? '' : 'Welt: '}${this.seed}`, `${clockText(worldNow())} Uhr · ${ws.live.weather}`, `Gebiet: ${biomeName}`];
+    if (!narrow) lines.push(`Position: ${tx}, ${ty}`, `FPS: ${Math.round(this.game.loop.actualFps)}`);
+    this.hud.setText(lines.join('\n'));
     this.help.setY(this.scale.height - 6);
     this.drawAtmosphere(ws, Math.min(0.05, this.game.loop.delta / 1000));
+    if (this.time.now - this.moodAt > 1000) {
+      this.moodAt = this.time.now;
+      const realm = ws.world.meta.realmAt(tx, ty);
+      audio.setMood(daylight(worldNow()) < 0.35 ? 'night' : realm.faction === 'techno' ? 'cyber' : 'day');
+    }
     this.drawHp();
     this.drawQuests(ws);
     if (this.attackButton) {
@@ -944,6 +1065,10 @@ export class UIScene extends Phaser.Scene {
       const ay = this.scale.height - 90;
       this.attackButton.setPosition(ax, ay);
       this.attackLabel!.setPosition(ax, ay);
+      this.actionButton!.setPosition(ax - 74, ay + 14);
+      this.actionLabel!.setPosition(ax - 74, ay + 14);
+      this.potionButton!.setPosition(ax - 18, ay - 66);
+      this.potionLabel!.setText(`♥${ws.hero.hero.potions}`).setPosition(ax - 18, ay - 66);
     }
     let bx = this.scale.width - 8;
     let by = 8;

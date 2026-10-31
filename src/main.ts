@@ -2,18 +2,14 @@ import Phaser from 'phaser';
 import { load } from './game/save';
 import type { Hero } from './rpg/progression';
 import { CreateScene } from './scenes/CreateScene';
+import { GAME_TITLE, TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
-import { randomSeedName } from './world/rng';
 import './debug';
 
 const params = new URLSearchParams(location.search);
-let seed = params.get('seed')?.trim();
-if (!seed) {
-  seed = randomSeedName();
-  params.set('seed', seed);
-  history.replaceState(null, '', `${location.pathname}?${params}`);
-}
+// Ohne Seed in der Adresse startet der Titelbildschirm (Weltauswahl)
+const seed = params.get('seed')?.trim() ?? '';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -24,7 +20,9 @@ const game = new Phaser.Game({
   scene: [],
 });
 
-const hasHero = !!load<Hero>(`hero:${seed}`)?.appearance;
-game.scene.add('world', WorldScene, hasHero, { seed });
+const hasHero = !!seed && !!load<Hero>(`hero:${seed}`)?.appearance;
+game.scene.add('world', WorldScene, !!seed && hasHero, { seed });
 game.scene.add('ui', UIScene, false);
-game.scene.add('create', CreateScene, !hasHero, { seed });
+game.scene.add('create', CreateScene, !!seed && !hasHero, { seed });
+game.scene.add('title', TitleScene, !seed);
+document.title = GAME_TITLE;

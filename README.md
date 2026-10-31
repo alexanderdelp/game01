@@ -1,9 +1,12 @@
-# Game01
+# Splitterwelten (Game01)
 
 Ein Action-RPG in Pixel-Art mit prozedural generierter, lebendiger Welt – High-Fantasy trifft Cyberpunk.
 Komplett von Claude Code entwickelt.
 
-**Spielen:** https://alexanderdelp.github.io/game01/ (Seed per URL: `?seed=mein-seed`)
+**Spielen:** https://alexanderdelp.github.io/game01/ (Titelbildschirm mit Weltauswahl; direkt: `?seed=mein-seed`)
+
+Steuerung: WASD/Pfeile laufen · Leertaste angreifen · E reden/benutzen · Q Trank · M Karte · H Menü (Held, Quests,
+Chronik, Neuigkeiten, Teilen, Schild, Chat, Musik). Am Handy: Ziehen = laufen, Knöpfe ⚔ / E / ♥ und ☰.
 
 ## Stand
 
