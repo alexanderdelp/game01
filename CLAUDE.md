@@ -74,6 +74,8 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-10-31 – **Zusätzlicher Meilenstein 22 „Zoombare Weltkarte“** (Nutzerwunsch; nötig durch große Welt + Fog of War).
 - 2026-10-31 – **Zusätzlicher Meilenstein 23 „Aussehen aus Ausrüstung“** (Nutzerwunsch: Kleidung aus Ausrüstung statt Farbwahl, Völker mit Merkmalen).
 - 2026-10-31 – **Zusätzlicher Meilenstein 24 „Höhen, Klippen und Sicht“** (Nutzerwunsch, `docs/VORSCHLAG-hoehen.md`): Hänge, Klippen im Gebirge, Hügelland, Seen in Senken, Sicht nach Sichtlinie.
+- 2026-10-31 – **Zusätzlicher Meilenstein 25 „Arena-Werkzeuge“** (Nutzerwunsch): Gelände-Aufbauten, Waffenwahl, Gegner gezielt einsetzen in der Kampf-Arena.
+- 2026-10-31 – **Zusätzlicher Meilenstein 26 „Saubere Höhenkanten“** (Nutzerfeedback): kein Dekor auf Kanten, deutliche Abbruchkanten.
 
 ## Mehrere Agenten
 
@@ -151,6 +153,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M20) Fog of War pro Spieler (nicht im geteilten Weltzustand; Nutzerentscheidung: jeder Spieler hat seinen eigenen), Zellen à 16 Kacheln, Sichtweite 20 Kacheln.
 - 2026-10-31 – (M21) Kampf-Arena nur für PC (Tastatur), keine Handysteuerung nötig (Nutzerentscheidung).
 - 2026-10-31 – Vorbereitung Mehr-Agenten-Arbeit: `WorldScene` in Teile zerlegt (`src/scenes/world/`: Sicht, Gespräche, Netz, Test-Schnittstelle), `UIScene` ohne Weltkarte (`src/ui/WorldMap.ts`) und Heldenfenster (`src/ui/HeroPanel.ts`); Anleitungen für alle Module, Skills `/modul` und `/koordinieren`, Knotenpunkte gehören dem Koordinator (Nutzerwunsch: Koordinator + parallele Sessions).
+- 2026-10-31 – (M25) Bisher gibt es nur den Waffentyp Dolch. Neue Waffentypen erst später, vorerst nur Waffenwahl in der Arena (Nutzerentscheidung). Gegner am Boden planen Umwege um Hindernisse (gilt auch in der Welt); Gegner werden von Sumpf/Hängen nicht gebremst.
+- 2026-10-31 – (M26) Dekor hält Abstand zu Höhenkanten statt teilweiser Verdeckung durch die Klippe (einfacher, Kanten bleiben lesbar); im zerklüfteten Gebirge Dekor dafür ×1,5 dichter. `WORLD_VERSION` bleibt 3.
 - 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
 
 ### Offene Aufgaben (mit dem Nutzer zu klären)

@@ -76,5 +76,5 @@ tools/         Vorschau-Werkzeuge, LPC-Import, Belastungstest
 
 - Öffentlichen Sync-Server betreiben (braucht ein Hosting-Konto des Nutzers) → dauerhaft geteilte Welten und Live-Spiel.
 - Dungeons als besondere Herausforderung für Live-Gruppen.
-- Weitere Waffen (LPC-Übergrößen-Animationen), Zauber für den Magie-Teil, Fahrzeuge/Mechs für den Cyber-Teil.
+- Echte Waffentypen (Schwert, Speer, Bogen …) mit eigenem Kampfverhalten, erst in der Arena erproben (Nutzerentscheidung 2026-10-31); weitere Waffen (LPC-Übergrößen-Animationen), Zauber für den Magie-Teil, Fahrzeuge/Mechs für den Cyber-Teil.
 - Fraktions-Questreihen, die die Reichsmacht beeinflussen.
