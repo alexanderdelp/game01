@@ -57,6 +57,7 @@ describe('LPC-Figur (R7)', () => {
       body: { [BASE_PALETTE.body]: ['#102030', '#405060'], green: ['#00ff00', '#00aa00'] },
       hair: {},
       cloth: {},
+      metal: {},
     };
     const px = new Uint8ClampedArray([0x10, 0x20, 0x30, 255, 0x40, 0x50, 0x60, 255, 1, 2, 3, 255, 0x10, 0x20, 0x30, 0]);
     recolor(px, palettes, 'body', 'green');

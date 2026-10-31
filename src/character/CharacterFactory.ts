@@ -1,25 +1,33 @@
 import Phaser from 'phaser';
-import { ANIMS, DEFAULT_APPEARANCE, FRAME, HAIR_STYLES, ROWS, appearanceKey, layersFor, recolor, type Appearance, type Palettes } from './lpc';
+import { ANIMS, DEFAULT_APPEARANCE, FRAME, HAIR_STYLES, ROWS, appearanceKey, layersFor, normalizeAppearance, recolor, topsFor, type Appearance, type Palettes } from './lpc';
 
 const BASE = 'assets/lpc/';
 
 /** Lädt die LPC-Bilder einer Erscheinung (im preload einer Szene aufrufen). */
 export function preloadCharacter(scene: Phaser.Scene, a: Appearance): void {
   if (!scene.cache.json.exists('lpc-palettes')) scene.load.json('lpc-palettes', `${BASE}palettes.json`);
-  for (const layer of layersFor(a)) {
+  for (const layer of layersFor(normalizeAppearance(a))) {
     for (const anim of layer.anims ?? Object.keys(ANIMS)) {
       const key = `lpc:${layer.dir}/${anim}`;
-      if (!scene.textures.exists(key)) scene.load.image(key, `${BASE}${layer.dir}/${anim}.png`);
+      if (!scene.textures.exists(key) && !queued.has(key)) {
+        queued.add(key);
+        scene.load.image(key, `${BASE}${layer.dir}/${anim}.png`);
+      }
     }
   }
 }
 
+/** Bereits zum Laden angemeldete Bilder (der Erschaffungsbildschirm meldet viele Kombinationen an). */
+const queued = new Set<string>();
+
 /** Lädt alle Ebenen, die im Erschaffungsbildschirm wählbar sind. */
 export function preloadAllParts(scene: Phaser.Scene): void {
-  for (const race of ['human', 'elf', 'orc'] as const) {
+  queued.clear();
+  for (const race of ['human', 'elf', 'orc', 'synth'] as const) {
     for (const body of ['male', 'female'] as const) {
-      for (const hair of HAIR_STYLES) {
-        for (const torso of ['longsleeve', 'leather'] as const) preloadCharacter(scene, { ...DEFAULT_APPEARANCE, race, body, hair, torso });
+      for (const hair of HAIR_STYLES) preloadCharacter(scene, { ...DEFAULT_APPEARANCE, race, body, hair });
+      for (const top of topsFor({ race, body })) {
+        for (const shoes of ['shoes', 'boots'] as const) preloadCharacter(scene, { ...DEFAULT_APPEARANCE, race, body, top, shoes });
       }
     }
   }
@@ -30,6 +38,7 @@ export function preloadAllParts(scene: Phaser.Scene): void {
  * Phaser-Animationen an. Gibt den Schlüssel-Präfix zurück, z. B. "char:<key>".
  */
 export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string[] = Object.keys(ANIMS)): string {
+  a = normalizeAppearance(a);
   const prefix = `char:${appearanceKey(a)}`;
   const palettes = scene.cache.json.get('lpc-palettes') as Palettes;
   const layers = layersFor(a);

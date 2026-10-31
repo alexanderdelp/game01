@@ -1,5 +1,5 @@
 /** Seed-basierte NPCs: wer wo zu Hause ist, wie er heißt, was er sagt. Rein, ohne Phaser. */
-import { HAIR_STYLES, type Appearance, type HairStyle } from '../character/lpc';
+import { HAIR_STYLES, topsFor, type Appearance, type HairStyle } from '../character/lpc';
 import { B, BIOMES, DECOR_BLOCK } from './biomes';
 import { hash2, mulberry32 } from './rng';
 import { CHUNK_TILES, type WorldGen } from './WorldGen';
@@ -26,6 +26,11 @@ export const ROLES: Record<string, Role> = {
     id: 'ruler',
     name: 'Herrscher',
     lines: ['{motto}'],
+  },
+  barber: {
+    id: 'barber',
+    name: 'Barbier',
+    lines: ['Neue Frisur, neue Kleider – neues Glück!'],
   },
   merchant: {
     id: 'merchant',
@@ -151,6 +156,9 @@ export function npcsForChunk(world: WorldGen, cx: number, cy: number): NpcSpawn[
     if (Math.floor(s.tx / CHUNK_TILES) !== cx || Math.floor(s.ty / CHUNK_TILES) !== cy) continue;
     const srnd = mulberry32(hash2(world.seed, s.tx, s.ty, 4343));
     out.push({ id: `m${s.id}`, tx: s.tx - 2, ty: s.ty + 2, role: 'merchant', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
+    // Barbier mit eigenem Zufallsstrom, damit die übrigen Bewohner des Orts gleich bleiben
+    const brnd = mulberry32(hash2(world.seed, s.tx, s.ty, 4444));
+    out.push({ id: `b${s.id}`, tx: s.tx + 2, ty: s.ty + 2, role: 'barber', name: npcName(brnd), archetype: Math.floor(brnd() * ARCHETYPES) });
     if (s.capital) out.push({ id: `r${s.id}`, tx: s.tx + 2, ty: s.ty - 2, role: 'ruler', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
     const n = s.capital ? 7 : 4;
     for (let i = 0; i < n; i++) {
@@ -201,6 +209,10 @@ export function archetypes(seed: number): Appearance[] {
       legsColor: pick(CLOTH),
       feetColor: pick(['brown', 'black', 'charcoal', 'walnut', 'leather']),
     });
+    // Schnitt ohne weiteren Zufallswert ableiten, damit die übrigen Archetypen der Welt gleich bleiben
+    const last = list[list.length - 1];
+    const tops = topsFor(last);
+    last.top = tops[i % tops.length];
   }
   return list;
 }

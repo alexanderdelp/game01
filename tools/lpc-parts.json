@@ -28,7 +28,30 @@
     "feet/boots/basic/thin",
     "head/heads/orc/male",
     "head/heads/orc/female",
-    "head/ears/elven/adult"
+    "head/ears/elven/adult",
+    "hair/ponytail/adult/fg",
+    "hair/ponytail/adult/bg",
+    "hair/braid/adult/fg",
+    "hair/braid/adult/bg",
+    "hair/bangs_bun/adult",
+    "hair/pigtails/adult",
+    "torso/clothes/longsleeve/longsleeve2_vneck/male",
+    "torso/clothes/longsleeve/longsleeve2_vneck/female",
+    "torso/clothes/longsleeve/longsleeve2_scoop/female",
+    "torso/clothes/blouse/female",
+    "torso/clothes/blouse_longsleeve/female",
+    "torso/clothes/corset/female",
+    "torso/armour/plate/male",
+    "torso/armour/plate/female",
+    "arms/armour/plate/male",
+    "arms/armour/plate/thin",
+    "legs/armour/plate/male",
+    "legs/armour/plate/thin",
+    "legs/pants/muscular",
+    "body/bodies/muscular",
+    "feet/shoes/basic/male",
+    "feet/shoes/basic/thin",
+    "head/ears/long/adult"
   ],
   "files": [
     {
@@ -61,5 +84,10 @@
       "dst": "weapon/dagger/bg/walk.png",
       "credit": "weapon/sword/dagger/behind/walk.png"
     }
-  ]
+  ],
+  "variants": {
+    "torso/clothes/blouse/female": "white",
+    "torso/clothes/blouse_longsleeve/female": "white",
+    "torso/clothes/corset/female": "white"
+  }
 }

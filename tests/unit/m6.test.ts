@@ -11,7 +11,7 @@ describe('Völker (R1)', () => {
     expect(head.dir).toBe('head/heads/orc/female');
     expect(head.base).toBe('green');
     const elf = layersFor({ ...DEFAULT_APPEARANCE, race: 'elf' });
-    expect(elf.some((l) => l.dir === 'head/ears/elven/adult' && l.material === 'body')).toBe(true);
+    expect(elf.some((l) => l.dir === 'head/ears/long/adult' && l.material === 'body')).toBe(true);
     expect(layersFor(DEFAULT_APPEARANCE).some((l) => l.dir.includes('ears'))).toBe(false);
   });
 

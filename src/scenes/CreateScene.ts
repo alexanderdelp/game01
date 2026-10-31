@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { buildCharacter, preloadAllParts } from '../character/CharacterFactory';
-import { DEFAULT_APPEARANCE, HAIR_STYLES, type Appearance, type HairStyle, type Race } from '../character/lpc';
+import { DEFAULT_APPEARANCE, HAIR_STYLES, METALS, normalizeAppearance, topsFor, type Appearance, type HairStyle, type Race, type Top } from '../character/lpc';
 import { debugState } from '../debug';
 import { load, save } from '../game/save';
 import { newHero, type Hero } from '../rpg/progression';
@@ -11,18 +11,28 @@ import { mulberry32 } from '../world/rng';
 const FONT = { fontFamily: 'monospace', fontSize: '15px', color: '#f4f0e8' };
 const HAIR_COLORS = ['black', 'raven', 'dark_brown', 'chestnut', 'light_brown', 'blonde', 'ginger', 'red', 'platinum', 'white', 'rose', 'blue', 'green', 'violet'];
 const CLOTH = ['teal', 'blue', 'navy', 'sky', 'forest', 'green', 'maroon', 'red', 'rose', 'purple', 'lavender', 'yellow', 'orange', 'brown', 'tan', 'white', 'gray', 'charcoal', 'black'];
-const HAIR_NAMES: Record<string, string> = { plain: 'Kurz', long: 'Lang', bob: 'Bob', spiked: 'Stachelig', messy1: 'Zerzaust', pixie: 'Pixie', none: 'Glatze' };
+const HAIR_NAMES: Record<string, string> = {
+  plain: 'Kurz', long: 'Lang', bob: 'Bob', spiked: 'Stachelig', messy1: 'Zerzaust', pixie: 'Pixie',
+  ponytail: 'Pferdeschwanz', braid: 'Zopf', bangs_bun: 'Dutt', pigtails: 'Zöpfe', none: 'Glatze',
+};
+const TOP_NAMES: Record<Top, string> = { shirt: 'Hemd', vneck: 'V-Ausschnitt', scoop: 'Rundausschnitt', blouse: 'Bluse', corset: 'Korsett', bare: 'ohne' };
+const FEET = ['brown', 'black', 'charcoal', 'walnut', 'leather', 'tan', 'maroon'];
 
 interface Row {
-  label: string;
+  label: string | (() => string);
+  /** Nur bei der Erschaffung änderbar (Volk, Körper, Haut), nicht beim Barbier. */
+  fixed?: boolean;
   value: () => string;
   change: (dir: number) => void;
 }
 
-/** Erschaffungsbildschirm: Volk, Körper, Haut, Haare, Kleidung, Name. */
+/** Erschaffungsbildschirm: Volk, Körper, Haut, Haare, Kleidung, Name. Beim Barbier nur Haare und Kleidung (gegen Splitter). */
 export class CreateScene extends Phaser.Scene {
   private seed = '';
   private edit = false;
+  /** Preis beim Barbier (Splitter); 0 = Erschaffung */
+  private cost = 0;
+  private before = '';
   private hero!: Hero;
   private look!: Appearance;
   private name = '';
@@ -37,11 +47,13 @@ export class CreateScene extends Phaser.Scene {
     super('create');
   }
 
-  init(data: { seed: string; edit?: boolean }): void {
+  init(data: { seed: string; edit?: boolean; cost?: number }): void {
     this.seed = data.seed;
     this.edit = !!data.edit;
+    this.cost = data.cost ?? 0;
     this.hero = load<Hero>(`hero:${this.seed}`) ?? newHero();
-    this.look = { ...DEFAULT_APPEARANCE, race: 'human', ...this.hero.appearance };
+    this.look = normalizeAppearance({ ...DEFAULT_APPEARANCE, race: 'human', ...this.hero.appearance });
+    this.before = JSON.stringify(this.look);
     this.name = this.hero.name ?? npcName(Math.random);
   }
 
@@ -57,23 +69,39 @@ export class CreateScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(0x0b0b14);
     const cycle = <T>(arr: readonly T[], cur: T, dir: number) => arr[(arr.indexOf(cur) + dir + arr.length) % arr.length];
     const race = () => RACES[this.look.race ?? 'human'];
-    this.rows = [
+    const synth = () => this.look.race === 'synth';
+    const all: Row[] = [
       {
         label: 'Volk',
+        fixed: true,
         value: () => race().name,
         change: (d) => {
           this.look.race = cycle(RACE_ORDER, this.look.race ?? 'human', d) as Race;
           if (!race().skins.includes(this.look.skin)) this.look.skin = race().skins[0];
         },
       },
-      { label: 'Körper', value: () => (this.look.body === 'male' ? 'männlich' : 'weiblich'), change: () => (this.look.body = this.look.body === 'male' ? 'female' : 'male') },
-      { label: 'Haut', value: () => this.look.skin, change: (d) => (this.look.skin = cycle(race().skins, this.look.skin, d)) },
+      { label: 'Körper', fixed: true, value: () => (this.look.body === 'male' ? 'männlich' : 'weiblich'), change: () => (this.look.body = this.look.body === 'male' ? 'female' : 'male') },
+      { label: 'Haut', fixed: true, value: () => this.look.skin, change: (d) => (this.look.skin = cycle(race().skins, this.look.skin, d)) },
       { label: 'Frisur', value: () => HAIR_NAMES[this.look.hair], change: (d) => (this.look.hair = cycle([...HAIR_STYLES, 'none'] as HairStyle[], this.look.hair, d)) },
       { label: 'Haarfarbe', value: () => this.look.hairColor, change: (d) => (this.look.hairColor = cycle(HAIR_COLORS, this.look.hairColor, d)) },
-      { label: 'Oberteil', value: () => this.look.torsoColor, change: (d) => (this.look.torsoColor = cycle(CLOTH, this.look.torsoColor, d)) },
-      { label: 'Hose', value: () => this.look.legsColor, change: (d) => (this.look.legsColor = cycle(CLOTH, this.look.legsColor, d)) },
-      { label: 'Stiefel', value: () => this.look.feetColor, change: (d) => (this.look.feetColor = cycle(['brown', 'black', 'charcoal', 'walnut', 'leather', 'tan', 'maroon'], this.look.feetColor, d)) },
+      {
+        label: 'Schnitt',
+        value: () => (synth() ? 'Panzerplatten' : TOP_NAMES[this.look.top ?? 'shirt']),
+        change: (d) => {
+          const tops = topsFor(this.look);
+          if (tops.length) this.look.top = cycle(tops, this.look.top ?? tops[0], d);
+        },
+      },
+      {
+        label: () => (synth() ? 'Panzerung' : 'Oberteil'),
+        value: () => this.look.torsoColor,
+        change: (d) => (this.look.torsoColor = cycle(synth() ? METALS : CLOTH, this.look.torsoColor, d)),
+      },
+      { label: 'Hose', value: () => (synth() ? '—' : this.look.legsColor), change: (d) => !synth() && (this.look.legsColor = cycle(CLOTH, this.look.legsColor, d)) },
+      { label: 'Schuhwerk', value: () => (this.look.shoes === 'boots' ? 'Stiefel' : 'Schuhe'), change: () => (this.look.shoes = this.look.shoes === 'boots' ? 'shoes' : 'boots') },
+      { label: 'Schuhfarbe', value: () => this.look.feetColor, change: (d) => (this.look.feetColor = cycle(FEET, this.look.feetColor, d)) },
     ];
+    this.rows = this.cost ? all.filter((r) => !r.fixed) : all;
     this.layout();
     const onResize = () => this.layout();
     this.scale.on('resize', onResize);
@@ -93,6 +121,7 @@ export class CreateScene extends Phaser.Scene {
 
   private change(row: number, dir: number): void {
     this.rows[row].change(dir);
+    this.look = normalizeAppearance(this.look);
     this.refresh();
   }
 
@@ -115,19 +144,26 @@ export class CreateScene extends Phaser.Scene {
   }
 
   private refresh(): void {
-    this.rows.forEach((r, i) => this.texts[i]?.setText(r.value()));
+    this.rows.forEach((r, i) => {
+      this.texts[i]?.setText(r.value());
+      this.labels[i]?.setText(typeof r.label === 'function' ? r.label() : r.label);
+    });
+    this.priceText?.setText(this.cost ? (this.changed ? `Preis: ${this.cost} ◆ (du hast ${this.hero.shards})` : 'Wähle eine neue Frisur oder Kleidung') : '');
     this.raceDesc?.setText(RACES[this.look.race ?? 'human'].desc);
     this.playPreview();
   }
 
   private raceDesc?: Phaser.GameObjects.Text;
+  private labels: Phaser.GameObjects.Text[] = [];
+  private priceText?: Phaser.GameObjects.Text;
 
   private layout(): void {
     this.children.removeAll(true);
     this.texts = [];
+    this.labels = [];
     const { width, height } = this.scale;
     const narrow = width < 700;
-    const title = this.edit ? 'Aussehen ändern' : 'Erschaffe deinen Helden';
+    const title = this.cost ? 'Beim Barbier' : this.edit ? 'Aussehen ändern' : 'Erschaffe deinen Helden';
     this.add.text(width / 2, 24, title, { ...FONT, fontSize: '24px', color: '#2fe0d8' }).setOrigin(0.5, 0);
     const px = narrow ? width / 2 : width * 0.3;
     const py = narrow ? 200 : height / 2;
@@ -137,8 +173,8 @@ export class CreateScene extends Phaser.Scene {
     this.raceDesc = this.add.text(px, py + 34 * scale, '', { ...FONT, fontSize: '13px', color: '#ffd84a' }).setOrigin(0.5, 0);
 
     const x0 = narrow ? 16 : width * 0.52;
-    let y = narrow ? 320 : Math.max(80, height / 2 - 210);
-    const rowH = narrow ? 38 : 40;
+    let y = narrow ? 300 : Math.max(70, height / 2 - 250);
+    const rowH = narrow ? 36 : 40;
     const btn = (x: number, yy: number, label: string, cb: () => void, name?: string) => {
       const b = this.add
         .text(x, yy, label, { ...FONT, color: '#0b0b14', backgroundColor: '#2fe0d8', padding: { x: 10, y: 5 } })
@@ -147,16 +183,25 @@ export class CreateScene extends Phaser.Scene {
       if (name) b.setName(name);
       return b;
     };
-    this.rows.forEach((r, i) => {
-      this.add.text(x0, y + 5, r.label, { ...FONT, color: '#8a8aa0' });
+    this.rows.forEach((_r, i) => {
+      this.labels[i] = this.add.text(x0, y + 5, '', { ...FONT, color: '#8a8aa0' });
       btn(x0 + 100, y, '◀', () => this.change(i, -1), `row${i}-prev`);
       this.texts[i] = this.add.text(x0 + 190, y + 5, '', FONT).setOrigin(0.5, 0);
       btn(x0 + 250, y, '▶', () => this.change(i, 1), `row${i}-next`);
       y += rowH;
     });
+    this.nameInput?.remove();
+    this.nameInput = undefined;
+    if (this.cost) {
+      this.priceText = this.add.text(x0, y + 8, '', { ...FONT, color: '#ffd84a' });
+      y += rowH + 14;
+      btn(x0, y, 'Abbrechen', () => this.scene.start('world', { seed: this.seed }), 'cancel');
+      btn(x0 + 130, y, 'Bezahlen', () => this.confirm(), 'confirm');
+      this.refresh();
+      return;
+    }
     // Name
     this.add.text(x0, y + 8, 'Name', { ...FONT, color: '#8a8aa0' });
-    this.nameInput?.remove();
     const input = document.createElement('input');
     input.value = this.name;
     input.maxLength = 20;
@@ -186,14 +231,30 @@ export class CreateScene extends Phaser.Scene {
     for (let i = 0; i < this.rows.length; i++) {
       const n = Math.floor(rnd() * 12);
       for (let k = 0; k < n; k++) this.rows[i].change(1);
+      this.look = normalizeAppearance(this.look);
     }
     this.name = npcName(rnd);
     if (this.nameInput) this.nameInput.value = this.name;
     this.refresh();
   }
 
+  private get changed(): boolean {
+    return JSON.stringify(this.look) !== this.before;
+  }
+
   private confirm(): void {
     const hero = load<Hero>(`hero:${this.seed}`) ?? newHero();
+    if (this.cost) {
+      if (!this.changed) {
+        this.scene.start('world', { seed: this.seed });
+        return;
+      }
+      if (hero.shards < this.cost) {
+        this.priceText?.setText(`Zu wenig Splitter (${hero.shards}/${this.cost} ◆)`).setColor('#ff6070');
+        return;
+      }
+      hero.shards -= this.cost;
+    }
     hero.appearance = { ...this.look };
     hero.race = this.look.race ?? 'human';
     hero.name = this.name.trim() || 'Namenlos';

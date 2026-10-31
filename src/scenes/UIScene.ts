@@ -941,7 +941,6 @@ export class UIScene extends Phaser.Scene {
     let y = 10;
     txt(12, y, `${h.name ?? 'Held'} · ${RACES[h.race ?? 'human'].name} · Stufe ${h.level}`, '#2fe0d8', 17);
     button(W - 34, 8, '✕', () => this.togglePanel(), true, 'close');
-    button(W - 104, 8, 'Aussehen', () => ws.editAppearance(), true, 'appearance');
     y += 26;
     txt(12, y, `EP ${h.xp}/${xpToNext(h.level)}   ◆ ${h.shards} Splitter   Tränke ${h.potions}`, '#ffd84a');
     y += 22;

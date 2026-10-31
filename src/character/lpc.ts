@@ -3,7 +3,7 @@
 export const FRAME = 64;
 
 export type BodyType = 'male' | 'female';
-export type Material = 'body' | 'hair' | 'cloth' | null;
+export type Material = 'body' | 'hair' | 'cloth' | 'metal' | null;
 
 export interface AnimDef {
   frames: number;
@@ -24,9 +24,15 @@ export const ANIMS: Record<string, AnimDef> = {
 
 export const ROWS = ['up', 'left', 'down', 'right'] as const;
 
-export const HAIR_STYLES = ['plain', 'long', 'bob', 'spiked', 'messy1', 'pixie'] as const;
+export const HAIR_STYLES = ['plain', 'long', 'bob', 'spiked', 'messy1', 'pixie', 'ponytail', 'braid', 'bangs_bun', 'pigtails'] as const;
 export type HairStyle = (typeof HAIR_STYLES)[number] | 'none';
+/** Frisuren mit Teil hinter dem Kopf (eigene Ebene hinter dem Körper). */
+const HAIR_BACK: readonly string[] = ['ponytail', 'braid'];
+/** Rüstung aus der Ausrüstung: überdeckt das Oberteil. */
 export type TorsoStyle = 'longsleeve' | 'leather';
+/** Schnitt des Oberteils. */
+export type Top = 'shirt' | 'vneck' | 'scoop' | 'blouse' | 'corset' | 'bare';
+export type Shoes = 'shoes' | 'boots';
 
 export type Race = 'human' | 'elf' | 'orc' | 'synth';
 
@@ -41,6 +47,30 @@ export interface Appearance {
   legsColor: string;
   feetColor: string;
   weapon?: 'dagger' | 'none';
+  /** Schnitt des Oberteils (Standard: Hemd); Synth trägt stattdessen Panzerplatten in `torsoColor` (Metall). */
+  top?: Top;
+  /** Schuhwerk (Standard: Schuhe – hohe Stiefel verdecken die Hose fast ganz). */
+  shoes?: Shoes;
+}
+
+/** Wählbare Schnitte je Körper (Ork-Männer haben einen eigenen, muskulösen Körper ohne passende Hemden). */
+export function topsFor(a: Pick<Appearance, 'race' | 'body'>): Top[] {
+  if (a.race === 'synth') return [];
+  if (a.race === 'orc' && a.body === 'male') return ['bare', 'shirt'];
+  return a.body === 'female' ? ['shirt', 'scoop', 'blouse', 'corset'] : ['shirt', 'vneck'];
+}
+
+/** Metallfarben der Synth-Panzerung. */
+export const METALS = ['silver', 'steel', 'iron', 'brass', 'bronze', 'copper', 'gold', 'ceramic'];
+
+/** Bringt ein (evtl. älteres oder ungültiges) Aussehen in einen gültigen Zustand. */
+export function normalizeAppearance(a: Appearance): Appearance {
+  const out = { ...a };
+  const tops = topsFor(out);
+  if (tops.length && !tops.includes(out.top ?? 'shirt')) out.top = tops[0];
+  if (out.race === 'synth' && !METALS.includes(out.torsoColor)) out.torsoColor = METALS[0];
+  if (out.race !== 'synth' && METALS.includes(out.torsoColor)) out.torsoColor = DEFAULT_APPEARANCE.torsoColor;
+  return out;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -68,46 +98,103 @@ export interface Layer {
 
 /** Ebenen in Zeichenreihenfolge (hinten nach vorne). */
 export function layersFor(a: Appearance): Layer[] {
-  const thin = a.body === 'female' ? 'thin' : 'male';
+  const race = a.race ?? 'human';
+  const female = a.body === 'female';
+  const thin = female ? 'thin' : 'male';
+  // Ork-Männer: muskulöser Körper (deutlich anders gebaut als Mensch/Elf/Synth)
+  const muscular = race === 'orc' && !female;
   const weapon = a.weapon && a.weapon !== 'none';
   const layers: Layer[] = [];
   if (weapon) layers.push({ dir: `weapon/${a.weapon}/bg`, material: null, color: '', anims: ['slash', 'walk'] });
+  if (HAIR_BACK.includes(a.hair)) layers.push({ dir: `hair/${a.hair}/adult/bg`, material: 'hair', color: a.hairColor });
+  layers.push({ dir: `body/bodies/${muscular ? 'muscular' : a.body}`, material: 'body', color: a.skin });
+  if (race === 'synth') {
+    // Synth: Panzerplatten statt Kleidung (Implantate)
+    layers.push(
+      { dir: `legs/armour/plate/${thin}`, material: 'metal', color: a.torsoColor },
+      { dir: `feet/boots/basic/${thin}`, material: 'cloth', color: a.feetColor },
+      { dir: `torso/armour/plate/${a.body}`, material: 'metal', color: a.torsoColor },
+      { dir: `arms/armour/plate/${thin}`, material: 'metal', color: a.torsoColor },
+    );
+  } else {
+    layers.push({ dir: `legs/pants/${muscular ? 'muscular' : thin}`, material: 'cloth', color: a.legsColor });
+    layers.push({ dir: `feet/${a.shoes === 'boots' ? 'boots' : 'shoes'}/basic/${thin}`, material: 'cloth', color: a.feetColor });
+    layers.push(...topLayers(a));
+  }
   layers.push(
-    { dir: `body/bodies/${a.body}`, material: 'body', color: a.skin },
-    { dir: `legs/pants/${thin}`, material: 'cloth', color: a.legsColor },
-    { dir: `feet/boots/basic/${thin}`, material: 'cloth', color: a.feetColor },
-    a.torso === 'leather'
-      ? { dir: `torso/armour/leather/${a.body}`, material: null, color: '' }
-      : { dir: `torso/clothes/longsleeve/longsleeve2/${a.body}`, material: 'cloth', color: a.torsoColor },
-    a.race === 'orc'
+    race === 'orc'
       ? { dir: `head/heads/orc/${a.body}`, material: 'body', color: a.skin, base: 'green' }
       : { dir: `head/heads/human/${a.body}`, material: 'body', color: a.skin },
   );
-  if (a.hair !== 'none') layers.push({ dir: `hair/${a.hair}/adult`, material: 'hair', color: a.hairColor });
-  if (a.race === 'elf') layers.push({ dir: 'head/ears/elven/adult', material: 'body', color: a.skin });
+  if (a.hair !== 'none') layers.push({ dir: HAIR_BACK.includes(a.hair) ? `hair/${a.hair}/adult/fg` : `hair/${a.hair}/adult`, material: 'hair', color: a.hairColor });
+  if (race === 'elf') layers.push({ dir: 'head/ears/long/adult', material: 'body', color: a.skin });
   if (weapon) layers.push({ dir: `weapon/${a.weapon}/fg`, material: null, color: '', anims: ['slash', 'thrust', 'walk', 'hurt'] });
   return layers;
 }
 
-export type Palettes = Record<'body' | 'hair' | 'cloth', Record<string, string[]>>;
+/** Oberteil-Ebenen: Rüstung aus der Ausrüstung oder der gewählte Schnitt. */
+function topLayers(a: Appearance): Layer[] {
+  const body = a.body === 'female' ? 'female' : 'male';
+  if (a.torso === 'leather') return [{ dir: `torso/armour/leather/${body}`, material: null, color: '' }];
+  const top = a.top ?? 'shirt';
+  const cloth = (dir: string, color = a.torsoColor): Layer => ({ dir, material: 'cloth', color });
+  // Bluse und Korsett haben upstream keine Steh-Animation: sie wird aus Geh-Bild 0 gebildet
+  const noIdle = (l: Layer): Layer => ({ ...l, anims: ['walk', 'slash', 'thrust', 'spellcast', 'hurt'] });
+  switch (top) {
+    case 'bare':
+      return [];
+    case 'vneck':
+      return [cloth(`torso/clothes/longsleeve/longsleeve2_vneck/${body}`)];
+    case 'scoop':
+      return [cloth('torso/clothes/longsleeve/longsleeve2_scoop/female')];
+    case 'blouse':
+      return [noIdle(cloth('torso/clothes/blouse/female'))];
+    case 'corset':
+      return [noIdle(cloth('torso/clothes/blouse_longsleeve/female', 'white')), noIdle(cloth('torso/clothes/corset/female'))];
+    default:
+      return [cloth(`torso/clothes/longsleeve/longsleeve2/${body}`)];
+  }
+}
+
+export type Palettes = Record<'body' | 'hair' | 'cloth' | 'metal', Record<string, string[]>>;
 
 /** Basis-Palette, in der die LPC-Quellbilder gezeichnet sind. */
-export const BASE_PALETTE = { body: 'light', hair: 'orange', cloth: 'white' } as const;
+export const BASE_PALETTE = { body: 'light', hair: 'orange', cloth: 'white', metal: 'steel' } as const;
 
 const hex = (s: string) => parseInt(s.slice(1), 16);
 
-/** Färbt RGBA-Pixel in-place von der Basis- auf die Zielpalette um. */
+/** Höchster Abstand² (RGB), bis zu dem eine Farbe noch als Palettenfarbe gilt (Farbmanagement verschiebt um wenige Stufen). */
+const TOLERANCE2 = 3 * 14 * 14;
+
+/**
+ * Färbt RGBA-Pixel in-place von der Basis- auf die Zielpalette um. Farben, die nur leicht von der Basispalette
+ * abweichen (Browser mit Farbmanagement), werden der nächstgelegenen Palettenfarbe zugeordnet.
+ */
 export function recolor(px: Uint8ClampedArray, palettes: Palettes, material: Exclude<Material, null>, target: string, base: string = BASE_PALETTE[material]): void {
   const from = palettes[material][base];
   const to = palettes[material][target];
   if (!from || !to || target === base) return;
+  const src = from.map(hex);
+  const dst = from.map((_, i) => hex(to[Math.min(i, to.length - 1)]));
   const map = new Map<number, number>();
-  from.forEach((c, i) => map.set(hex(c), hex(to[Math.min(i, to.length - 1)])));
+  src.forEach((c, i) => map.set(c, dst[i]));
   for (let i = 0; i < px.length; i += 4) {
     if (px[i + 3] === 0) continue;
     const c = (px[i] << 16) | (px[i + 1] << 8) | px[i + 2];
-    const n = map.get(c);
-    if (n === undefined) continue;
+    let n = map.get(c);
+    if (n === undefined) {
+      n = -1;
+      let best = TOLERANCE2;
+      src.forEach((b, k) => {
+        const d = ((b >> 16) - px[i]) ** 2 + (((b >> 8) & 255) - px[i + 1]) ** 2 + ((b & 255) - px[i + 2]) ** 2;
+        if (d <= best) {
+          best = d;
+          n = dst[k];
+        }
+      });
+      map.set(c, n);
+    }
+    if (n < 0) continue;
     px[i] = n >> 16;
     px[i + 1] = (n >> 8) & 255;
     px[i + 2] = n & 255;

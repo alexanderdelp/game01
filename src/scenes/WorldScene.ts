@@ -30,6 +30,8 @@ import { RemotePlayers } from '../entities/RemotePlayers';
 import { TICK_MS, caravanPos, newsBetween, type News } from '../sim/simulation';
 
 const POTION_PRICE = 10;
+/** Barbier (Aussehen ändern) */
+const BARBER_PRICE = 20;
 import { addItem } from '../rpg/progression';
 import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
 
@@ -273,7 +275,7 @@ export class WorldScene extends Phaser.Scene {
       return c ? caravanPos(c, worldNow()) : null;
     };
     debugState.meta = {
-      settlements: this.world.meta.settlements.map((s) => ({ name: s.name, tx: s.tx, ty: s.ty, capital: s.capital, realm: s.realm })),
+      settlements: this.world.meta.settlements.map((s) => ({ id: s.id, name: s.name, tx: s.tx, ty: s.ty, capital: s.capital, realm: s.realm })),
       rivals: [...this.world.meta.rivals],
       obelisks: this.world.meta.obelisks.map((o) => ({ tx: o.tx, ty: o.ty })),
       ruins: this.world.meta.ruins.map((r) => ({ tx: r.tx, ty: r.ty })),
@@ -435,12 +437,12 @@ export class WorldScene extends Phaser.Scene {
     return true;
   }
 
-  /** Öffnet den Erschaffungsbildschirm zum Ändern des Aussehens (Fortschritt bleibt). */
-  editAppearance(): void {
+  /** Öffnet den Erschaffungsbildschirm im Barbier-Modus (Fortschritt bleibt). */
+  editAppearance(cost: number): void {
     save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
     this.hero.persist();
     this.scene.stop('ui');
-    this.scene.start('create', { seed: this.world.seedName, edit: true });
+    this.scene.start('create', { seed: this.world.seedName, edit: true, cost });
   }
 
   /** Spricht den nächsten NPC an bzw. blättert/schließt den Dialog. */
@@ -470,6 +472,15 @@ export class WorldScene extends Phaser.Scene {
     }
     // 2. Herrscher: Treueschwur (M15)
     if (npc.spawn.role === 'ruler') return this.rulerTalk(npc.spawn.name, npc.spawn.tx, npc.spawn.ty);
+    // 3. Barbier: Aussehen ändern gegen Splitter (Feedback: nicht einfach im Heldenfenster)
+    if (npc.spawn.role === 'barber') {
+      const h = this.hero.hero;
+      if (h.shards < BARBER_PRICE) return say(`Ein neuer Schnitt kostet ${BARBER_PRICE} ◆. Komm wieder, wenn du genug Splitter hast.`);
+      return say(`Neue Frisur oder neue Kleider gefällig? Kostet ${BARBER_PRICE} ◆ – nur, wenn du etwas änderst.`, [
+        [`Zum Spiegel (${BARBER_PRICE} ◆)`, () => this.editAppearance(BARBER_PRICE)],
+        ['Nein danke', () => {}],
+      ]);
+    }
     // 3. Händler (Rivalen des eigenen Reichs verweigern den Handel)
     if (npc.spawn.role === 'merchant') {
       const realm = this.world.meta.realmAt(npc.spawn.tx, npc.spawn.ty);
@@ -743,10 +754,11 @@ export class WorldScene extends Phaser.Scene {
         if (this.myPledge() !== this.world.meta.realmAt(n.spawn.tx, n.spawn.ty).id) this.markers.set(id, '!');
         continue;
       }
-      if (n.spawn.role === 'merchant' && !log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id)) continue;
+      const service = n.spawn.role === 'merchant' || n.spawn.role === 'barber';
+      if (service && !log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id)) continue;
       const own = log.active.find((q) => q.giverId === id);
       if ((own && isReady(own)) || log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id && !isReady(q))) this.markers.set(id, '?');
-      else if (n.spawn.role !== 'merchant' && !own && log.active.length < MAX_ACTIVE && this.cachedOffer(n.spawn, now)) this.markers.set(id, '!');
+      else if (!service && !own && log.active.length < MAX_ACTIVE && this.cachedOffer(n.spawn, now)) this.markers.set(id, '!');
     }
   }
 

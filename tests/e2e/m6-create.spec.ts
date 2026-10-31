@@ -3,7 +3,7 @@ import { waitReady } from './helpers';
 
 const G = <T>(page: Page, expr: string) => page.evaluate(`(() => { const g = window.__game; return ${expr}; })()`) as Promise<T>;
 
-test('M6: Held erschaffen, spielen, Aussehen ändern (R3–R6)', async ({ page }) => {
+test('M6: Held erschaffen und spielen (R3–R5)', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/?seed=create-test');
@@ -36,17 +36,8 @@ test('M6: Held erschaffen, spielen, Aussehen ändern (R3–R6)', async ({ page }
   await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 30_000 }).toBe('world');
   await waitReady(page);
 
-  // Aussehen ändern über das Heldenfenster: Fortschritt bleibt
-  await G(page, 'g.hero.level = 3');
+  // Aussehen lässt sich nicht mehr im Heldenfenster ändern (M18: nur beim Barbier, siehe m18-barber.spec.ts)
   await page.keyboard.press('c');
-  expect(await G<boolean>(page, "g.clickPanel('appearance')")).toBe(true);
-  await expect.poll(() => G<string>(page, 'g.scene')).toBe('create');
-  await expect.poll(() => G<unknown>(page, 'g.createLook()')).not.toBeNull();
-  await G(page, 'g.createChange(0, 1)');
-  await G(page, 'g.createConfirm()');
-  await expect.poll(() => G<string>(page, 'g.scene')).toBe('world');
-  await waitReady(page);
-  expect(await G<string>(page, 'g.hero.race')).toBe('synth');
-  expect(await G<string>(page, 'g.hero.name')).toBe('Grimmam');
+  expect(await G<boolean>(page, "g.clickPanel('appearance')")).toBe(false);
   expect(errors).toEqual([]);
 });
