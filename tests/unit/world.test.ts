@@ -58,7 +58,7 @@ describe('WorldGen', () => {
         expect(biomes[(size - 1) * size + i]).toBeLessThanOrEqual(B.Ocean);
       }
     }
-    expect(WORLD_TILES).toBe(4096);
+    expect(WORLD_TILES).toBe(8192);
   });
 
   it('R5: Startpunkt ist immer begehbar', () => {

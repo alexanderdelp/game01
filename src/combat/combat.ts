@@ -60,9 +60,12 @@ export function knockback(fromX: number, fromY: number, toX: number, toY: number
   return { x: (dx / len) * strength, y: (dy / len) * strength };
 }
 
-/** Gegnerstufe aus der Entfernung zum Startpunkt (in Kacheln): alle 150 Kacheln eine Stufe. */
+/** Kacheln je Gegnerstufe (seit M19 doppelt so groß wie die Welt, vorher 150). */
+export const LEVEL_STEP = 300;
+
+/** Gegnerstufe aus der Entfernung zum Startpunkt (in Kacheln): alle LEVEL_STEP Kacheln eine Stufe. */
 export function levelForDistance(tiles: number): number {
-  return 1 + Math.floor(Math.max(0, tiles) / 150);
+  return 1 + Math.floor(Math.max(0, tiles) / LEVEL_STEP);
 }
 
 /** Werte für eine Stufe: +25 % LP und +15 % Angriff pro Stufe. */

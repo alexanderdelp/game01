@@ -145,3 +145,20 @@ export function cobblePattern(seed = 1): Uint32Array {
   }
   return px;
 }
+
+/** Festgetretene Erde für Trampelpfade (M19): Brauntöne mit Kieseln und Fußspuren-Flecken. */
+export function dirtPattern(seed = 1): Uint32Array {
+  const px = new Uint32Array(PATTERN * PATTERN);
+  const tones = [0x8a6a44, 0x94744c, 0x7e6040, 0x9c7c52];
+  for (let y = 0; y < PATTERN; y++) {
+    for (let x = 0; x < PATTERN; x++) {
+      const h = hash2(seed, x >> 1, y >> 1, 11);
+      let c = tones[h % tones.length];
+      const k = hash2(seed, x, y, 12) % 1000;
+      if (k < 6) c = 0xb8a88a;
+      else if (k < 10) c = 0x5e4630;
+      px[y * PATTERN + x] = c;
+    }
+  }
+  return px;
+}

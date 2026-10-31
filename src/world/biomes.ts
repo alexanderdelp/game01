@@ -19,7 +19,7 @@ export enum B {
 }
 
 export type DecorKind =
-  | 'oak' | 'pine' | 'snowpine' | 'palm' | 'cactus' | 'deadtree' | 'bush' | 'flowers'
+  | 'oak' | 'youngoak' | 'pine' | 'youngpine' | 'snowpine' | 'palm' | 'cactus' | 'deadtree' | 'bush' | 'flowers'
   | 'rock' | 'boulder' | 'reeds' | 'crystal' | 'scrap' | 'pylon' | 'tuft'
   | 'house' | 'tower' | 'neonhouse' | 'stall' | 'well' | 'chest' | 'shrine' | 'obelisk' | 'ruin' | 'ruinchest';
 
@@ -103,7 +103,7 @@ export const BIOME_SPEED: Record<B, number> = {
 
 /** Kollisionsbox (Breite, Höhe in px) am Fuß blockierender Dekorationen. */
 export const DECOR_BLOCK: Partial<Record<DecorKind, { w: number; h: number }>> = {
-  oak: { w: 12, h: 8 }, pine: { w: 10, h: 8 }, snowpine: { w: 10, h: 8 }, palm: { w: 10, h: 7 },
+  oak: { w: 12, h: 8 }, youngoak: { w: 8, h: 6 }, pine: { w: 10, h: 8 }, youngpine: { w: 8, h: 6 }, snowpine: { w: 10, h: 8 }, palm: { w: 10, h: 7 },
   cactus: { w: 10, h: 7 }, deadtree: { w: 10, h: 6 }, boulder: { w: 32, h: 14 }, crystal: { w: 20, h: 8 },
   scrap: { w: 32, h: 10 }, pylon: { w: 10, h: 6 }, bush: { w: 22, h: 8 },
   house: { w: 60, h: 22 }, tower: { w: 40, h: 22 }, neonhouse: { w: 60, h: 22 }, stall: { w: 44, h: 12 }, well: { w: 28, h: 14 },

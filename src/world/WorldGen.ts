@@ -1,9 +1,18 @@
 import { B, BIOMES, type DecorKind } from './biomes';
+
+const TREES = new Set<DecorKind>(['oak', 'pine', 'snowpine', 'palm', 'deadtree', 'cactus']);
+/** Biome mit geschlossenem Baumbestand (Lichtungen statt Haine). */
+const WOODED = new Set<B>([B.Forest, B.Jungle, B.Tundra, B.Snow, B.Swamp]);
+const YOUNG: Partial<Record<DecorKind, DecorKind>> = { oak: 'youngoak', pine: 'youngpine' };
 import { Simplex2 } from './noise';
 import { WorldMeta } from './meta';
 import { hashString, rand2 } from './rng';
 
-export const WORLD_TILES = 4096;
+/** Version der Weltgenerierung (2 = M19: große Welt, große Biome, Pfade). */
+export const WORLD_VERSION = 2;
+export const WORLD_TILES = 8192;
+/** Maßstab gegenüber der ersten Weltgröße (4096): Abstände in Weltlogik und Platzierung wachsen mit. */
+export const SCALE = WORLD_TILES / 4096;
 export const CHUNK_TILES = 16;
 export const WORLD_CHUNKS = WORLD_TILES / CHUNK_TILES;
 
@@ -59,6 +68,8 @@ export class WorldGen {
   private readonly nMoist: Simplex2;
   private readonly nMagic: Simplex2;
   private readonly nTech: Simplex2;
+  private readonly nGrove: Simplex2;
+  private readonly nPatch: Simplex2;
 
   private metaCache?: WorldMeta;
 
@@ -78,13 +89,16 @@ export class WorldGen {
     this.nMoist = new Simplex2(s ^ 0x5005);
     this.nMagic = new Simplex2(s ^ 0x6006);
     this.nTech = new Simplex2(s ^ 0x7007);
+    this.nGrove = new Simplex2(s ^ 0x8008);
+    this.nPatch = new Simplex2(s ^ 0x9009);
   }
 
   /** Klima an einer (auch gebrochenen) Kachelposition. */
   climate(x: number, y: number): Climate {
     // Domain Warping für organische Küstenlinien.
-    const wx = x + 140 * this.nWarpX.fbm(x / 700, y / 700, 3);
-    const wy = y + 140 * this.nWarpY.fbm(x / 700, y / 700, 3);
+    const S = SCALE;
+    const wx = x + 140 * S * this.nWarpX.fbm(x / (700 * S), y / (700 * S), 3);
+    const wy = y + 140 * S * this.nWarpY.fbm(x / (700 * S), y / (700 * S), 3);
 
     // Kontinentmaske: zur Weltmitte hin Land, am Rand Ozean.
     const nx = (x / WORLD_TILES) * 2 - 1;
@@ -93,13 +107,13 @@ export class WorldGen {
     const mask = 1 - smoothstep(0.35, 0.92, d);
 
     // "Landanteil": > 0 ist Land. Kontinent-Rauschen plus Maske ergibt Buchten, Binnenmeere, Inseln.
-    const continent = this.nElev.fbm(wx / 900, wy / 900, 7);
+    const continent = this.nElev.fbm(wx / (900 * S), wy / (900 * S), 7);
     const edge = Math.min(x, y, WORLD_TILES - x, WORLD_TILES - y);
-    const land = continent * 0.75 + (mask - 0.5) * 0.9 + 0.06 - (1 - smoothstep(0, 160, edge)) * 1.5;
+    const land = continent * 0.75 + (mask - 0.5) * 0.9 + 0.06 - (1 - smoothstep(0, 160 * S, edge)) * 1.5;
 
     // Gebirgsketten: gratförmiges Rauschen, nur im Landesinneren und nur in "Gebirgszonen".
-    const ridge = 1 - Math.abs(this.nElev.fbm(wx / 420 + 91.7, wy / 420 - 43.1, 4));
-    const zone = smoothstep(0.45, 0.75, this.nElev.noise(x / 1300 - 17.3, y / 1300 + 5.9) * 0.5 + 0.5);
+    const ridge = 1 - Math.abs(this.nElev.fbm(wx / (420 * S) + 91.7, wy / (420 * S) - 43.1, 4));
+    const zone = smoothstep(0.45, 0.75, this.nElev.noise(x / (1300 * S) - 17.3, y / (1300 * S) + 5.9) * 0.5 + 0.5);
     const r2 = ridge * ridge;
     const mountains = r2 * r2 * r2 * zone * smoothstep(0.02, 0.25, land) * 0.48;
 
@@ -110,11 +124,11 @@ export class WorldGen {
     const latitude = y / WORLD_TILES; // 0 = Norden (kalt), 1 = Süden (heiß)
     const temperature = Math.min(
       1,
-      Math.max(0, 0.04 + latitude * 0.98 + this.nTemp.fbm(x / 600, y / 600, 4) * 0.25 - height * 0.4),
+      Math.max(0, 0.04 + latitude * 0.98 + this.nTemp.fbm(x / (900 * S), y / (900 * S), 3) * 0.25 - height * 0.4),
     );
-    const moisture = Math.min(1, Math.max(0, this.nMoist.fbm(wx / 520, wy / 520, 5) * 0.62 + 0.5));
-    const magic = this.nMagic.fbm(x / 380, y / 380, 3) * 0.5 + 0.5;
-    const tech = this.nTech.fbm(x / 420, y / 420, 3) * 0.5 + 0.5;
+    const moisture = Math.min(1, Math.max(0, this.nMoist.fbm(wx / (800 * S), wy / (800 * S), 3) * 0.62 + 0.5));
+    const magic = this.nMagic.fbm(wx / (600 * S), wy / (600 * S), 4) * 0.5 + 0.5;
+    const tech = this.nTech.fbm(wx / (640 * S), wy / (640 * S), 4) * 0.5 + 0.5;
     return { elevation, temperature, moisture, magic, tech };
   }
 
@@ -128,8 +142,8 @@ export class WorldGen {
     if (h > 0.44) return c.temperature < 0.3 ? B.Snow : B.Mountain;
     if (e < BEACH_LEVEL && c.temperature > 0.25) return B.Beach;
 
-    if (c.magic > 0.74 && h < 0.35) return B.CrystalGrove;
-    if (c.tech > 0.75 && h < 0.35) return B.ScrapWastes;
+    if (c.magic > 0.755 && h < 0.35) return B.CrystalGrove;
+    if (c.tech > 0.755 && h < 0.35) return B.ScrapWastes;
 
     const t = c.temperature;
     const m = c.moisture;
@@ -182,19 +196,48 @@ export class WorldGen {
     const poi = meta.poiAt(tx, ty);
     if (poi) return { tx, ty, kind: poi.kind, variant: 0 };
     if (meta.ruinNear(tx, ty, 4)) return null;
+    if (meta.isRoad(tx, ty)) return null;
     const inTown = meta.settlementNear(tx, ty, 2);
     if (inTown && (meta.isPlaza(tx, ty) || rand2(this.seed, tx, ty, 79) < 0.85)) return null;
     const rules = BIOMES[b].decor;
     if (rules.length === 0) return null;
+    const v = this.vegetation(tx, ty, b);
     let r = rand2(this.seed, tx, ty, 77);
     for (const rule of rules) {
-      if (r < rule.density) {
+      const tree = TREES.has(rule.kind);
+      const density = rule.density * (tree ? v.trees : rule.kind === 'bush' ? 0.4 + v.trees * 0.5 : rule.kind === 'flowers' ? v.flowers : rule.kind === 'rock' || rule.kind === 'boulder' ? v.rocks : 1);
+      if (r < density) {
         if (inTown && rule.kind !== 'flowers' && rule.kind !== 'tuft') return null;
-        return { tx, ty, kind: rule.kind, variant: Math.floor(rand2(this.seed, tx, ty, 78) * 256) };
+        const variant = Math.floor(rand2(this.seed, tx, ty, 78) * 256);
+        // Am Rand eines Hains wachsen junge, kleinere Bäume
+        const young = tree && v.edge && YOUNG[rule.kind] && rand2(this.seed, tx, ty, 80) < 0.65;
+        return { tx, ty, kind: young ? YOUNG[rule.kind]! : rule.kind, variant };
       }
-      r -= rule.density;
+      r -= density;
     }
     return null;
+  }
+
+  /**
+   * Pflanzen wachsen gehäuft statt gleichmäßig (Feedback: „baukastenhaft“): Faktoren für Bäume (Haine und
+   * Lichtungen), Blumen- und Steinflecken. `edge` = Rand eines Hains (dort junge Bäume).
+   */
+  vegetation(tx: number, ty: number, b: B): { trees: number; edge: boolean; flowers: number; rocks: number } {
+    const g = this.nGrove.fbm(tx / 22, ty / 22, 2);
+    let trees: number;
+    let edge: boolean;
+    if (WOODED.has(b)) {
+      const t = smoothstep(-0.42, 0.22, g);
+      trees = t * 1.6;
+      edge = t > 0.05 && t < 0.55;
+    } else {
+      const t = smoothstep(0.18, 0.5, g);
+      trees = 0.15 + t * 5;
+      edge = t > 0.05 && t < 0.5;
+    }
+    const p = this.nPatch.noise(tx / 9, ty / 9);
+    const q = this.nPatch.noise(tx / 14 + 33.3, ty / 14 - 8.1);
+    return { trees, edge, flowers: smoothstep(0.25, 0.6, p) * 4, rocks: 0.2 + smoothstep(0.3, 0.65, q) * 3 };
   }
 
   /** Sucht einen begehbaren Startpunkt nahe der Weltmitte (in gemäßigtem Klima). */

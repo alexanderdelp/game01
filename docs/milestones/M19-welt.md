@@ -1,0 +1,45 @@
+# M19 – Organische, weite Welt (aus Feedback-Runde 1)
+
+## Warum?
+
+Spieltest (`docs/FEEDBACK-2026-10-31.md`, Punkt 6): Die Welt wirkt baukastenhaft (gleichmäßig verstreute Objekte,
+einfarbige Flächen), und man läuft in 10–20 s durch ein Biom. Wunsch des Nutzers: **1–2 min je Biom**.
+
+## Befund (vorher)
+
+- Gemessen mit `tools/biome-stats.ts`: Biom-Abschnitte im Median 28 Kacheln (6 s), längengewichtet ~140 Kacheln
+  (~30 s). Ursache: Klima-Rauschen mit vielen feinen Oktaven → viele kleine Flecken.
+- Jede Kachel würfelt ihre Dekoration unabhängig → gleichmäßige Streuung.
+- Biomgrenzen nur ±0,6 Kacheln verwirbelt; Böden ohne Details.
+
+## Design
+
+- **Welt 8192 × 8192 Kacheln** (4× Fläche, `SCALE = 2`), Klimafelder großräumig und mit wenigen Oktaven. Abstände
+  für Reiche, Dörfer (mehr je Reich), Obelisken und Ruinen (6 je Reich) wachsen mit; Gegnerstufe alle 300 Kacheln.
+  Sonderbiome (Kristallhain, Schrottödnis) ~1 % der Fläche, unregelmäßig geformt.
+- **Gehäufte Vegetation:** Ein großräumiges Rauschfeld bestimmt Haine und Lichtungen (Wälder) bzw. Baumgruppen
+  (offenes Land). Am Rand eines Hains wachsen **junge Bäume** (neue Arten `youngoak`, `youngpine`). Blumen und
+  Steine wachsen in Flecken.
+- **Boden:** Erdflecken, Laub (Wald, Dschungel), Kiesel (steinige Biome), **Höhenschattierung** (Licht von
+  Nordwesten), Biomgrenzen grob und fein verwirbelt (±1,5 Kacheln). Ortsplatz und Pfade nur leicht verwirbelt.
+- **Trampelpfade:** Jeder Ort ist mit seinen zwei nächsten Nachbarn verbunden (geschwungen, 2 Kacheln breit,
+  frei von Pflanzen, enden am Ortsrand). Wasser unterbricht sie.
+- Übersichtskarte 1 Pixel = 16 Kacheln; Minimap 6-fach vergrößert (Ausschnitt ~400 Kacheln).
+- **Weltversion 2:** Gespeicherte Positionen aus älteren Welten werden verworfen (Start am Startpunkt). Held,
+  Stufe und Inventar bleiben. Bestehende Welten sehen nach dem Update anders aus.
+- **Flüsse** sind bewusst noch nicht dabei (Wasser blockiert, braucht Brücken an Pfaden) → nächster Schritt.
+
+## Anforderungen
+
+| # | Anforderung | Nachweis |
+|---|---|---|
+| R1 | Biom längengewichtet > 280 Kacheln (≈ 1 min zu Fuß). | Unit + `tools/biome-stats.ts` |
+| R2 | Trampelpfade zwischen Orten, begehbar, ohne Pflanzen. | Unit |
+| R3 | Bäume gehäuft (Varianz je Chunk deutlich über gleichmäßiger Streuung), junge Bäume vorhanden. | Unit |
+| R4 | Alle bisherigen Akzeptanztests laufen in der größeren Welt. | E2E |
+| R5 | Vorher/Nachher-Bilder vom Nutzer freigegeben. | Telegram |
+
+## Ergebnis
+
+Prototyp am 2026-10-31: R1–R4 erfüllt (`tests/unit/m19.test.ts`, alle E2E grün). Gemessen: längengewichtet
+380–510 Kacheln ≈ 80–110 s je Biom (Seeds test, alpha, nebel). Chunk-Zeichnen ~85 ms statt ~50 ms (im Worker).

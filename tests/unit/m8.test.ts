@@ -24,7 +24,7 @@ describe('World Building (R1, R2)', () => {
       expect(m.settlements[r.capital].capital).toBe(true);
     }
     const seen = new Set<number>();
-    for (let y = 300; y < 3800; y += 97) for (let x = 300; x < 3800; x += 97) seen.add(m.realmAt(x, y).id);
+    for (let y = 600; y < 7600; y += 194) for (let x = 600; x < 7600; x += 194) seen.add(m.realmAt(x, y).id);
     expect(seen.size).toBe(6);
   });
 

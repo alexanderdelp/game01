@@ -9,7 +9,7 @@ import {
 
 const w = new WorldGen('test');
 const npcs: NpcSpawn[] = [];
-for (let cy = 110; cy < 150; cy += 3) for (let cx = 110; cx < 150; cx += 3) npcs.push(...npcsForChunk(w, cx, cy));
+for (let cy = 236; cy < 276; cy += 3) for (let cx = 236; cx < 276; cx += 3) npcs.push(...npcsForChunk(w, cx, cy));
 
 describe('Quest-Erzeugung (R1)', () => {
   it('deterministisch, alle Arten kommen vor, Ziele sind gültig', () => {

@@ -153,26 +153,29 @@ function trunk(img: Img, cx: number, bottom: number, height: number, width: numb
   }
 }
 
-function oak(rnd: () => number): Pixels {
-  const img = new Img(44, 60);
-  const cx = 22;
-  trunk(img, cx, 58, 22, 7, rnd);
+/** Laubbaum; `k` < 1 ergibt einen jungen, kleineren Baum (Waldränder, M19). */
+function oak(rnd: () => number, k = 1): Pixels {
+  const w = Math.round(44 * k);
+  const h = Math.round(60 * k);
+  const img = new Img(w, h);
+  const cx = w / 2;
+  trunk(img, cx, h - 2, Math.round(22 * k), Math.max(4, Math.round(7 * k)), rnd);
   const pal = rnd() < 0.3 ? DARK_GREENS : GREENS;
-  const j = () => (rnd() - 0.5) * 4;
+  const j = () => (rnd() - 0.5) * 4 * k;
   const blobs: [number, number, number][] = [
-    [cx + j(), 22 + j(), 13 + rnd() * 3],
-    [cx - 9 + j(), 27 + j(), 9 + rnd() * 4],
-    [cx + 9 + j(), 27 + j(), 9 + rnd() * 4],
-    [cx - 5 + j(), 14 + j(), 8 + rnd() * 4],
-    [cx + 6 + j(), 15 + j(), 8 + rnd() * 4],
+    [cx + j(), 22 * k + j(), (13 + rnd() * 3) * k],
+    [cx - 9 * k + j(), 27 * k + j(), (9 + rnd() * 4) * k],
+    [cx + 9 * k + j(), 27 * k + j(), (9 + rnd() * 4) * k],
+    [cx - 5 * k + j(), 14 * k + j(), (8 + rnd() * 4) * k],
+    [cx + 6 * k + j(), 15 * k + j(), (8 + rnd() * 4) * k],
   ];
   // Hintere, dunklere Kugeln zuerst, dann vordere.
   for (const [x, y, r] of blobs) img.ball(x, y + 2, r, pal.slice(0, 4), rnd, 0.2);
   for (const [x, y, r] of blobs) img.ball(x - 1, y - 1, r - 3, pal.slice(1), rnd, 0.25);
   // Blatt-Struktur: kleine helle Tupfer
-  for (let i = 0; i < 40; i++) {
-    const x = Math.floor(cx - 16 + rnd() * 32);
-    const y = Math.floor(6 + rnd() * 28);
+  for (let i = 0; i < 40 * k; i++) {
+    const x = Math.floor(cx - 16 * k + rnd() * 32 * k);
+    const y = Math.floor(6 * k + rnd() * 28 * k);
     if (img.opaque(x, y) && img.opaque(x + 1, y)) {
       img.set(x, y, pal[4]);
       if (rnd() < 0.5) img.set(x + 1, y, pal[5]);
@@ -182,17 +185,17 @@ function oak(rnd: () => number): Pixels {
   return img.result();
 }
 
-function pine(rnd: () => number, snow: boolean): Pixels {
-  const img = new Img(34, 64);
-  const cx = 17;
-  trunk(img, cx, 62, 19, 5, rnd);
-  const tiers = 4;
+function pine(rnd: () => number, snow: boolean, small = false): Pixels {
+  const img = small ? new Img(26, 44) : new Img(34, 64);
+  const cx = img.w / 2;
+  trunk(img, cx, img.h - 2, small ? 12 : 19, small ? 4 : 5, rnd);
+  const tiers = small ? 3 : 4;
   const pal = snow ? [0x12302a, 0x1b4234, 0x26573f, 0x33704c, 0x4a8a5c] : [0x12301e, 0x1a4428, 0x245a32, 0x30723c, 0x4a8f4c];
   let top = 3;
   for (let t = 0; t < tiers; t++) {
-    const h = 15;
+    const h = small ? 12 : 15;
     const bottom = top + h;
-    const halfW = 7 + t * 3.2;
+    const halfW = (small ? 5 : 7) + t * (small ? 2.6 : 3.2);
     for (let y = top; y <= bottom; y++) {
       const f = (y - top) / h;
       const w = halfW * f + 1 + (rnd() < 0.3 ? 1 : 0);
@@ -454,7 +457,9 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
   const rnd = mulberry32(0x5eed + variant * 7919 + kind.length * 104729 + kind.charCodeAt(0) * 31);
   switch (kind) {
     case 'oak': return oak(rnd);
+    case 'youngoak': return oak(rnd, 0.7);
     case 'pine': return pine(rnd, false);
+    case 'youngpine': return pine(rnd, false, true);
     case 'snowpine': return pine(rnd, true);
     case 'palm': return palm(rnd);
     case 'deadtree': return deadtree(rnd);
@@ -482,7 +487,7 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
 }
 
 export const DECOR_KINDS: DecorKind[] = [
-  'oak', 'pine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
+  'oak', 'youngoak', 'pine', 'youngpine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
   'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest',
 ];
 

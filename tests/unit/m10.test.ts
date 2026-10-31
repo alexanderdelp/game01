@@ -90,8 +90,8 @@ describe('Reichsmacht, Wohlstand, Invasion (R4, R5)', () => {
     const spawn = w.findSpawn();
     let normal = 0;
     let invaded = 0;
-    for (let cy = 60; cy < 200; cy += 2) {
-      for (let cx = 60; cx < 200; cx += 2) {
+    for (let cy = 120; cy < 400; cy += 3) {
+      for (let cx = 120; cx < 400; cx += 3) {
         if (m.realmAt(cx * 16 + 8, cy * 16 + 8).id !== inv.realm) continue;
         normal += enemiesForChunk(w, cx, cy, spawn).length;
         const e = enemiesForChunk(w, cx, cy, spawn, inv);

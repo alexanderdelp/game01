@@ -20,9 +20,9 @@ import { randomSeedName } from '../world/rng';
 import { WORLD_TILES } from '../world/WorldGen';
 import type { WorldScene } from './WorldScene';
 
-const MAP_STEP = 8;
+const MAP_STEP = 16;
 /** Minimap: Bildschirmpixel je Pixel der Übersichtskarte (1 Pixel = MAP_STEP Kacheln). */
-const MINI_ZOOM = 4;
+const MINI_ZOOM = 6;
 const FONT = { fontFamily: 'monospace', fontSize: '14px', color: '#f4f0e8' };
 
 /** HUD und Weltkarte, gezeichnet ohne Kamera-Zoom über der Welt. */
@@ -880,7 +880,7 @@ export class UIScene extends Phaser.Scene {
   private guideTarget(ws: WorldScene): QuestTarget | null {
     const { tx, ty } = ws.player.tile;
     let best: QuestTarget | null = null;
-    let bd = 450;
+    let bd = 700;
     for (const s of ws.world.meta.settlements) {
       if (ws.state.d.discovered.has(`town:${s.id}`)) continue;
       const d = Math.hypot(s.tx - tx, s.ty - ty);

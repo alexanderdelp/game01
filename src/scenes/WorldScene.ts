@@ -33,13 +33,15 @@ const POTION_PRICE = 10;
 /** Barbier (Aussehen ändern) */
 const BARBER_PRICE = 20;
 import { addItem } from '../rpg/progression';
-import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
+import { CHUNK_TILES, WORLD_TILES, WORLD_VERSION, WorldGen } from '../world/WorldGen';
 
 const ZOOMS = [1, 2, 3, 4];
 
 interface SavedPlayer {
   x: number;
   y: number;
+  /** Version der Weltgenerierung; Positionen aus älteren Welten gelten nicht mehr. */
+  v?: number;
 }
 
 /** Die Spielwelt: Chunks, Dekorationen und die Spielfigur. */
@@ -100,7 +102,9 @@ export class WorldScene extends Phaser.Scene {
     this.enemies = new EnemyManager(this, this.world, this.chunks, spawn);
     this.enemies.isDefeated = (id) => isDefeated(this.state.d, id, Date.now());
     this.enemies.onKilled = (e) => this.state.record({ t: Date.now(), by: this.heroName, type: 'kill', id: e.spawn.id, realm: this.world.meta.realmAt(e.spawn.tx, e.spawn.ty).id });
-    const saved = load<SavedPlayer>(this.saveKey);
+    // Gespeicherte Position nur, wenn sie aus derselben Weltversion stammt und begehbar ist
+    let saved = load<SavedPlayer>(this.saveKey);
+    if (saved && (saved.v !== WORLD_VERSION || !this.world.isWalkable(Math.floor(saved.x / TILE_PX), Math.floor((saved.y - 1) / TILE_PX)))) saved = null;
     const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
     const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
     this.player = new Actor(this, startX, startY, buildCharacter(this, { ...DEFAULT_APPEARANCE, ...load<{ appearance?: Appearance }>(`hero:${this.world.seedName}`)?.appearance }));
@@ -198,7 +202,7 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => this.zoom(dy < 0 ? 1 : -1));
 
     const persist = () => {
-      save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+      save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
       this.hero.persist();
       this.state.flush();
       save(`seen:${this.world.seedName}`, worldNow());
@@ -416,7 +420,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** Zurück zum Titelbildschirm (alles wird gespeichert). */
   toTitle(): void {
-    save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+    save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
     this.hero.persist();
     this.state.flush();
     this.scene.stop('ui');
@@ -439,7 +443,7 @@ export class WorldScene extends Phaser.Scene {
 
   /** Öffnet den Erschaffungsbildschirm im Barbier-Modus (Fortschritt bleibt). */
   editAppearance(cost: number): void {
-    save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+    save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
     this.hero.persist();
     this.scene.stop('ui');
     this.scene.start('create', { seed: this.world.seedName, edit: true, cost });
@@ -880,7 +884,7 @@ export class WorldScene extends Phaser.Scene {
       this.saveTimer = 0;
       this.state.flush();
       save(`seen:${this.world.seedName}`, worldNow());
-      save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y) } satisfies SavedPlayer);
+      save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
     }
 
     const f = this.focusTile;

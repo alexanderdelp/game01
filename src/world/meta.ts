@@ -5,7 +5,7 @@
 import { B, BIOMES } from './biomes';
 import { Simplex2 } from './noise';
 import { hash2, mulberry32 } from './rng';
-import { CHUNK_TILES, WORLD_TILES } from './WorldGen';
+import { CHUNK_TILES, SCALE, WORLD_TILES } from './WorldGen';
 
 /** Was die Metadaten von der Landschaft brauchen (vermeidet zirkuläre Abhängigkeit zu WorldGen). */
 export interface Terrain {
@@ -113,6 +113,51 @@ export class WorldMeta {
     this.placeObelisks(rnd);
     this.placeRuins(rnd);
     this.lore = generateLore(t.seed, this);
+    this.buildRoads();
+  }
+
+  /** Kacheln der Trampelpfade zwischen den Orten (Schlüssel tx * 65536 + ty). */
+  private readonly roads = new Set<number>();
+
+  /**
+   * Trampelpfade (M19): jeder Ort mit seinen zwei nächsten Nachbarn, leicht geschwungen, zwei Kacheln breit.
+   * Wasser und Felsgipfel unterbrechen den Pfad. Läuft nach allem anderen, damit die übrige Welt gleich bleibt.
+   */
+  private buildRoads(): void {
+    const pairs = new Set<string>();
+    for (const a of this.settlements) {
+      const near = this.settlements
+        .filter((b) => b !== a)
+        .map((b) => ({ b, d: Math.hypot(b.tx - a.tx, b.ty - a.ty) }))
+        .filter((x) => x.d < 700 * SCALE)
+        .sort((x, y) => x.d - y.d)
+        .slice(0, 2);
+      for (const { b } of near) pairs.add(a.id < b.id ? `${a.id},${b.id}` : `${b.id},${a.id}`);
+    }
+    for (const key of pairs) {
+      const [a, b] = key.split(',').map((i) => this.settlements[Number(i)]);
+      const len = Math.hypot(b.tx - a.tx, b.ty - a.ty);
+      const nx = -(b.ty - a.ty) / len;
+      const ny = (b.tx - a.tx) / len;
+      const steps = Math.ceil(len);
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        // Schlängeln: seitlicher Versatz, an den Enden null
+        const off = this.warp.noise(a.id * 7.3 + t * len / 90, b.id * 3.1) * Math.min(1, len / 80) * 26 * Math.sin(Math.PI * t);
+        const x = Math.round(a.tx + (b.tx - a.tx) * t + nx * off);
+        const y = Math.round(a.ty + (b.ty - a.ty) * t + ny * off);
+        for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]]) {
+          // Im Ort übernimmt der gepflasterte Kreuzweg
+          if (this.settlementNear(x + dx, y + dy)) continue;
+          if (BIOMES[this.t.biomeAt(x + dx, y + dy)].walkable) this.roads.add((x + dx) * 65536 + y + dy);
+        }
+      }
+    }
+  }
+
+  /** Liegt auf der Kachel ein Trampelpfad? */
+  isRoad(tx: number, ty: number): boolean {
+    return this.roads.has(tx * 65536 + ty);
   }
 
   private isGood(tx: number, ty: number, r = 1): boolean {
@@ -169,8 +214,8 @@ export class WorldMeta {
 
   /** Reich einer Kachel (nächstes Zentrum, nach Macht gewichtet, Grenzen verwirbelt). */
   realmAt(tx: number, ty: number): Realm {
-    const wx = tx + this.warp.noise(tx / 180, ty / 180) * 70;
-    const wy = ty + this.warp.noise(tx / 180 + 40, ty / 180 - 40) * 70;
+    const wx = tx + this.warp.noise(tx / (180 * SCALE), ty / (180 * SCALE)) * 70 * SCALE;
+    const wy = ty + this.warp.noise(tx / (180 * SCALE) + 40, ty / (180 * SCALE) - 40) * 70 * SCALE;
     let best = this.realms[0];
     let bd = Infinity;
     for (const r of this.realms) {
@@ -205,9 +250,10 @@ export class WorldMeta {
     };
     for (const r of this.realms) {
       add(r, r.tx, r.ty, true);
-      const villages = 2 + Math.floor(rnd() * 3);
+      // Größere Welt → mehr Dörfer je Reich, damit die Ortsdichte gleich bleibt
+      const villages = Math.round((2 + Math.floor(rnd() * 3)) * SCALE * 1.4);
       for (let v = 0; v < villages; v++) {
-        const p = this.landPoint(rnd, r.tx, r.ty, 260);
+        const p = this.landPoint(rnd, r.tx, r.ty, 260 * SCALE);
         if (p && this.realmAt(p.tx, p.ty).id === r.id) add(r, p.tx, p.ty, false);
       }
     }
@@ -241,10 +287,10 @@ export class WorldMeta {
     for (let i = 0; i < OBELISKS; i++) {
       const r = this.realms[i % this.realms.length];
       for (let k = 0; k < 40; k++) {
-        const p = this.landPoint(rnd, r.tx, r.ty, 320);
+        const p = this.landPoint(rnd, r.tx, r.ty, 320 * SCALE);
         if (!p) continue;
         if (this.settlementNear(p.tx, p.ty, 25)) continue;
-        if (this.obelisks.some((o) => Math.hypot(o.tx - p.tx, o.ty - p.ty) < 60)) continue;
+        if (this.obelisks.some((o) => Math.hypot(o.tx - p.tx, o.ty - p.ty) < 60 * SCALE)) continue;
         const o: Poi = { id: `ob${i}`, kind: 'obelisk', tx: p.tx, ty: p.ty, fragment: i };
         this.obelisks.push(o);
         this.obeliskIndex.set(`${p.tx},${p.ty}`, o);
@@ -256,9 +302,9 @@ export class WorldMeta {
   /** Drei Ruinen je Reich, abseits von Orten und Obelisken (M14). */
   private placeRuins(rnd: () => number): void {
     for (const r of this.realms) {
-      for (let n = 0; n < 3; n++) {
+      for (let n = 0; n < 3 * SCALE; n++) {
         for (let k = 0; k < 40; k++) {
-          const p = this.landPoint(rnd, r.tx, r.ty, 340);
+          const p = this.landPoint(rnd, r.tx, r.ty, 340 * SCALE);
           if (!p || this.settlementNear(p.tx, p.ty, 30)) continue;
           if (this.obelisks.some((o) => Math.hypot(o.tx - p.tx, o.ty - p.ty) < 25)) continue;
           if (this.ruins.some((o) => Math.hypot(o.tx - p.tx, o.ty - p.ty) < 80)) continue;

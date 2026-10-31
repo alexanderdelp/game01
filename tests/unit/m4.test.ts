@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DefeatLog, attackBox, knockback, levelForDistance, regen, rollDamage, scaleStats } from '../../src/combat/combat';
+import { DefeatLog, attackBox, knockback, LEVEL_STEP, levelForDistance, regen, rollDamage, scaleStats } from '../../src/combat/combat';
 import { ENEMIES, SAFE_RADIUS, enemiesForChunk } from '../../src/combat/enemies';
 import { BIOMES } from '../../src/world/biomes';
 import { overlaps } from '../../src/world/collision';
@@ -35,8 +35,8 @@ describe('Kampflogik (R1)', () => {
 
   it('Stufen und Werte skalieren mit Entfernung', () => {
     expect(levelForDistance(0)).toBe(1);
-    expect(levelForDistance(149)).toBe(1);
-    expect(levelForDistance(300)).toBe(3);
+    expect(levelForDistance(LEVEL_STEP - 1)).toBe(1);
+    expect(levelForDistance(LEVEL_STEP * 2)).toBe(3);
     const s1 = scaleStats({ hp: 20, attack: 10, defense: 2 }, 1);
     const s3 = scaleStats({ hp: 20, attack: 10, defense: 2 }, 3);
     expect(s1.hp).toBe(20);
