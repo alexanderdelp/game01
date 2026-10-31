@@ -45,7 +45,7 @@ einfarbige Flächen), und man läuft in 10–20 s durch ein Biom. Wunsch des Nut
 
 ## Ergebnis
 
-Prototyp am 2026-10-31: R1–R4 erfüllt (`tests/unit/m19.test.ts`, alle E2E grün). Gemessen: längengewichtet
+Erreicht am 2026-10-31 (R5: vom Nutzer freigegeben): R1–R4, R6 erfüllt (`tests/unit/m19.test.ts`, alle E2E grün). Gemessen: längengewichtet
 380–510 Kacheln ≈ 80–110 s je Biom (Seeds test, alpha, nebel). Chunk-Zeichnen ~85 ms statt ~50 ms (im Worker).
 Metadaten (inkl. Flüsse und Pfade) 150–200 ms je Welt; dafür gibt es eine reine Höhenfunktion
 (`WorldGen.elevation`), die etwa die Hälfte des Klimas spart.
