@@ -15,6 +15,7 @@ const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   pixelArt: true,
+  input: { gamepad: true },
   backgroundColor: '#0b0b14',
   scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
   scene: [],

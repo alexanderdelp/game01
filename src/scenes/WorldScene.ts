@@ -20,6 +20,7 @@ import { LocalWorldStore, WorldState, isDefeated, reputationRank } from '../stat
 import { TownDecor } from '../render/TownDecor';
 import { LiveWorld, worldNow } from '../sim/LiveWorld';
 import { playerId } from '../game/identity';
+import { PAD_BUTTONS, padDirection } from '../game/gamepad';
 import { Markers } from '../render/Markers';
 import { decodeShare, shareLink } from '../state/share';
 import { SyncClient, syncUrlFromLocation } from '../state/sync';
@@ -172,6 +173,19 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-J', () => this.attack());
     kb.on('keydown-Q', () => this.hero.drink());
     kb.on('keydown-T', () => this.placeSign());
+    // Gamepad: Tasten lösen Aktionen aus, Stick/Steuerkreuz bewegt (siehe update)
+    this.input.gamepad?.on('down', (_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
+      const ui = this.scene.get('ui') as unknown as { toggleMenu(): void; toggleMapPublic(): void };
+      switch (PAD_BUTTONS[button.index]) {
+        case 'attack': return this.attack();
+        case 'interact': return this.interact();
+        case 'potion': return this.hero.drink();
+        case 'menu': return ui.toggleMenu();
+        case 'map': return ui.toggleMapPublic();
+        case 'zoomIn': return this.zoom(1);
+        case 'zoomOut': return this.zoom(-1);
+      }
+    });
     kb.on('keydown-ENTER', () => this.chat());
     kb.on('keydown-ONE', () => this.pendingActions.length > 0 && this.choose(0));
     kb.on('keydown-TWO', () => this.pendingActions.length > 1 && this.choose(1));
@@ -674,6 +688,14 @@ export class WorldScene extends Phaser.Scene {
     const k = this.keys;
     let dx = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
     let dy = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);
+    let sprint = k.SHIFT.isDown;
+    const pad = this.input.gamepad?.total ? this.input.gamepad.pad1 : undefined;
+    if (!dx && !dy && pad) {
+      const d = padDirection(pad.leftStick.x, pad.leftStick.y, { left: pad.left, right: pad.right, up: pad.up, down: pad.down });
+      dx = d.x;
+      dy = d.y;
+      sprint = sprint || pad.B;
+    }
     if (!dx && !dy) {
       dx = touchInput.x;
       dy = touchInput.y;
@@ -681,7 +703,7 @@ export class WorldScene extends Phaser.Scene {
     const dt = Math.min(delta, 50) / 1000;
     this.chunks.update(this.cameras.main.worldView);
     if (this.combat.locked) this.player.update(0, 0, false, dt, this.chunks);
-    else this.player.update(dx, dy, k.SHIFT.isDown, dt, this.chunks);
+    else this.player.update(dx, dy, sprint, dt, this.chunks);
     this.combat.update(dt);
     this.hero.update(dt);
     this.markerTimer -= dt;

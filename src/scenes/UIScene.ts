@@ -974,6 +974,11 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  /** Für Gamepad-Steuerung aus der Welt-Szene. */
+  toggleMapPublic(): void {
+    this.toggleMap();
+  }
+
   private toggleMap(): void {
     if (this.map) this.closeMap();
     else this.openMap();
