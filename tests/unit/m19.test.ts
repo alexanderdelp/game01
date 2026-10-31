@@ -61,3 +61,29 @@ describe('M19 – Pfade und Pflanzen (R2, R3)', () => {
     expect(young).toBeGreaterThan(0);
   });
 });
+
+describe('M19 – Flüsse (R6)', () => {
+  it('Flüsse sind unpassierbar, Brücken begehbar; Orte bleiben trocken', () => {
+    let river = 0;
+    let bridge = 0; // Stichprobe trifft Brücken nur selten
+    for (const s of w.meta.settlements) expect(w.meta.waterAt(s.tx, s.ty)).toBeNull();
+    // Stichprobe über die Welt
+    for (let ty = 0; ty < WORLD_TILES; ty += 3) {
+      for (let tx = 0; tx < WORLD_TILES; tx += 97) {
+        const kind = w.meta.waterAt(tx, ty);
+        if (kind === 'river') {
+          river++;
+          expect(w.isWalkable(tx, ty)).toBe(false);
+        } else if (kind === 'bridge') {
+          bridge++;
+          expect(w.isWalkable(tx, ty)).toBe(true);
+        }
+      }
+    }
+    expect(river).toBeGreaterThan(20);
+    // Brücken gibt es, wo Pfade Flüsse queren
+    expect(w.meta.bridges.size).toBeGreaterThan(0);
+    for (const k of [...w.meta.bridges].slice(0, 20)) expect(w.isWalkable(Math.floor(k / 65536), k % 65536)).toBe(true);
+    expect(bridge).toBeGreaterThanOrEqual(0);
+  });
+});

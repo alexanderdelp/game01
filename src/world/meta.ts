@@ -5,12 +5,15 @@
 import { B, BIOMES } from './biomes';
 import { Simplex2 } from './noise';
 import { hash2, mulberry32 } from './rng';
-import { CHUNK_TILES, SCALE, WORLD_TILES } from './WorldGen';
+import { CHUNK_TILES, MOUNTAIN_H, PEAK_H, SCALE, SEA_LEVEL, WORLD_TILES } from './WorldGen';
 
 /** Was die Metadaten von der Landschaft brauchen (vermeidet zirkuläre Abhängigkeit zu WorldGen). */
 export interface Terrain {
   readonly seed: number;
+  /** Biom ohne Flüsse (die Flüsse entstehen erst hier). */
   biomeAt(tx: number, ty: number): B;
+  /** Geländehöhe (für den Lauf der Flüsse); fehlt sie, gibt es keine Flüsse. */
+  elevationAt?(x: number, y: number): number;
 }
 
 export type Faction = 'mages' | 'techno' | 'clan' | 'traders' | 'order';
@@ -113,8 +116,114 @@ export class WorldMeta {
     this.placeObelisks(rnd);
     this.placeRuins(rnd);
     this.lore = generateLore(t.seed, this);
+    this.buildRivers();
     this.buildRoads();
   }
+
+  /** Flusskacheln (Schlüssel tx * 65536 + ty) und Brücken (Pfad über Fluss). */
+  private readonly rivers = new Set<number>();
+  readonly bridges = new Set<number>();
+
+  /** Fluss (true), Brücke ('bridge') oder nichts an einer Kachel. */
+  waterAt(tx: number, ty: number): 'river' | 'bridge' | null {
+    const k = tx * 65536 + ty;
+    return this.bridges.has(k) ? 'bridge' : this.rivers.has(k) ? 'river' : null;
+  }
+
+  /**
+   * Flüsse (M19): entspringen im Gebirge und folgen dem steilsten Gefälle bis zum Meer; werden dabei breiter.
+   * Orte, Ruinen und Obelisken bleiben trocken. Eigener Zufallsstrom → die übrige Welt bleibt gleich.
+   */
+  private buildRivers(): void {
+    if (!this.t.elevationAt) return;
+    const elev = this.t.elevationAt.bind(this.t);
+    const rnd = mulberry32(this.t.seed ^ 0x7177);
+    const want = 3 * SCALE * SCALE;
+    const STEP = 6;
+    for (let tries = 0; tries < want * 60 && this.riverCount < want; tries++) {
+      const sx = Math.round(WORLD_TILES * (0.1 + rnd() * 0.8));
+      const sy = Math.round(WORLD_TILES * (0.1 + rnd() * 0.8));
+      // Quelle im Gebirge (nur Höhe prüfen, das volle Klima ist teurer)
+      const h0 = (elev(sx, sy) - SEA_LEVEL) / (1 - SEA_LEVEL);
+      if (h0 <= MOUNTAIN_H || h0 > PEAK_H) continue;
+      const path: { x: number; y: number }[] = [{ x: sx, y: sy }];
+      let x = sx;
+      let y = sy;
+      let dir = rnd() * Math.PI * 2;
+      let ok = false;
+      // Grobe Zellen, die der Fluss schon durchflossen hat (kein Kreisen)
+      const seen = new Set<number>([Math.floor(sx / 12) * 4096 + Math.floor(sy / 12)]);
+      for (let n = 0; n < 400; n++) {
+        const here = elev(x, y);
+        let best: { x: number; y: number; e: number; a: number } | null = null;
+        // Richtung Küste: Der Kontinent fällt zum Rand hin ab, kleine Senken im Flachland werden so überwunden
+        const ox = x - WORLD_TILES / 2;
+        const oy = y - WORLD_TILES / 2;
+        const ol = Math.hypot(ox, oy) || 1;
+        for (let k = -2; k <= 2; k++) {
+          const a = dir + k * 0.45;
+          const nx = x + Math.cos(a) * STEP;
+          const ny = y + Math.sin(a) * STEP;
+          // Mäander: leichtes Rauschen auf der Höhe, damit der Fluss nicht schnurgerade läuft
+          const cell = Math.floor(nx / 12) * 4096 + Math.floor(ny / 12);
+          const cur = Math.floor(x / 12) * 4096 + Math.floor(y / 12);
+          if (cell !== cur && seen.has(cell)) continue;
+          const e = elev(nx, ny) + this.warp.noise(nx / 40, ny / 40) * 0.0015 - ((Math.cos(a) * ox + Math.sin(a) * oy) / ol) * 0.002;
+          if (!best || e < best.e) best = { x: nx, y: ny, e, a };
+        }
+        if (!best || best.e > here + 0.006) break; // Senke: der Fluss endet in einem See
+        seen.add(Math.floor(best.x / 12) * 4096 + Math.floor(best.y / 12));
+        x = best.x;
+        y = best.y;
+        dir = best.a;
+        path.push({ x, y });
+        if (best.e - this.warp.noise(x / 40, y / 40) * 0.0015 < SEA_LEVEL - 0.002 || elev(x, y) < SEA_LEVEL) {
+          ok = true;
+          break;
+        }
+      }
+      if (path.length < 30) continue;
+      this.riverCount++;
+      // Rastern: Breite wächst mit der Länge (1 → 3 Kacheln); jede Kachel nur einmal prüfen
+      const cand = new Set<number>();
+      for (let i = 1; i < path.length; i++) {
+        const r = 0.6 + Math.min(1.2, (i * STEP) / 500);
+        const a = path[i - 1];
+        const b = path[i];
+        for (let t = 0; t < 1; t += 0.25) {
+          const cx = a.x + (b.x - a.x) * t;
+          const cy = a.y + (b.y - a.y) * t;
+          for (let ty = Math.floor(cy - r); ty <= Math.ceil(cy + r); ty++) {
+            for (let tx = Math.floor(cx - r); tx <= Math.ceil(cx + r); tx++) {
+              if ((tx + 0.5 - cx) ** 2 + (ty + 0.5 - cy) ** 2 <= r * r) cand.add(tx * 65536 + ty);
+            }
+          }
+        }
+      }
+      if (!ok) {
+        // Kein Meer erreicht: See am Ende
+        const end = path[path.length - 1];
+        const lr = 4 + rnd() * 3;
+        for (let ty = Math.floor(end.y - lr); ty <= Math.ceil(end.y + lr); ty++) {
+          for (let tx = Math.floor(end.x - lr * 1.4); tx <= Math.ceil(end.x + lr * 1.4); tx++) {
+            if (((tx + 0.5 - end.x) / 1.4) ** 2 + (ty + 0.5 - end.y) ** 2 <= lr * lr) cand.add(tx * 65536 + ty);
+          }
+        }
+      }
+      for (const key of cand) {
+        if (this.rivers.has(key)) continue;
+        const tx = Math.floor(key / 65536);
+        const ty = key % 65536;
+        // Nur auf Land unterhalb der Gipfel; Orte, Ruinen und Obelisken bleiben trocken
+        const e = elev(tx + 0.5, ty + 0.5);
+        if (e < SEA_LEVEL || (e - SEA_LEVEL) / (1 - SEA_LEVEL) > PEAK_H) continue;
+        if (this.settlementNear(tx, ty, 3) || this.ruinNear(tx, ty, 5)) continue;
+        if (this.obelisks.some((o) => Math.abs(o.tx - tx) <= 3 && Math.abs(o.ty - ty) <= 3)) continue;
+        this.rivers.add(key);
+      }
+    }
+  }
+  private riverCount = 0;
 
   /** Kacheln der Trampelpfade zwischen den Orten (Schlüssel tx * 65536 + ty). */
   private readonly roads = new Set<number>();
@@ -147,12 +256,23 @@ export class WorldMeta {
         const x = Math.round(a.tx + (b.tx - a.tx) * t + nx * off);
         const y = Math.round(a.ty + (b.ty - a.ty) * t + ny * off);
         for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]]) {
+          const key = (x + dx) * 65536 + y + dy;
+          if (this.roads.has(key) || this.bridges.has(key)) continue;
           // Im Ort übernimmt der gepflasterte Kreuzweg
           if (this.settlementNear(x + dx, y + dy)) continue;
-          if (BIOMES[this.t.biomeAt(x + dx, y + dy)].walkable) this.roads.add((x + dx) * 65536 + y + dy);
+          // Über Flüsse führt eine Brücke
+          if (this.rivers.has(key)) this.bridges.add(key);
+          else if (this.walkableGround(x + dx, y + dy)) this.roads.add(key);
         }
       }
     }
+  }
+
+  /** Begehbarer Boden (ohne Wasser und Gipfel); mit Höhe statt vollem Klima, falls verfügbar. */
+  private walkableGround(tx: number, ty: number): boolean {
+    if (!this.t.elevationAt) return BIOMES[this.t.biomeAt(tx, ty)].walkable;
+    const h = (this.t.elevationAt(tx + 0.5, ty + 0.5) - SEA_LEVEL) / (1 - SEA_LEVEL);
+    return h >= 0 && h <= PEAK_H;
   }
 
   /** Liegt auf der Kachel ein Trampelpfad? */

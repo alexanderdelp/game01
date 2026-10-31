@@ -42,6 +42,7 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
   switch (biome) {
     case B.DeepOcean:
     case B.Ocean:
+    case B.River:
       // Wellenstriche
       count(biome === B.Ocean ? 26 : 14, (x, y, i) => {
         const len = 3 + (i % 4);
@@ -117,6 +118,16 @@ export function groundPattern(biome: B, seed = 1): Uint32Array {
       count(40, (x2, y2) => set(x2, y2, shade(mid, 0.85)));
       break;
     }
+    case B.Bridge:
+      // Holzbohlen mit Fugen und Maserung
+      for (let y = 0; y < PATTERN; y++) {
+        for (let x = 0; x < PATTERN; x++) {
+          const plank = Math.floor(y / 8);
+          const seam = y % 8 === 7;
+          set(x, y, seam ? accent : r(x >> 3, plank, 5) < 0.3 ? dark : (x + plank * 5) % 23 === 0 ? light : mid);
+        }
+      }
+      break;
   }
 
   // Kristallhain: leuchtende Splitter

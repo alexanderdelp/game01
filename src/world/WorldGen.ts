@@ -46,6 +46,9 @@ export interface ChunkData {
 }
 
 export const SEA_LEVEL = 0.42;
+/** Höhe (über dem Meer, 0–1), ab der Gebirge bzw. Felsgipfel beginnen. */
+export const MOUNTAIN_H = 0.44;
+export const PEAK_H = 0.6;
 const DEEP_LEVEL = 0.3;
 const BEACH_LEVEL = 0.431;
 
@@ -75,7 +78,8 @@ export class WorldGen {
 
   /** Reiche, Siedlungen, Geheimnisse, Chronik (lazy, deterministisch). */
   get meta(): WorldMeta {
-    return (this.metaCache ??= new WorldMeta(this));
+    // Die Metadaten sehen das Gelände ohne Flüsse (die legen sie selbst an)
+    return (this.metaCache ??= new WorldMeta({ seed: this.seed, biomeAt: (x, y) => this.baseBiomeAt(x, y), elevationAt: (x, y) => this.elevation(x, y) }));
   }
 
   constructor(seedName: string) {
@@ -95,6 +99,27 @@ export class WorldGen {
 
   /** Klima an einer (auch gebrochenen) Kachelposition. */
   climate(x: number, y: number): Climate {
+    const { elevation, wx, wy } = this.relief(x, y);
+    const S = SCALE;
+    const height = Math.max(0, (elevation - SEA_LEVEL) / (1 - SEA_LEVEL));
+    const latitude = y / WORLD_TILES; // 0 = Norden (kalt), 1 = Süden (heiß)
+    const temperature = Math.min(
+      1,
+      Math.max(0, 0.04 + latitude * 0.98 + this.nTemp.fbm(x / (900 * S), y / (900 * S), 3) * 0.25 - height * 0.4),
+    );
+    const moisture = Math.min(1, Math.max(0, this.nMoist.fbm(wx / (800 * S), wy / (800 * S), 3) * 0.62 + 0.5));
+    const magic = this.nMagic.fbm(wx / (600 * S), wy / (600 * S), 4) * 0.5 + 0.5;
+    const tech = this.nTech.fbm(wx / (640 * S), wy / (640 * S), 4) * 0.5 + 0.5;
+    return { elevation, temperature, moisture, magic, tech };
+  }
+
+  /** Nur die Geländehöhe (günstiger als das volle Klima; für Flussläufe). */
+  elevation(x: number, y: number): number {
+    return this.relief(x, y).elevation;
+  }
+
+  /** Höhe und verwirbelte Koordinaten (Grundlage des Klimas). */
+  private relief(x: number, y: number): { elevation: number; wx: number; wy: number } {
     // Domain Warping für organische Küstenlinien.
     const S = SCALE;
     const wx = x + 140 * S * this.nWarpX.fbm(x / (700 * S), y / (700 * S), 3);
@@ -119,17 +144,7 @@ export class WorldGen {
 
     const lowland = land < 0 ? land * 0.3 : Math.min(land, 0.8) * 0.2;
     const elevation = Math.min(1, Math.max(0, SEA_LEVEL + lowland + mountains));
-
-    const height = Math.max(0, (elevation - SEA_LEVEL) / (1 - SEA_LEVEL));
-    const latitude = y / WORLD_TILES; // 0 = Norden (kalt), 1 = Süden (heiß)
-    const temperature = Math.min(
-      1,
-      Math.max(0, 0.04 + latitude * 0.98 + this.nTemp.fbm(x / (900 * S), y / (900 * S), 3) * 0.25 - height * 0.4),
-    );
-    const moisture = Math.min(1, Math.max(0, this.nMoist.fbm(wx / (800 * S), wy / (800 * S), 3) * 0.62 + 0.5));
-    const magic = this.nMagic.fbm(wx / (600 * S), wy / (600 * S), 4) * 0.5 + 0.5;
-    const tech = this.nTech.fbm(wx / (640 * S), wy / (640 * S), 4) * 0.5 + 0.5;
-    return { elevation, temperature, moisture, magic, tech };
+    return { elevation, wx, wy };
   }
 
   /** Klassifiziert ein Klima in ein Biom. */
@@ -138,8 +153,8 @@ export class WorldGen {
     if (e < DEEP_LEVEL) return B.DeepOcean;
     if (e < SEA_LEVEL) return B.Ocean;
     const h = (e - SEA_LEVEL) / (1 - SEA_LEVEL);
-    if (h > 0.6) return B.Peak;
-    if (h > 0.44) return c.temperature < 0.3 ? B.Snow : B.Mountain;
+    if (h > PEAK_H) return B.Peak;
+    if (h > MOUNTAIN_H) return c.temperature < 0.3 ? B.Snow : B.Mountain;
     if (e < BEACH_LEVEL && c.temperature > 0.25) return B.Beach;
 
     if (c.magic > 0.755 && h < 0.35) return B.CrystalGrove;
@@ -159,9 +174,20 @@ export class WorldGen {
     return B.Forest;
   }
 
-  biomeAt(tx: number, ty: number): B {
+  /** Biom ohne Flüsse und Brücken. */
+  baseBiomeAt(tx: number, ty: number): B {
     if (tx < 0 || ty < 0 || tx >= WORLD_TILES || ty >= WORLD_TILES) return B.DeepOcean;
     return WorldGen.classify(this.climate(tx + 0.5, ty + 0.5));
+  }
+
+  biomeAt(tx: number, ty: number): B {
+    return this.withWater(tx, ty, this.baseBiomeAt(tx, ty));
+  }
+
+  /** Legt Flüsse und Brücken über ein Grundbiom. */
+  withWater(tx: number, ty: number, b: B): B {
+    const w = this.meta.waterAt(tx, ty);
+    return w === 'bridge' ? B.Bridge : w === 'river' ? B.River : b;
   }
 
   isWalkable(tx: number, ty: number): boolean {

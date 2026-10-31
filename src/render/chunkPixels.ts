@@ -30,7 +30,7 @@ const M = 2;
 const SOIL = new Set<number>([B.Grassland, B.Forest, B.Jungle, B.Savanna]);
 /** Biome mit verstreuten Kieseln. */
 const STONY = new Set<number>([B.Mountain, B.Desert, B.Beach, B.Tundra, B.Savanna, B.ScrapWastes, B.Snow]);
-const isWater = (b: number) => b === B.DeepOcean || b === B.Ocean;
+const isWater = (b: number) => b === B.DeepOcean || b === B.Ocean || b === B.River;
 const isHigh = (b: number) => b === B.Mountain || b === B.Peak;
 
 /**
@@ -71,7 +71,7 @@ export class ChunkPainter {
           continue;
         }
         const c = this.world.climate(tx + 0.5, ty + 0.5);
-        grid[y * G + x] = WorldGen.classify(c);
+        grid[y * G + x] = this.world.withWater(tx, ty, WorldGen.classify(c));
         elev[y * G + x] = c.elevation;
       }
     }
@@ -105,12 +105,13 @@ export class ChunkPainter {
         const fy = (wsy + 0.5) / perTile + jy * 1.1 + this.jitter.noise(wsx / 7, wsy / 7 - 4.4) * 0.35;
         const gx = Math.min(G - 1, Math.max(0, Math.floor(fx) - ox + M));
         const gy = Math.min(G - 1, Math.max(0, Math.floor(fy) - oy + M));
-        // Pflaster und Pfade nur leicht verwirbeln (sonst franst der Ortsplatz aus)
+        // Pflaster, Pfade, Brücken und Flüsse nur leicht verwirbeln (sonst fransen sie aus)
         const lx = Math.floor((wsx + 0.5) / perTile + jx * 0.3) - ox + M;
         const ly = Math.floor((wsy + 0.5) / perTile + jy * 0.3) - oy + M;
         const built = grid[Math.min(G - 1, Math.max(0, ly)) * G + Math.min(G - 1, Math.max(0, lx))];
         const wild = grid[gy * G + gx];
-        sub[sy * S + sx] = built === PLAZA || built === ROAD || wild === PLAZA || wild === ROAD ? built : wild;
+        const crisp = (v: number) => v === PLAZA || v === ROAD || v === B.Bridge || v === B.River;
+        sub[sy * S + sx] = crisp(built) || crisp(wild) ? built : wild;
       }
     }
 
