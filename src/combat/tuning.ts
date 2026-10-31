@@ -2,7 +2,7 @@
  * Einstellbare Kampfwerte für die Kampf-Arena (`?arena=1`): Regler ändern die Werte live, „Werte kopieren“
  * erzeugt den Code-Ausschnitt für `combat.ts`. Rein, ohne Phaser.
  */
-import { PLAYER_MOVE, PLAYER_SWING } from './combat';
+import { PLAYER_AIM, PLAYER_MOVE, PLAYER_SWING } from './combat';
 
 export interface Tunable {
   id: string;
@@ -31,6 +31,15 @@ export const TUNABLES: Tunable[] = [
   swing('cooldown', 'Pause nach Hieb (s)', 0, 0.4, 0.01),
   swing('moveFactor', 'Tempo beim Hieb (0–1)', 0, 1, 0.05),
   swing('knockLock', 'Kontrollverlust bei Treffer (s)', 0, 0.4, 0.01),
+  {
+    id: 'aim.releaseGrace',
+    label: 'Diagonale halten beim Loslassen (s)',
+    min: 0,
+    max: 0.25,
+    step: 0.01,
+    get: () => PLAYER_AIM.releaseGrace,
+    set: (v) => (PLAYER_AIM.releaseGrace = v),
+  },
 ];
 
 /** Werte beim Programmstart (für „Zurücksetzen“). */
@@ -55,5 +64,5 @@ export function exportCode(): string {
     Object.entries(o)
       .map(([k, v]) => `  ${k}: ${+v.toFixed(3)},`)
       .join('\n');
-  return `export const PLAYER_MOVE = {\n${fmt(PLAYER_MOVE)}\n};\n\nexport const PLAYER_SWING = {\n${fmt(PLAYER_SWING)}\n};`;
+  return `export const PLAYER_MOVE = {\n${fmt(PLAYER_MOVE)}\n};\n\nexport const PLAYER_SWING = {\n${fmt(PLAYER_SWING)}\n};\n\nexport const PLAYER_AIM = {\n${fmt(PLAYER_AIM)}\n};`;
 }

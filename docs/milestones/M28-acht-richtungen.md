@@ -34,4 +34,16 @@ Drehen/Verzerren der Sprites sieht bei Pixel-Art schlecht aus. Viele Spiele dies
 
 ## Ergebnis
 
-_offen_
+- `Actor.aim` (8 Richtungen, eingerastet über `aimFrom`) neben `facing`. Der Spieler aktiviert es über `PlayerCombat`
+  (`diagonalFacing = 'side'`); NPCs/Gegner/Mitspieler behalten das bisherige Verhalten (`'default'`).
+- **Entscheidung Sprite diagonal: Seitenansicht.** Vergleich in der Arena (`g.arenaDiagonal('vertical')`,
+  `screenshots/m28-schwung-diagonal*.png`): In der Seitenansicht ist der Dolchschwung zur Seite sichtbar und passt zum
+  Bogen; in der Vorderansicht verdeckt der Körper die Klinge.
+- **Loslass-Toleranz** (`PLAYER_AIM.releaseGrace` = 0,08 s, Arena-Regler): Zwei Tasten werden nie gleichzeitig
+  losgelassen; ohne sie ging die Diagonale beim Anhalten verloren (im Arena-Test gefunden).
+- Trefferzone `attackZone`: gerade exakt wie `attackBox` (R4, Unit-Test über ein Raster), diagonal gedrehtes Feld
+  40 px breit, gleiche Reichweite; Trennachsen-Test `zoneHits`. Rückstoß der Gegner in Zielrichtung.
+- Splitterblitz fliegt in `aim` (R2), Schwung-Bogen: 3 im Code erzeugte Sichel-Bilder in Zielrichtung (R3).
+- Tests: `tests/unit/m28.test.ts`, E2E `arena.spec.ts` › M28 (Hieb diagonal trifft, quer daneben nicht; Blitz diagonal).
+- Integration (Koordinator): `m4-combat`, `m17-feel`, `m14-explore`, `m5-rpg`, Arena grün; M4-Sterbetest robuster gemacht (wackelte schon vorher).
+

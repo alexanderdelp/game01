@@ -29,6 +29,139 @@ export function attackBox(x: number, y: number, facing: Facing, reach = 30, widt
   }
 }
 
+/** Richtungsvektor (Länge beliebig). */
+export interface Vec {
+  x: number;
+  y: number;
+}
+
+const D = Math.SQRT1_2;
+/** Die 8 Zielrichtungen ab „rechts“ im Uhrzeigersinn (Bildschirm: y nach unten), exakt für gerade Richtungen. */
+const AIMS: readonly Vec[] = [
+  { x: 1, y: 0 }, { x: D, y: D }, { x: 0, y: 1 }, { x: -D, y: D },
+  { x: -1, y: 0 }, { x: -D, y: -D }, { x: 0, y: -1 }, { x: D, y: -D },
+];
+
+/**
+ * Rastet eine Eingaberichtung auf 8 Richtungen ein (M28) und liefert den Einheitsvektor,
+ * `null` bei (fast) keiner Eingabe.
+ */
+export function aimFrom(dx: number, dy: number): Vec | null {
+  if (Math.hypot(dx, dy) < 1e-6) return null;
+  const i = (Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) + 8) % 8;
+  return { ...AIMS[i] };
+}
+
+/** Zielen (M28). */
+export const PLAYER_AIM = {
+  /**
+   * Zwei Tasten werden nie genau gleichzeitig losgelassen: Wechselt die Eingabe von einer Diagonale auf eine ihrer
+   * geraden Richtungen, gilt das erst nach dieser Zeit (s) – sonst ginge das diagonale Ziel beim Anhalten verloren.
+   */
+  releaseGrace: 0.08,
+};
+
+/**
+ * Nächste Zielrichtung aus der Eingabe (`input` schon eingerastet). `held` = wie lange die Eingabe schon
+ * auf eine Teilrichtung der bisherigen Diagonale zeigt.
+ */
+export function nextAim(prev: Vec, input: Vec | null, held: number, dt: number, grace = PLAYER_AIM.releaseGrace): { aim: Vec; held: number } {
+  if (!input) return { aim: prev, held: 0 };
+  const prevDiagonal = prev.x !== 0 && prev.y !== 0;
+  const part = (input.x === 0 && Math.sign(input.y) === Math.sign(prev.y)) || (input.y === 0 && Math.sign(input.x) === Math.sign(prev.x));
+  if (prevDiagonal && part) {
+    const h = held + dt;
+    return h >= grace ? { aim: input, held: 0 } : { aim: prev, held: h };
+  }
+  return { aim: input, held: 0 };
+}
+
+/** Gerade Richtung (keine Diagonale) als Blickrichtung, sonst `null`. */
+function cardinalOf(aim: Vec): Facing | null {
+  if (aim.y === 0) return aim.x < 0 ? 'left' : 'right';
+  if (aim.x === 0) return aim.y < 0 ? 'up' : 'down';
+  return null;
+}
+
+/** Trefferzone eines Hiebs als konvexes Viereck (Eckpunkte im Umlauf). */
+export type Zone = Vec[];
+
+/**
+ * Trefferzone des Hiebs in Zielrichtung (M28): gerade Richtungen exakt wie `attackBox` (Spielgefühl unverändert),
+ * diagonal ein gedrehtes Feld gleicher Breite und gleicher Reichweite ab der Körpermitte.
+ */
+export function attackZone(x: number, y: number, aim: Vec, reach = 30, width = 40): Zone {
+  const card = cardinalOf(aim);
+  if (card) {
+    const b = attackBox(x, y, card, reach, width);
+    return [
+      { x: b.x, y: b.y },
+      { x: b.x + b.w, y: b.y },
+      { x: b.x + b.w, y: b.y + b.h },
+      { x: b.x, y: b.y + b.h },
+    ];
+  }
+  const len = Math.hypot(aim.x, aim.y) || 1;
+  const fx = aim.x / len;
+  const fy = aim.y / len;
+  const px = -fy;
+  const py = fx;
+  const cx = x;
+  const cy = y - 18; // Körpermitte
+  const back = -4; // ein Stück hinter die Mitte, damit Gegner direkt am Körper getroffen werden
+  const front = reach + 8;
+  const h = width / 2;
+  return [
+    { x: cx + fx * back + px * h, y: cy + fy * back + py * h },
+    { x: cx + fx * front + px * h, y: cy + fy * front + py * h },
+    { x: cx + fx * front - px * h, y: cy + fy * front - py * h },
+    { x: cx + fx * back - px * h, y: cy + fy * back - py * h },
+  ];
+}
+
+/** Umgebende Box einer Zone (Vorauswahl der Gegner). */
+export function zoneBounds(z: Zone): Box {
+  const xs = z.map((p) => p.x);
+  const ys = z.map((p) => p.y);
+  const x = Math.min(...xs);
+  const y = Math.min(...ys);
+  return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+}
+
+/** Überschneidet die Zone eine Box? (Trennachsen-Test, echte Überlappung wie `overlaps`) */
+export function zoneHits(z: Zone, b: Box): boolean {
+  const corners = [
+    { x: b.x, y: b.y },
+    { x: b.x + b.w, y: b.y },
+    { x: b.x + b.w, y: b.y + b.h },
+    { x: b.x, y: b.y + b.h },
+  ];
+  const axes: Vec[] = [{ x: 1, y: 0 }, { x: 0, y: 1 }];
+  for (let i = 0; i < z.length; i++) {
+    const a = z[i];
+    const c = z[(i + 1) % z.length];
+    axes.push({ x: -(c.y - a.y), y: c.x - a.x });
+  }
+  for (const ax of axes) {
+    let zMin = Infinity;
+    let zMax = -Infinity;
+    let bMin = Infinity;
+    let bMax = -Infinity;
+    for (const p of z) {
+      const d = p.x * ax.x + p.y * ax.y;
+      zMin = Math.min(zMin, d);
+      zMax = Math.max(zMax, d);
+    }
+    for (const p of corners) {
+      const d = p.x * ax.x + p.y * ax.y;
+      bMin = Math.min(bMin, d);
+      bMax = Math.max(bMax, d);
+    }
+    if (zMax <= bMin + 1e-9 || bMax <= zMin + 1e-9) return false;
+  }
+  return true;
+}
+
 /**
  * Zeitverhalten des Spieler-Nahkampfs (Feedback: „wie Super Mario World“ – die Figur tut sofort, was man drückt).
  * Schlag läuft im Laufen, kein Vormerken von Tasten, kein automatisches Drehen.
@@ -108,6 +241,16 @@ export function regen(hp: number, maxHp: number, sinceHit: number, dt: number, d
 
 /** Fernzauber „Splitterblitz“: Kennwerte. */
 export const SPELL = { speed: 330, range: 320, cooldown: 1.6, castDelay: 0.25, damageFactor: 0.9 } as const;
+
+/**
+ * Blickrichtung des Sprites (4 Richtungen) zu einer Zielrichtung (M28): diagonal die Seitenansicht (`side`)
+ * oder die Vorder-/Rückansicht (`vertical`, nur zum Vergleich in der Arena).
+ */
+export function facingForAim(aim: Vec, diagonal: 'side' | 'vertical' = 'side'): Facing {
+  if (Math.abs(aim.x) < 1e-6) return aim.y < 0 ? 'up' : 'down';
+  if (Math.abs(aim.y) < 1e-6 || diagonal === 'side') return aim.x < 0 ? 'left' : 'right';
+  return aim.y < 0 ? 'up' : 'down';
+}
 
 /** Einheitsvektor der Blickrichtung. */
 export function facingVector(f: Facing): { x: number; y: number } {
