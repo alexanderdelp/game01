@@ -5,9 +5,9 @@ Komplett von Claude Code entwickelt.
 
 **Spielen:** https://alexanderdelp.github.io/game01/ (Titelbildschirm mit Weltauswahl; direkt: `?seed=mein-seed`)
 
-Steuerung: WASD/Pfeile laufen · Leertaste angreifen · E reden/benutzen · Q Trank · M Karte · H Menü (Held, Quests,
+Steuerung: WASD/Pfeile laufen · Leertaste angreifen · K Zauber · E reden/benutzen · Q Trank · M Karte · H Menü (Held, Quests,
 Chronik, Neuigkeiten, Teilen, Schild, Chat, Musik). Am Handy: Ziehen = laufen, Knöpfe ⚔ / E / ♥ und ☰.
-Gamepad: Stick laufen, A Angriff, X Reden, Y Trank, Start Menü, Select Karte.
+Gamepad: Stick laufen, A Angriff, RT Zauber, X Reden, Y Trank, Start Menü, Select Karte.
 
 ## Stand
 

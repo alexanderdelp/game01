@@ -34,3 +34,29 @@ test('M14: Ruine mit Wächter, Ruinentruhe mit seltenem Fund (R3)', async ({ pag
   await page.screenshot({ path: 'screenshots/m14-loot.png' });
   expect(errors).toEqual([]);
 });
+
+test('Splitterblitz trifft Gegner aus der Ferne', async ({ page }) => {
+  const errors = await open(page, 'test');
+  const e = await G<{ tx: number; ty: number }>(page, "g.findEnemy('slime')");
+  await G(page, `g.teleport(${e.tx - 5}, ${e.ty})`);
+  await waitReady(page);
+  await expect.poll(() => G<number>(page, 'g.enemies.length'), { timeout: 15_000 }).toBeGreaterThan(0);
+  let hit = false;
+  for (let i = 0; i < 12 && !hit; i++) {
+    const t = await G<{ id: string; x: number; y: number; hp: number } | null>(page, `(() => { const p = g.player; const e = [...g.enemies].sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0]; return e ? { ...e } : null; })()`);
+    if (!t) break;
+    // Auf gleiche Höhe, 4 Kacheln links davon, nach rechts schauen, zaubern
+    await G(page, `g.teleport(${Math.floor(t.x / 32) - 4}, ${Math.floor(t.y / 32)})`);
+    await page.keyboard.press('d');
+    await expect.poll(() => G<number>(page, 'g.spellCooldown')).toBe(0);
+    await page.keyboard.press('k');
+    await expect.poll(() => G<number>(page, 'g.spellCooldown')).toBeGreaterThan(0);
+    await page.waitForTimeout(900);
+    const after = await G<{ id: string; hp: number }[]>(page, 'g.enemies.map((e) => ({ ...e }))');
+    const x = after.find((a) => a.id === t.id);
+    hit = !x || x.hp < t.hp;
+    if (i === 0) await page.screenshot({ path: 'screenshots/m14-spell.png' });
+  }
+  expect(hit).toBe(true);
+  expect(errors).toEqual([]);
+});

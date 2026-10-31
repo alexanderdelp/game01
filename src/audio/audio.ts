@@ -16,7 +16,7 @@ export function progression(mood: Mood): number[] {
   return mood === 'day' ? [0, 9, 5, 7] : mood === 'night' ? [0, 8, 5, 7] : [0, 3, 8, 7];
 }
 
-type Sfx = 'hit' | 'hurt' | 'pickup' | 'levelup' | 'quest' | 'attack' | 'open';
+type Sfx = 'hit' | 'hurt' | 'pickup' | 'levelup' | 'quest' | 'attack' | 'open' | 'cast';
 
 class AudioEngine {
   enabled = load<boolean>('audio') ?? true;
@@ -135,6 +135,10 @@ class AudioEngine {
       case 'pickup':
         this.tone(880, t, 0.08, 'square', 0.15, m);
         this.tone(1320, t + 0.07, 0.1, 'square', 0.15, m);
+        break;
+      case 'cast':
+        this.tone(660, t, 0.3, 'sawtooth', 0.12, m, 2.2);
+        this.tone(990, t + 0.05, 0.25, 'triangle', 0.15, m, 1.6);
         break;
       case 'open':
         [523, 659, 784].forEach((f, i) => this.tone(f, t + i * 0.06, 0.15, 'triangle', 0.25, m));

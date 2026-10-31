@@ -74,3 +74,11 @@ export function regen(hp: number, maxHp: number, sinceHit: number, dt: number, d
   if (sinceHit < delay || hp <= 0) return hp;
   return Math.min(maxHp, hp + rate * dt);
 }
+
+/** Fernzauber „Splitterblitz“: Kennwerte. */
+export const SPELL = { speed: 330, range: 320, cooldown: 1.6, castDelay: 0.25, damageFactor: 0.9 } as const;
+
+/** Einheitsvektor der Blickrichtung. */
+export function facingVector(f: Facing): { x: number; y: number } {
+  return { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } }[f];
+}

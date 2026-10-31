@@ -22,7 +22,7 @@ oder live.
 | Charakterentwicklung | EP und Stufen, Talente (Kraft, Zähigkeit, Flinkheit), Ausrüstung in drei Seltenheiten. |
 | Charakter-Customizing | Volk (Mensch, Elf, Ork, Synth) mit Bonus, Körper, Haut, Frisur, Farben, Name – jederzeit änderbar. |
 | Genres | Fantasy (Schleime, Irrlichter, Magierzirkel, Fachwerk) ↔ Cyberpunk (Drohnen, Technokratie, Neon-Häuser, Synth). |
-| Kampf | Dolchhieb mit Trefferfenster, Rückstoß, Schadenszahlen, vier Gegnerarten mit eigenem Verhalten, Elite-Gegner und Ruinenwächter. |
+| Kampf | Dolchhieb mit Trefferfenster, Fernzauber „Splitterblitz“, Rückstoß, Schadenszahlen, vier Gegnerarten mit eigenem Verhalten, Elite-Gegner und Ruinenwächter. |
 | Multiplayer | Welt teilen per Link (ohne Server) oder automatisch/live über den Referenz-Server: Mitspieler sehen, Koop-Kampf, Chat. |
 | Pixel-Art | 32-px-Kacheln (LPC-Maßstab), prozedurale Landschaft und Gebäude, LPC-Figuren. |
 
@@ -63,6 +63,7 @@ tools/         Vorschau-Werkzeuge, LPC-Import, Belastungstest
 |---|---|---|---|
 | Laufen / Rennen | WASD, Pfeile / Shift | Ziehen (virtueller Stick) | linker Stick, Steuerkreuz / B halten |
 | Angriff | Leertaste, J | ⚔ | A |
+| Zauber „Splitterblitz“ | K | ✦ | RT |
 | Reden / Benutzen | E | E | X |
 | Trank | Q | ♥ | Y |
 | Karte (Schnellreise) | M | Karte | Select |

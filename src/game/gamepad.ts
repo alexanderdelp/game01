@@ -1,6 +1,6 @@
 /** Gamepad-Belegung (Standard-Layout, z. B. Xbox/PlayStation über den Browser). Rein, testbar. */
 
-export type PadAction = 'attack' | 'interact' | 'potion' | 'menu' | 'map' | 'sprint' | 'zoomIn' | 'zoomOut';
+export type PadAction = 'attack' | 'interact' | 'potion' | 'menu' | 'map' | 'sprint' | 'zoomIn' | 'zoomOut' | 'spell';
 
 /** Tasten-Index (Standard-Gamepad) → Aktion. */
 export const PAD_BUTTONS: Record<number, PadAction> = {
@@ -12,6 +12,7 @@ export const PAD_BUTTONS: Record<number, PadAction> = {
   5: 'zoomIn', // RB
   4: 'zoomOut', // LB
   1: 'sprint', // B / Kreis (halten)
+  7: 'spell', // RT / R2
 };
 
 /** Bewegungsrichtung aus Stick und Steuerkreuz, mit Totzone. */

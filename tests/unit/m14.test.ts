@@ -45,3 +45,14 @@ describe('Ruinen (R2)', () => {
     expect(new WorldGen('test').meta.ruins).toEqual(m.ruins);
   });
 });
+
+import { SPELL, facingVector } from '../../src/combat/combat';
+
+describe('Splitterblitz', () => {
+  it('fliegt in Blickrichtung, hat Abklingzeit und Reichweite', () => {
+    expect(facingVector('left')).toEqual({ x: -1, y: 0 });
+    expect(facingVector('down')).toEqual({ x: 0, y: 1 });
+    expect(SPELL.cooldown).toBeGreaterThan(1);
+    expect(SPELL.range).toBeGreaterThan(200);
+  });
+});

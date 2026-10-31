@@ -172,6 +172,7 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-E', () => this.interact());
     kb.on('keydown-SPACE', () => this.attack());
     kb.on('keydown-J', () => this.attack());
+    kb.on('keydown-K', () => this.cast());
     kb.on('keydown-Q', () => this.hero.drink());
     kb.on('keydown-T', () => this.placeSign());
     // Gamepad: Tasten lösen Aktionen aus, Stick/Steuerkreuz bewegt (siehe update)
@@ -181,6 +182,7 @@ export class WorldScene extends Phaser.Scene {
         case 'attack': return this.attack();
         case 'interact': return this.interact();
         case 'potion': return this.hero.drink();
+        case 'spell': return this.cast();
         case 'menu': return ui.toggleMenu();
         case 'map': return ui.toggleMapPublic();
         case 'zoomIn': return this.zoom(1);
@@ -693,6 +695,11 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
+  cast(): void {
+    if (this.dialogOpen) return this.endTalk();
+    this.combat.cast();
+  }
+
   attack(): void {
     if (this.dialogOpen) return this.endTalk();
     this.combat.attack();
@@ -820,6 +827,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.invasion = this.live.invasion;
     debugState.caravans = this.live.caravans.map((c) => c.name);
     debugState.attacks = this.combat.attacks;
+    debugState.spellCooldown = this.combat.spellCooldown;
     debugState.hero = this.hero.hero;
     debugState.pickups = this.hero.pickupCount;
     debugState.quests = this.hero.quests;

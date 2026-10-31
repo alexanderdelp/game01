@@ -60,6 +60,7 @@ export class UIScene extends Phaser.Scene {
     this.menu = undefined;
     this.actionButton = undefined;
     this.potionButton = undefined;
+    this.spellButton = undefined;
     this.drops = [];
     this.bannerObj = undefined;
     this.markerTexts = [];
@@ -77,7 +78,7 @@ export class UIScene extends Phaser.Scene {
     this.createAtmosphere();
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · E reden/benutzen · Q Trank · M Karte · H Menü (alle Fenster)', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · K Zauber · E reden/benutzen · Q Trank · M Karte · H Menü', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -224,6 +225,9 @@ export class UIScene extends Phaser.Scene {
     this.actionButton = this.add.circle(0, 0, 26, 0x2fe0d8, 0.4).setStrokeStyle(3, 0xffffff, 0.6).setDepth(30).setInteractive().setName('action');
     this.actionButton.on('pointerdown', () => ws().interact());
     this.actionLabel = this.add.text(0, 0, 'E', { ...FONT, fontSize: '22px' }).setOrigin(0.5).setDepth(31);
+    this.spellButton = this.add.circle(0, 0, 24, 0x9b6af0, 0.45).setStrokeStyle(2, 0xffffff, 0.6).setDepth(30).setInteractive().setName('spell');
+    this.spellButton.on('pointerdown', () => ws().cast());
+    this.spellLabel = this.add.text(0, 0, '✦', { ...FONT, fontSize: '20px' }).setOrigin(0.5).setDepth(31);
     this.potionButton = this.add.circle(0, 0, 20, 0xe04a5a, 0.35).setStrokeStyle(2, 0xffffff, 0.5).setDepth(30).setInteractive();
     this.potionButton.on('pointerdown', () => ws().hero.drink());
     this.potionLabel = this.add.text(0, 0, '♥', { ...FONT, fontSize: '16px' }).setOrigin(0.5).setDepth(31);
@@ -246,6 +250,8 @@ export class UIScene extends Phaser.Scene {
   private actionButton?: Phaser.GameObjects.Arc;
   private actionLabel?: Phaser.GameObjects.Text;
   private potionButton?: Phaser.GameObjects.Arc;
+  private spellButton?: Phaser.GameObjects.Arc;
+  private spellLabel?: Phaser.GameObjects.Text;
   private potionLabel?: Phaser.GameObjects.Text;
   menu?: Phaser.GameObjects.Container;
 
@@ -1078,6 +1084,9 @@ export class UIScene extends Phaser.Scene {
       this.actionButton!.setPosition(ax - 74, ay + 14);
       this.actionLabel!.setPosition(ax - 74, ay + 14);
       this.potionButton!.setPosition(ax - 18, ay - 66);
+      const ready = ws.combat.spellCooldown <= 0;
+      this.spellButton!.setPosition(ax + 18, ay - 74).setAlpha(ready ? 1 : 0.35);
+      this.spellLabel!.setPosition(ax + 18, ay - 74).setAlpha(ready ? 1 : 0.4);
       this.potionLabel!.setText(`♥${ws.hero.hero.potions}`).setPosition(ax - 18, ay - 66);
     }
     let bx = this.scale.width - 8;

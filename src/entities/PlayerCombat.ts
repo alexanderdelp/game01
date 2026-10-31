@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { attackBox, knockback, regen, rollDamage, type Stats } from '../combat/combat';
+import { SPELL, attackBox, facingVector, knockback, regen, rollDamage, type Stats } from '../combat/combat';
+import { CREATURES } from '../render/textures';
 import type { ChunkManager } from '../render/ChunkManager';
 import { mulberry32 } from '../world/rng';
 import type { Actor } from './Actor';
@@ -31,6 +32,54 @@ export class PlayerCombat {
   ) {}
 
   regenRate = 3;
+  /** Abklingzeit des Zaubers in Sekunden (0 = bereit) */
+  spellCooldown = 0;
+  private readonly bolts: { sprite: Phaser.GameObjects.Sprite; x: number; y: number; vx: number; vy: number; travelled: number; hit: Set<string> }[] = [];
+
+  /** Fernzauber „Splitterblitz“: Kristallgeschoss in Blickrichtung. */
+  cast(): void {
+    if (!this.alive || this.actor.busy || this.spellCooldown > 0) return;
+    this.spellCooldown = SPELL.cooldown;
+    this.actor.playAction('spellcast');
+    this.scene.events.emit('sfx', 'cast');
+    this.scene.time.delayedCall(SPELL.castDelay * 1000, () => {
+      if (!this.alive) return;
+      const v = facingVector(this.actor.facing);
+      const x = this.actor.x + v.x * 18;
+      const y = this.actor.y - 26 + v.y * 10;
+      const sprite = this.scene.add.sprite(x, y, CREATURES, 'bolt:0').play('bolt:loop').setTint(0xc47aff).setScale(2.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(1_000_000 - 2);
+      this.bolts.push({ sprite, x, y, vx: v.x * SPELL.speed, vy: v.y * SPELL.speed, travelled: 0, hit: new Set() });
+    });
+  }
+
+  private updateBolts(dt: number): void {
+    for (let i = this.bolts.length - 1; i >= 0; i--) {
+      const b = this.bolts[i];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.travelled += SPELL.speed * dt;
+      b.sprite.setPosition(Math.round(b.x), Math.round(b.y));
+      let done = b.travelled > SPELL.range;
+      for (const e of this.enemies.inBox({ x: b.x - 8, y: b.y - 8, w: 16, h: 16 })) {
+        if (b.hit.has(e.spawn.id)) continue;
+        b.hit.add(e.spawn.id);
+        const dmg = rollDamage(this.stats.attack * SPELL.damageFactor * (this.buffTime > 0 ? 1.25 : 1), e.stats.defense, this.rnd);
+        const killed = e.hit(dmg, b.x - b.vx, b.y - b.vy);
+        this.scene.events.emit('enemy-hit', { enemy: e.spawn.id, dmg, x: b.x - b.vx * 0.1, y: b.y - b.vy * 0.1 });
+        this.scene.events.emit('damage', { x: e.x, y: e.body.y, amount: dmg, color: '#d8c4ff' });
+        if (killed) {
+          this.enemies.kill(e);
+          this.scene.events.emit('defeated', e);
+        }
+        done = true;
+        break;
+      }
+      if (done) {
+        b.sprite.destroy();
+        this.bolts.splice(i, 1);
+      }
+    }
+  }
   private buffTime = 0;
 
   /** Schrein-Segen: +25 % Angriff für `seconds`. */
@@ -118,6 +167,8 @@ export class PlayerCombat {
   update(dt: number): void {
     this.invuln -= dt;
     this.buffTime -= dt;
+    this.spellCooldown = Math.max(0, this.spellCooldown - dt);
+    this.updateBolts(dt);
     this.sinceHit += dt;
     if (!this.actor.busy) this.cooldown -= dt;
     if (this.knock.t > 0) {

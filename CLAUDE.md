@@ -123,6 +123,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M11) Geteilte Welt in zwei Stufen, weil ein Online-Server ein Konto des Nutzers braucht: (1) **Teilen per Link/Datei** ohne Server (Ereignisprotokoll komprimiert im URL-Anker, Zusammenführen konfliktfrei), (2) optionaler **Sync-Server** (`server/sync-server.mjs`, ohne Abhängigkeiten) über `?sync=<URL>`. Keine Fremddienste ohne Zustimmung des Nutzers.
 - 2026-10-31 – (M12) Live-Zusammenspiel über den Referenz-Server (Server-Sent Events + POST), „Lite-Koop“: Präsenz, gemeinsame Treffer (Gegner sind seed-gleich), Gruppenerfahrung, Chat. WebRTC ohne Server wäre möglich, bräuchte aber einen STUN-Dienst eines Dritten → nicht ohne Zustimmung eingebaut.
 - 2026-10-31 – (M13) Musik und Klänge prozedural per Web Audio (keine Audiodateien/Lizenzen), abschaltbar im Menü.
+- 2026-10-31 – Testmodus `?test=1` (feste Weltzeit Mittag, keine Invasionen): Die Simulation hängt an der echten Uhrzeit, automatische Tests müssen aber reproduzierbar sein (eine echte Drohnen-Invasion ließ einen Kampftest scheitern).
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.

@@ -37,7 +37,7 @@ export class LiveWorld {
     const now = worldNow();
     const m = this.world.meta;
     m.powers = m.realms.map((r) => realmPower(this.world.seed, r.id, now, this.state.d.reputation.get(r.id) ?? 0));
-    const inv = invasionAt(this.world.seed, m.realms, now);
+    const inv = debugState.calm ? null : invasionAt(this.world.seed, m.realms, now);
     const changed = force || inv?.realm !== this.invasion?.realm || inv?.kind !== this.invasion?.kind;
     this.invasion = inv;
     return changed;

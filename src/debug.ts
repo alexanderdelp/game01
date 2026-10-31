@@ -2,6 +2,8 @@
 export const debugState = {
   /** Versatz der Weltzeit in ms (Tests, Vorschau). */
   timeOffset: 0,
+  /** Testmodus: keine Invasionen */
+  calm: false,
   scene: '',
   createChange: (_row: number, _dir: number): void => {},
   createConfirm: (_name?: string): void => {},
@@ -31,6 +33,7 @@ export const debugState = {
   npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],
   hp: 100,
   objects: 0,
+  spellCooldown: 0,
   killEnemy: (_id: string): boolean => false,
   attacks: 0,
   maxHp: 100,

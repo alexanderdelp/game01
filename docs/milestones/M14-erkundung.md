@@ -29,3 +29,5 @@ Erreicht am 2026-10-31. R1, R2 per Unit-Test (`tests/unit/m14.test.ts`), R3 per 
   (türkis = Schatz noch da, grau = geplündert – auch durch Mitspieler).
 - Elite-Gegner: 1,4-fache Größe, goldener Schatten und goldene Lebensleiste, +2 Stufen, doppelte LP, dreifache EP,
   sicher ein mindestens seltener Gegenstand.
+- **Fernzauber „Splitterblitz“** (Magie-Seite des Genre-Mix): K / Touch ✦ / Gamepad RT. LPC-Zauberanimation, Kristallgeschoss
+  (330 px/s, Reichweite 10 Kacheln), 90 % des Angriffswerts, Abklingzeit 1,6 s, wird im Live-Spiel wie Nahkampftreffer geteilt.

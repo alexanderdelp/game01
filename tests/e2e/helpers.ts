@@ -16,7 +16,7 @@ export async function open(page: Page, seed: string) {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await page.goto(`/?seed=${seed}`);
+  await page.goto(`/?seed=${seed}&test=1`);
   await skipCreation(page);
   await waitReady(page);
   return errors;
