@@ -64,6 +64,11 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-10-31 – **Zusätzlicher Meilenstein 13 „Feinschliff & Spielgefühl“** (Titelbildschirm, Handy-Menü, Musik/Klänge, Einstiegshinweise): alle 12 Meilensteine waren um 01:54 erreicht; die Restzeit fließt in „casual“ und „immersiv“.
 - 2026-10-31 – **Zusätzlicher Meilenstein 14 „Erkundung & Herausforderung“** (Elite-Gegner, Ruinen mit Wächter und Schatz) – stärkt „Erkundung“ und „spaßige Action“.
 - 2026-10-31 – **Zusätzlicher Meilenstein 15 „Fraktionstreue“** (Treueschwur beim Herrscher mit Vor- und Nachteilen, verschiebt Reichsgrenzen) – eine echte „relevante Entscheidung“.
+- 2026-10-31 – **Feedback-Runde 1** (`docs/FEEDBACK-2026-10-31.md`) ergibt die Meilensteine:
+  - **M16 „Lesbarkeit & Orientierung“**: Banner-Warteschlange (≥ 5 s), Pfeil nur auf geladene NPCs, sonst Gebiet + Text, Minimap.
+  - **M17 „Kampfgefühl“**: Bewegung während des Schlags, kürzere Verzögerungen, direkte Steuerung (Leitbild Super Mario World). Arena nur bei Bedarf.
+  - **M18 „Charaktereditor 2“**: Umfärbe-/Ebenen-Fehler beheben, Völker deutlicher, weibliche Statur, neue Frisuren, Synth mit Implantaten statt Kleidung, Aussehen nur noch beim Barbier.
+  - **M19 „Organische, weite Welt“**: Biome für 1–2 min Durchquerung, natürliche Häufung, Bodendetails, Flüsse/Pfade, weiche Übergänge.
 
 ## Vorgehen
 
@@ -125,6 +130,9 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M12) Live-Zusammenspiel über den Referenz-Server (Server-Sent Events + POST), „Lite-Koop“: Präsenz, gemeinsame Treffer (Gegner sind seed-gleich), Gruppenerfahrung, Chat. WebRTC ohne Server wäre möglich, bräuchte aber einen STUN-Dienst eines Dritten → nicht ohne Zustimmung eingebaut.
 - 2026-10-31 – (M13) Musik und Klänge prozedural per Web Audio (keine Audiodateien/Lizenzen), abschaltbar im Menü.
 - 2026-10-31 – Testmodus `?test=1` (feste Weltzeit Mittag, keine Invasionen): Die Simulation hängt an der echten Uhrzeit, automatische Tests müssen aber reproduzierbar sein (eine echte Drohnen-Invasion ließ einen Kampftest scheitern).
+- 2026-10-31 – Telegram-Bot für Updates und Fragen an den Nutzer (`tools/telegram.mjs`). Token und Chat-ID liegen außerhalb des Repos in `~/.config/game01/telegram.env` (nie committen).
+- 2026-10-31 – (M18) Synth trägt keine Kleidung, sondern Implantate/Panzerung; Aussehen nach der Erschaffung nur beim Barbier (Splitter), Volk/Körper fest (Nutzerentscheidung).
+- 2026-10-31 – (M19) Ziel: ein Biom in 1–2 min durchqueren (Nutzerentscheidung).
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.
