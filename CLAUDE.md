@@ -118,6 +118,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M9) Schnellreise zwischen entdeckten Orten (große Welt + casual).
 - 2026-10-31 – (M10) Lebendige Welt als **reine Funktion von Seed + echter Uhrzeit** (statt Tick-für-Tick-Nachrechnen, wie ursprünglich angenommen): kein Server nötig, keine Wartezeit nach langer Pause, und alle Spieler sehen dieselbe Welt (Basis für M11). 1 Spieltag = 24 min, 1 Simulationsschritt = 1 h. Spielerhandlungen (M9) fließen als Einfluss ein.
 - 2026-10-31 – (M11) Geteilte Welt in zwei Stufen, weil ein Online-Server ein Konto des Nutzers braucht: (1) **Teilen per Link/Datei** ohne Server (Ereignisprotokoll komprimiert im URL-Anker, Zusammenführen konfliktfrei), (2) optionaler **Sync-Server** (`server/sync-server.mjs`, ohne Abhängigkeiten) über `?sync=<URL>`. Keine Fremddienste ohne Zustimmung des Nutzers.
+- 2026-10-31 – (M12) Live-Zusammenspiel über den Referenz-Server (Server-Sent Events + POST), „Lite-Koop“: Präsenz, gemeinsame Treffer (Gegner sind seed-gleich), Gruppenerfahrung, Chat. WebRTC ohne Server wäre möglich, bräuchte aber einen STUN-Dienst eines Dritten → nicht ohne Zustimmung eingebaut.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.

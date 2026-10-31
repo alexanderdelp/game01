@@ -24,6 +24,8 @@ import { Markers } from '../render/Markers';
 import { decodeShare, shareLink } from '../state/share';
 import { SyncClient, syncUrlFromLocation } from '../state/sync';
 import { SIGN_MAX, type WorldEvent } from '../state/worldState';
+import { CHAT_MAX, LiveSession, type LiveMsg } from '../net/live';
+import { RemotePlayers } from '../entities/RemotePlayers';
 import { TICK_MS, caravanPos, newsBetween, type News } from '../sim/simulation';
 
 const POTION_PRICE = 10;
@@ -50,6 +52,11 @@ export class WorldScene extends Phaser.Scene {
   live!: LiveWorld;
   signs!: Markers;
   sync?: SyncClient;
+  live2?: LiveSession;
+  remote!: RemotePlayers;
+  /** Eigene Chat-Sprechblase */
+  myChat?: { text: string; until: number };
+  private liveTimer = 0;
   hero!: HeroController;
   private combatCtx!: CombatCtx;
   /** NPC, mit dem gerade gesprochen wird. */
@@ -116,6 +123,18 @@ export class WorldScene extends Phaser.Scene {
       this.sync = new SyncClient(syncUrl, this.state, (fresh) => this.onForeign(fresh, false));
       this.sync.start();
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.sync?.stop());
+      // Live-Zusammenspiel über denselben Server (M12)
+      this.live2 = new LiveSession(syncUrl, this.world.seedName, (m) => this.onLive(m));
+      this.live2.start();
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.live2?.stop());
+      const onAttack = () => this.live2?.send({ type: 'attack', pid: this.state.pid });
+      const onHit = (h: { enemy: string; dmg: number; x: number; y: number }) => this.live2?.send({ type: 'hit', pid: this.state.pid, ...h });
+      this.events.on('player-attack', onAttack);
+      this.events.on('enemy-hit', onHit);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.events.off('player-attack', onAttack);
+        this.events.off('enemy-hit', onHit);
+      });
     }
     const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
     this.events.on('defeated', onDefeated);
@@ -127,7 +146,10 @@ export class WorldScene extends Phaser.Scene {
       playerAlive: true,
       hurtPlayer: (a, x, y) => this.combat.hurt(a, x, y),
       fireBolt: (x, y, vx, vy, d) => this.enemies.fireBolt(x, y, vx, vy, d),
+      others: [],
     };
+    this.remote = new RemotePlayers(this, this.state.pid);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.remote.destroy());
 
     const cam = this.cameras.main;
     cam.setBackgroundColor(0x172a5c);
@@ -147,6 +169,7 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-J', () => this.attack());
     kb.on('keydown-Q', () => this.hero.drink());
     kb.on('keydown-T', () => this.placeSign());
+    kb.on('keydown-ENTER', () => this.chat());
     kb.on('keydown-ONE', () => this.pendingActions.length > 0 && this.choose(0));
     kb.on('keydown-TWO', () => this.pendingActions.length > 1 && this.choose(1));
     kb.on('keydown-THREE', () => this.pendingActions.length > 2 && this.choose(2));
@@ -209,6 +232,9 @@ export class WorldScene extends Phaser.Scene {
     debugState.recordQuest = (tx: number, ty: number) => this.recordQuest(tx, ty);
     debugState.travel = (id: number) => this.travel(id);
     debugState.placeSign = (text: string) => this.placeSign(text);
+    debugState.chat = (text: string) => this.chat(text);
+    debugState.remotes = () => [...this.remote.remotes.values()].map((r) => ({ pid: r.pid, name: r.name, x: r.x, y: r.y, chat: r.chat?.text ?? '' }));
+    debugState.liveConnected = () => !!this.live2?.connected;
     debugState.shareLink = () => this.shareLink();
     debugState.players = () => this.players();
     debugState.syncStatus = () => this.sync?.status ?? 'aus';
@@ -236,6 +262,40 @@ export class WorldScene extends Phaser.Scene {
       }
       return null;
     };
+  }
+
+  /** Live-Nachricht eines Mitspielers verarbeiten. */
+  private onLive(m: LiveMsg): void {
+    const r = this.remote.onMsg(m);
+    if (m.pid === this.state.pid) return;
+    if (m.type === 'hit') {
+      const e = this.enemies.enemies.get(m.enemy);
+      if (!e) return;
+      const killed = e.hit(m.dmg, m.x, m.y);
+      this.events.emit('damage', { x: e.x, y: e.body.y, amount: m.dmg, color: '#a8d8ff' });
+      if (killed) {
+        this.enemies.kill(e);
+        if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < 15 * TILE_PX) this.hero.shareXp(e);
+      }
+    }
+    if (m.type === 'chat') {
+      this.news.push({ tick: 0, text: `${m.name}: „${m.text}“` });
+      debugState.news = this.news.map((n) => n.text);
+    }
+    if (m.type === 'state' && r && !this.knownLive.has(m.pid)) {
+      this.knownLive.add(m.pid);
+      this.events.emit('float', { x: this.player.x, y: this.player.y - 60, text: `${m.name} ist da!`, color: '#2fe0d8' });
+    }
+  }
+
+  private readonly knownLive = new Set<string>();
+
+  /** Kurze Nachricht an alle live verbundenen Mitspieler. */
+  chat(text?: string): void {
+    const msg = (text ?? window.prompt(`Nachricht an Mitspieler (max. ${CHAT_MAX} Zeichen):`) ?? '').trim().slice(0, CHAT_MAX);
+    if (!msg) return;
+    this.myChat = { text: msg, until: Date.now() + 6000 };
+    this.live2?.send({ type: 'chat', pid: this.state.pid, name: this.heroName, text: msg });
   }
 
   /** Botschaft an der aktuellen Stelle hinterlassen (für Mitspieler). */
@@ -640,6 +700,19 @@ export class WorldScene extends Phaser.Scene {
       debugState.town = town?.name ?? '';
     }
     this.live.update(dt, this.player);
+    this.remote.update(dt);
+    this.combatCtx.others = this.remote.positions();
+    if (this.live2) {
+      this.liveTimer -= dt;
+      if (this.liveTimer <= 0) {
+        this.liveTimer = 0.1;
+        this.live2.sendState({
+          type: 'state', pid: this.state.pid, name: this.heroName, x: Math.round(this.player.x), y: Math.round(this.player.y),
+          facing: this.player.facing, moving: this.player.moving, hp: Math.round(this.combat.stats.hp), maxHp: this.combat.stats.maxHp,
+          look: this.hero.appearance(), t: Date.now(),
+        });
+      }
+    }
     if (this.enemies.invasion !== this.live.invasion) this.enemies.invasion = this.live.invasion;
     this.npcs.update(dt, this.player);
     this.combatCtx.playerAlive = this.combat.alive;

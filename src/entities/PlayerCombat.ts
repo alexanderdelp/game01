@@ -65,12 +65,14 @@ export class PlayerCombat {
     if (!this.alive || this.actor.busy || this.cooldown > 0) return;
     this.actor.playAction('slash', () => (this.cooldown = ATTACK_COOLDOWN));
     this.attacks++;
+    this.scene.events.emit('player-attack');
     this.scene.time.delayedCall(HIT_DELAY * 1000, () => {
       if (!this.alive) return;
       const box = attackBox(this.actor.x, this.actor.y, this.actor.facing);
       for (const e of this.enemies.inBox(box)) {
         const dmg = rollDamage(this.stats.attack * (this.buffTime > 0 ? 1.25 : 1), e.stats.defense, this.rnd);
         const killed = e.hit(dmg, this.actor.x, this.actor.y);
+        this.scene.events.emit('enemy-hit', { enemy: e.spawn.id, dmg, x: this.actor.x, y: this.actor.y });
         this.scene.events.emit('damage', { x: e.x, y: e.body.y, amount: dmg, color: '#ffffff' });
         if (killed) {
           this.enemies.kill(e);

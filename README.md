@@ -24,8 +24,9 @@ Werkzeuge: `npx vite-node tools/preview-map.ts <seed> out.png` (Weltkarte), `too
 ## Gemeinsam spielen
 
 - **Per Link:** Im Spiel `G` (Teilen) → „Link kopieren“ und an Freunde schicken. Die Weltdaten stecken im Link-Anker.
-- **Automatisch über einen eigenen Server:** `node server/sync-server.mjs 8787` betreiben und das Spiel mit
-  `?seed=<welt>&sync=https://<dein-server>` öffnen (siehe [M11](docs/milestones/M11-geteilte-welt.md)).
+- **Automatisch und live über einen eigenen Server:** `node server/sync-server.mjs 8787` betreiben (HTTPS) und das Spiel mit
+  `?seed=<welt>&sync=https://<dein-server>` öffnen. Dann seht ihr euch live, kämpft gemeinsam und chattet (Enter)
+  – siehe [M11](docs/milestones/M11-geteilte-welt.md) und [M12](docs/milestones/M12-live.md).
 
 ## Lizenzen & Credits
 

@@ -88,6 +88,19 @@ export class HeroController {
     this.scene.events.emit('hero-changed');
   }
 
+  /** Gruppenerfahrung: ein Mitspieler hat in der Nähe einen Gegner besiegt. */
+  shareXp(e: Enemy): void {
+    const xp = xpForKill(e.def.kind, e.spawn.level, this.hero.race);
+    const ups = gainXp(this.hero, xp);
+    this.scene.events.emit('float', { x: this.actor.x, y: this.actor.y - 60, text: `+${xp} EP (Gruppe)`, color: '#ffd84a' });
+    if (ups > 0) {
+      this.refresh();
+      this.combat.heal(this.combat.stats.maxHp);
+      this.scene.events.emit('level-up', this.hero.level);
+    }
+    this.dirty = true;
+  }
+
   onDefeated(e: Enemy): void {
     const xp = xpForKill(e.def.kind, e.spawn.level, this.hero.race);
     const ups = gainXp(this.hero, xp);

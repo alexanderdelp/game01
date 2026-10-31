@@ -50,6 +50,8 @@ export class UIScene extends Phaser.Scene {
     this.attackLabel = undefined;
     this.touchButtons = [];
     this.questLog = undefined;
+    this.remoteTexts = [];
+    this.bubbleTexts = [];
     this.chronicle = undefined;
     this.newsPanel = undefined;
     this.sharePanel = undefined;
@@ -201,6 +203,7 @@ export class UIScene extends Phaser.Scene {
       ['News', () => this.toggleNews()],
       ['Teilen', () => this.toggleShare()],
       ['Schild', () => ws().placeSign()],
+      ['Chat', () => ws().chat()],
       ['Trank', () => ws().hero.drink()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
@@ -398,7 +401,8 @@ export class UIScene extends Phaser.Scene {
     }, 'share-import');
     y += 36;
     if (note) y += txt(y, note, '#4cb53e').height + 6;
-    const st = ws.sync ? `Automatischer Abgleich: ${ws.sync.status} (${ws.sync.url})` : 'Automatischer Abgleich: aus (mit ?sync=<Server> aktivierbar, siehe server/sync-server.mjs)';
+    const liveN = ws.remote.remotes.size;
+    const st = ws.sync ? `Automatischer Abgleich: ${ws.sync.status} (${ws.sync.url}) · Live: ${ws.live2?.connected ? `verbunden, ${liveN} Mitspieler online` : 'getrennt'}` : 'Automatischer Abgleich: aus (mit ?sync=<Server> aktivierbar, siehe server/sync-server.mjs)';
     y += txt(y, st, ws.sync?.status === 'verbunden' ? '#2fe0d8' : '#8a8aa0', 11).height + 10;
     txt(y, 'Spieler in dieser Welt:', '#f4f0e8', 13);
     y += 20;
@@ -502,6 +506,8 @@ export class UIScene extends Phaser.Scene {
   private arrow!: Phaser.GameObjects.Graphics;
   private arrowLabel!: Phaser.GameObjects.Text;
   private markerTexts: Phaser.GameObjects.Text[] = [];
+  private remoteTexts: Phaser.GameObjects.Text[] = [];
+  private bubbleTexts: Phaser.GameObjects.Text[] = [];
   questLog?: Phaser.GameObjects.Container;
 
   toggleQuestLog(): void {
@@ -594,6 +600,28 @@ export class UIScene extends Phaser.Scene {
         this.arrowLabel.setText(onScreen ? t.label : `${t.label} · ${dist}`).setPosition(ax - Math.cos(ang) * 30, ay - Math.sin(ang) * 30).setVisible(true);
       }
     }
+    // Live-Mitspieler: Name, Lebensleiste, Sprechblasen
+    const nowMs = Date.now();
+    let ri = 0;
+    const bubbles: { x: number; y: number; text: string; color: string }[] = [];
+    for (const r of ws.remote.remotes.values()) {
+      const sx = (r.x - cam.worldView.x) * cam.zoom;
+      const sy = (r.y - 56 - cam.worldView.y) * cam.zoom;
+      const t = (this.remoteTexts[ri] ??= this.add.text(0, 0, '', { ...FONT, fontSize: '12px', color: '#2fe0d8', backgroundColor: '#0b0b14aa', padding: { x: 4, y: 2 } }).setOrigin(0.5, 1).setDepth(5));
+      t.setText(`${r.name}  ${Math.round((r.hp / r.maxHp) * 100)}%`).setPosition(Math.round(sx), Math.round(sy)).setVisible(!this.map);
+      ri++;
+      if (r.chat && r.chat.until > nowMs) bubbles.push({ x: sx, y: sy - 22, text: r.chat.text, color: '#f4f0e8' });
+    }
+    for (; ri < this.remoteTexts.length; ri++) this.remoteTexts[ri].setVisible(false);
+    if (ws.myChat && ws.myChat.until > nowMs) bubbles.push({ x: (ws.player.x - cam.worldView.x) * cam.zoom, y: (ws.player.y - 66 - cam.worldView.y) * cam.zoom, text: ws.myChat.text, color: '#ffd84a' });
+    let bi = 0;
+    for (const b of bubbles) {
+      const t = (this.bubbleTexts[bi] ??= this.add.text(0, 0, '', { ...FONT, fontSize: '13px', backgroundColor: '#f4f0e8', padding: { x: 6, y: 3 } }).setOrigin(0.5, 1).setDepth(6));
+      t.setText(b.text).setColor('#0b0b14').setBackgroundColor(b.color).setPosition(Math.round(b.x), Math.round(b.y)).setVisible(!this.map);
+      bi++;
+    }
+    for (; bi < this.bubbleTexts.length; bi++) this.bubbleTexts[bi].setVisible(false);
+
     // !/? über NPCs
     let i = 0;
     for (const n of ws.npcs.npcs.values()) {

@@ -20,6 +20,8 @@ export interface CombatCtx {
   world: WorldGen;
   player: Actor;
   playerAlive: boolean;
+  /** Live-Mitspieler (M12): Gegner verfolgen den nächsten Spieler. */
+  others: { x: number; y: number }[];
   /** Fügt dem Spieler Schaden zu (berücksichtigt Unverwundbarkeit). */
   hurtPlayer(amount: number, fromX: number, fromY: number): void;
   fireBolt(x: number, y: number, vx: number, vy: number, damage: number): void;
@@ -131,10 +133,22 @@ export class Enemy {
 
   update(dt: number, ctx: CombatCtx): void {
     if (!this.alive) return;
-    const p = ctx.player;
+    // Ziel: nächster Spieler (lokal oder live verbunden); Schaden nur am lokalen Spieler
+    let p: { x: number; y: number } = ctx.player;
+    let local = true;
+    let best = ctx.playerAlive ? Math.hypot(ctx.player.x - this.x, ctx.player.y - this.y) : Infinity;
+    for (const o of ctx.others) {
+      const d = Math.hypot(o.x - this.x, o.y - this.y);
+      if (d < best) {
+        best = d;
+        p = o;
+        local = false;
+      }
+    }
     const dx = p.x - this.x;
     const dy = p.y - this.y;
-    const dist = Math.hypot(dx, dy);
+    const dist = Math.hypot(dx, dy) || 1;
+    const targetAlive = local ? ctx.playerAlive : true;
     const homeX = this.spawn.tx * TILE_PX + TILE_PX / 2;
     const homeY = this.spawn.ty * TILE_PX + TILE_PX - 2;
     const fromHome = Math.hypot(this.x - homeX, this.y - homeY);
@@ -153,7 +167,7 @@ export class Enemy {
       if (this.state !== 'return' && fromHome > LEASH) this.enter('return');
       switch (this.state) {
         case 'wander': {
-          if (ctx.playerAlive && dist < this.def.aggro) {
+          if (targetAlive && dist < this.def.aggro) {
             this.enter('chase');
             break;
           }
@@ -176,7 +190,7 @@ export class Enemy {
           break;
         }
         case 'chase': {
-          if (!ctx.playerAlive || dist > this.def.aggro * 1.6) {
+          if (!targetAlive || dist > this.def.aggro * 1.6) {
             this.enter('wander');
             break;
           }
@@ -187,7 +201,7 @@ export class Enemy {
             const want = dist > 150 ? 1 : dist < 100 ? -1 : 0;
             mx = (dx / dist) * want + (-dy / dist) * 0.5;
             my = (dy / dist) * want + (dx / dist) * 0.5;
-            if (this.cooldown <= 0 && dist < range) {
+            if (this.cooldown <= 0 && dist < range && local) {
               const sp = 140;
               ctx.fireBolt(this.x, this.y - 26, (dx / dist) * sp, ((dy - 0) / dist) * sp, this.stats.attack);
               this.cooldown = 1.8;
@@ -226,11 +240,11 @@ export class Enemy {
             if (!this.hitThisAttack && this.timer < 0.22) {
               this.hitThisAttack = true;
               const box = attackBox(this.x, this.y, this.actor!.facing);
-              if (overlaps(box, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y);
+              if (local && overlaps(box, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y);
             }
           } else {
             this.move(this.vel.x * dt, this.vel.y * dt, ctx);
-            if (!this.hitThisAttack && overlaps(this.body, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) {
+            if (!this.hitThisAttack && local && overlaps(this.body, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) {
               this.hitThisAttack = true;
               ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y);
             }

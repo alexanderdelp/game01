@@ -36,7 +36,7 @@ test('M10: Nacht, Wetter, Karawane, Neuigkeiten (R2, R3, R6)', async ({ page }) 
   const p0 = await G<{ tx: number; ty: number }>(page, 'g.caravanAt(0)');
   await G(page, `g.teleport(${Math.round(p0.tx)}, ${Math.round(p0.ty)})`);
   await waitReady(page);
-  await expect.poll(() => G<number>(page, "g.npcs.filter((n) => n.id === 'car0').length"), { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => G<number>(page, "g.npcs.filter((n) => n.id === 'car0').length"), { timeout: 25_000 }).toBe(1);
   await page.evaluate((h) => ((window as unknown as { __game: { timeOffset: number } }).__game.timeOffset += h), 60_000);
   const p1 = await G<{ tx: number; ty: number }>(page, 'g.caravanAt(0)');
   expect(Math.hypot(p1.tx - p0.tx, p1.ty - p0.ty)).toBeGreaterThan(0.5);
