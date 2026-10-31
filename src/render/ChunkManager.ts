@@ -1,18 +1,11 @@
 import Phaser from 'phaser';
-import { BIOMES, BIOME_SPEED, BUILT, DECOR_BLOCK, type DecorKind } from '../world/biomes';
+import { BIOMES, BIOME_SPEED, BUILT, DECOR_BLOCK } from '../world/biomes';
 import { overlaps, type Box } from '../world/collision';
 import { CHUNK_TILES, WORLD_CHUNKS, type Decoration } from '../world/WorldGen';
-import { CHUNK_PX, TILE_PX, decorPos } from './chunkPixels';
+import { CHUNK_PX, FLAT_DECOR, TILE_PX, decorPos } from './chunkPixels';
 import type { ChunkRequest, ChunkResult } from './chunkProtocol';
 import { DECOR_VARIANTS } from './procSprites';
 import { ATLAS } from './textures';
-
-/** Schattengröße je Dekorationsart; flache Dekorationen liegen unter allem anderen. */
-const SHADOW: Partial<Record<DecorKind, 's' | 'm' | 'l'>> = {
-  oak: 'l', pine: 'm', snowpine: 'm', palm: 'm', cactus: 's', deadtree: 's', boulder: 'l', crystal: 'm', pylon: 's', scrap: 'l', bush: 'm', rock: 's',
-  chest: 's', shrine: 'm', obelisk: 'm', well: 'm',
-};
-const FLAT = new Set<DecorKind>(['tuft', 'flowers']);
 
 interface LoadedChunk {
   key: string;
@@ -186,7 +179,8 @@ export class ChunkManager {
     if (this.scene.textures.exists(texKey)) this.scene.textures.remove(texKey);
     this.scene.textures.addCanvas(texKey, canvas);
     const ground = this.scene.add.image(r.cx * CHUNK_PX, r.cy * CHUNK_PX, texKey).setOrigin(0, 0).setDepth(-1_000_000);
-    const objects = r.decorations.map((d) => this.decoration(d)).flat();
+    // Flache Dekorationen und Schatten sind bereits ins Bodenbild gebacken
+    const objects = r.decorations.filter((d) => !FLAT_DECOR.has(d.kind)).map((d) => this.decoration(d));
     const blockers: Box[] = [];
     for (const d of r.decorations) {
       const size = DECOR_BLOCK[d.kind];
@@ -198,20 +192,18 @@ export class ChunkManager {
     this.onLoad.forEach((f) => f(r.cx, r.cy));
   }
 
-  private decoration(d: Decoration): Phaser.GameObjects.Image[] {
+  private decoration(d: Decoration): Phaser.GameObjects.Image {
     const { x, y } = decorPos(d);
     const frame = this.frameHook?.(d) ?? `${d.kind}:${(d.variant >> 1) % DECOR_VARIANTS}`;
     const built = BUILT.has(d.kind);
     const img = this.scene.add.image(built ? d.tx * TILE_PX + TILE_PX / 2 : x, built ? d.ty * TILE_PX + TILE_PX : y, ATLAS, frame)
       .setOrigin(0.5, 1)
-      .setFlipX(!built && (d.variant & 1) === 1);
+      .setFlipX(!built && (d.variant & 1) === 1)
+      .setDepth(y);
     if (built) this.builtImages.set(`${d.tx},${d.ty}`, img);
-    img.setDepth(FLAT.has(d.kind) ? -999_999 : y);
-    const size = SHADOW[d.kind];
-    if (!size) return [img];
-    const shadow = this.scene.add.image(x, y - 2, ATLAS, `shadow-${size}`).setDepth(-999_998);
-    return [shadow, img];
+    return img;
   }
+
 
   destroy(): void {
     this.destroyed = true;

@@ -1,9 +1,18 @@
-import { B, BIOMES } from '../world/biomes';
+import { B, BIOMES, BUILT, type DecorKind } from '../world/biomes';
 import { Simplex2 } from '../world/noise';
 import { CHUNK_TILES, type Decoration, type WorldGen } from '../world/WorldGen';
 import { PATTERN, cobblePattern, groundPattern } from './groundPatterns';
+import { DECOR_VARIANTS, generateDecor, type Pixels } from './procSprites';
 
 export const TILE_PX = 32;
+
+/** Schattengröße (Breite, Höhe) je Dekorationsart – wird ins Bodenbild gebacken. */
+export const DECOR_SHADOW: Partial<Record<DecorKind, [number, number]>> = {
+  oak: [36, 10], pine: [26, 8], snowpine: [26, 8], palm: [26, 8], cactus: [16, 6], deadtree: [16, 6], boulder: [36, 10], crystal: [26, 8],
+  pylon: [16, 6], scrap: [36, 10], bush: [26, 8], rock: [16, 6], chest: [16, 6], shrine: [26, 8], obelisk: [26, 8], well: [26, 8],
+};
+/** Flache Dekorationen, die komplett ins Bodenbild gebacken werden (keine eigenen Objekte). */
+export const FLAT_DECOR = new Set<DecorKind>(['tuft', 'flowers']);
 export const CHUNK_PX = CHUNK_TILES * TILE_PX;
 /** Auflösung der Biomgrenzen in Pixeln (kleiner = feiner, aber teurer). */
 const SUB = 2;
@@ -113,7 +122,72 @@ export class ChunkPainter {
         }
       }
     }
+    this.bake(cx, cy, grid, out);
     return out;
+  }
+
+  private readonly flatCache = new Map<string, Pixels>();
+
+  /** Schatten und flache Dekorationen (inkl. 1 Kachel Rand der Nachbarn) ins Bodenbild malen. */
+  private bake(cx: number, cy: number, grid: Uint8Array, out: Uint8ClampedArray): void {
+    const T = CHUNK_TILES;
+    const G = T + 2;
+    const ox = cx * T;
+    const oy = cy * T;
+    const decos: Decoration[] = [];
+    for (let y = 0; y < G; y++) {
+      for (let x = 0; x < G; x++) {
+        const b = grid[y * G + x];
+        const d = this.world.decorationAt(ox + x - 1, oy + y - 1, b === 255 ? this.world.biomeAt(ox + x - 1, oy + y - 1) : b);
+        if (d) decos.push(d);
+      }
+    }
+    const px0 = cx * CHUNK_PX;
+    const py0 = cy * CHUNK_PX;
+    const put = (x: number, y: number, r: number, g: number, bl: number, a: number) => {
+      const lx = x - px0;
+      const ly = y - py0;
+      if (lx < 0 || ly < 0 || lx >= CHUNK_PX || ly >= CHUNK_PX || a <= 0) return;
+      const o = (ly * CHUNK_PX + lx) * 4;
+      out[o] = out[o] * (1 - a) + r * a;
+      out[o + 1] = out[o + 1] * (1 - a) + g * a;
+      out[o + 2] = out[o + 2] * (1 - a) + bl * a;
+    };
+    for (const d of decos) {
+      const built = BUILT.has(d.kind);
+      const p = built ? { x: d.tx * TILE_PX + TILE_PX / 2, y: d.ty * TILE_PX + TILE_PX } : decorPos(d);
+      const sh = DECOR_SHADOW[d.kind];
+      if (sh) {
+        const [w, h] = sh;
+        const cy0 = p.y - (built ? 2 : 2);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const dx = (x + 0.5 - w / 2) / (w / 2);
+            const dy = (y + 0.5 - h / 2) / (h / 2);
+            if (dx * dx + dy * dy <= 1) put(Math.round(p.x - w / 2 + x), Math.round(cy0 - h / 2 + y), 10, 8, 20, 0.35);
+          }
+        }
+      }
+      if (FLAT_DECOR.has(d.kind)) {
+        const v = (d.variant >> 1) % DECOR_VARIANTS;
+        const key = `${d.kind}:${v}`;
+        let img = this.flatCache.get(key);
+        if (!img) {
+          img = generateDecor(d.kind, v);
+          this.flatCache.set(key, img);
+        }
+        const flip = (d.variant & 1) === 1;
+        const bx = Math.round(p.x - img.w / 2);
+        const by = Math.round(p.y - img.h);
+        for (let y = 0; y < img.h; y++) {
+          for (let x = 0; x < img.w; x++) {
+            const s = (y * img.w + (flip ? img.w - 1 - x : x)) * 4;
+            const a = img.data[s + 3] / 255;
+            if (a) put(bx + x, by + y, img.data[s], img.data[s + 1], img.data[s + 2], a);
+          }
+        }
+      }
+    }
   }
 }
 

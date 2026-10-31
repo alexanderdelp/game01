@@ -30,6 +30,7 @@ export const debugState = {
   findShore: (): { tx: number; ty: number } | null => null,
   npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],
   hp: 100,
+  objects: 0,
   attacks: 0,
   maxHp: 100,
   pickups: 0,

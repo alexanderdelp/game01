@@ -30,3 +30,7 @@ Erreicht am 2026-10-31. R3 per Unit-Test (`tests/unit/m13.test.ts`), R1, R2, R4 
 - Handy: oben rechts nur „☰“ und „Karte“, unten rechts ⚔ (Angriff), E (Reden/Benutzen) und ♥ (Trank mit Anzahl).
 - Ohne aktive Quest zeigt der gelbe Pfeil zum nächsten unbesuchten Ort.
 - Musik passt sich an: Tag (Dur-Pentatonik), Nacht (Moll, langsamer), Technokratie-Reiche (Cyber-Klang).
+- **Leistung:** Schatten und flache Dekorationen (Gras, Blumen) werden im Worker direkt ins Bodenbild gebacken (inkl. Rand der
+  Nachbar-Chunks, damit an Chunkgrenzen nichts abgeschnitten wird) → etwa halb so viele Grafikobjekte (z. B. 636 → 296).
+- **Belastungstest** `tools/soak.mjs`: simulierte Spielsitzung (laufen, kämpfen, Fenster, Teleport, Zeitsprünge) ohne Fehler,
+  Speicher stabil.

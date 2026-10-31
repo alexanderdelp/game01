@@ -751,6 +751,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.chunksPending = this.chunks.pendingCount;
     debugState.npcs = [...this.npcs.npcs.values()].map((n) => ({ id: n.spawn.id, x: n.actor.x, y: n.actor.y, role: n.spawn.role, name: n.spawn.name }));
     debugState.hp = this.combat.stats.hp;
+    debugState.objects = this.children.length;
     debugState.weather = this.live.weather;
     debugState.invasion = this.live.invasion;
     debugState.caravans = this.live.caravans.map((c) => c.name);
