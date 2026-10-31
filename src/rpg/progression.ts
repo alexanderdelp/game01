@@ -34,6 +34,8 @@ export interface Hero {
   /** Gefundene Chronik-Fragmente (Indizes) */
   chronicle?: number[];
   title?: string;
+  /** Startausrüstung des Volks erhalten (M23; ältere Helden bekommen sie beim Laden nachgereicht) */
+  kit?: boolean;
 }
 
 export function newHero(): Hero {

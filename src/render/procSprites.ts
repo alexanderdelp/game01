@@ -492,7 +492,7 @@ export const DECOR_KINDS: DecorKind[] = [
 ];
 
 /** Kleine Symbole (16×16) für Beute und Inventar. */
-export const ICON_KINDS = ['shards', 'potion', 'dagger', 'tunic', 'leather', 'amulet', 'questitem'] as const;
+export const ICON_KINDS = ['shards', 'potion', 'dagger', 'tunic', 'leather', 'plate', 'pants', 'shoes', 'boots', 'amulet', 'questitem'] as const;
 export type IconKind = (typeof ICON_KINDS)[number];
 
 export function generateIcon(kind: IconKind): Pixels {
@@ -519,9 +519,25 @@ export function generateIcon(kind: IconKind): Pixels {
       img.line(1, 15, 4, 12, 0x7a5232, 2);
       break;
     }
+    case 'pants': {
+      // Hell gezeichnet: wird in der Stofffarbe getönt
+      const pal = [0x707070, 0x9a9a9a, 0xc8c8c8, 0xf0f0f0];
+      img.polygon([[4, 2], [12, 2], [13, 14], [9, 14], [8, 7], [7, 14], [3, 14]], (x, y) => img_shade(pal, x, y));
+      img.rect(4, 3, 8, 1, 0x505050);
+      break;
+    }
+    case 'shoes':
+    case 'boots': {
+      const pal = [0x707070, 0x9a9a9a, 0xc8c8c8, 0xf0f0f0];
+      const top = kind === 'boots' ? 3 : 8;
+      img.polygon([[3, top], [8, top], [8, 11], [14, 11], [14, 14], [3, 14]], (x, y) => img_shade(pal, x, y));
+      img.rect(3, 13, 11, 1, 0x404040);
+      break;
+    }
     case 'tunic':
-    case 'leather': {
-      const pal = kind === 'tunic' ? [0x14566e, 0x1c8aa0, 0x3fc4d4, 0xa8f4f8] : [0x4a2a14, 0x6e4a30, 0x8a6240, 0xb08a5a];
+    case 'leather':
+    case 'plate': {
+      const pal = kind === 'tunic' ? [0x707070, 0x9a9a9a, 0xc8c8c8, 0xf0f0f0] : kind === 'plate' ? [0x31313e, 0x4a5057, 0x818b8b, 0xd6e1d3] : [0x4a2a14, 0x6e4a30, 0x8a6240, 0xb08a5a];
       img.polygon([[2, 5], [5, 2], [11, 2], [14, 5], [12, 8], [11, 7], [11, 14], [5, 14], [5, 7], [4, 8]], (x, y) => img_shade(pal, x, y));
       if (kind === 'leather') img.rect(5, 10, 6, 1, 0xd0a048);
       break;

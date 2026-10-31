@@ -5,7 +5,7 @@ import type { ChunkRequest, OverviewResult, RegionResult } from '../render/chunk
 import { touchInput } from '../game/input';
 import { iconFor } from '../entities/HeroController';
 import { ATLAS } from '../render/textures';
-import { RARITY_COLOR, RARITY_NAME, describeBonus, type Slot } from '../rpg/items';
+import { RARITY_COLOR, RARITY_NAME, SLOTS, SLOT_NAME, describeBonus, type Item } from '../rpg/items';
 import { INVENTORY_SIZE, TALENTS, finalStats, xpToNext, type Talent } from '../rpg/progression';
 import { RACES } from '../rpg/races';
 import { AREA_RADIUS, MAX_ACTIVE, abandon, areaText, isReady, progressText, questTarget, type QuestTarget } from '../quests/quests';
@@ -954,6 +954,16 @@ export class UIScene extends Phaser.Scene {
     }
   }
 
+  /** Symbol eines Gegenstands, Kleidung in ihrer Farbe getönt. */
+  private itemIcon(it: Item, x: number, y: number): Phaser.GameObjects.Image {
+    const img = this.add.image(x, y, ATLAS, `icon:${iconFor(it)}`);
+    const pal = this.cache.json.get('lpc-palettes') as Record<string, Record<string, string[]>> | undefined;
+    const tintable = it.slot === 'legs' || it.slot === 'feet' || (it.slot === 'armor' && it.base !== 'leather' && it.base !== 'plate');
+    const hex = it.color && pal?.cloth[it.color]?.[4];
+    if (tintable && hex) img.setTint(parseInt(hex.slice(1), 16));
+    return img;
+  }
+
   /** Ohne Quest: nächster noch nicht besuchter Ort (Wegstein) als Ziel. */
   private guideTarget(ws: WorldScene): QuestTarget | null {
     const { tx, ty } = ws.player.tile;
@@ -1000,7 +1010,7 @@ export class UIScene extends Phaser.Scene {
     const W = Math.min(this.scale.width - 16, 400);
     const x0 = Math.round((this.scale.width - W) / 2);
     const c = this.add.container(x0, 8).setDepth(50);
-    const H = Math.min(this.scale.height - 16, 600);
+    const H = Math.min(this.scale.height - 16, 660);
     c.add(this.add.rectangle(0, 0, W, H, 0x0b0b14, 0.94).setOrigin(0).setStrokeStyle(2, 0x2fe0d8, 0.8).setInteractive());
     const txt = (x: number, y: number, s: string, color = '#f4f0e8', size = 13) => {
       const t = this.add.text(x, y, s, { ...FONT, fontSize: `${size}px`, color });
@@ -1048,13 +1058,13 @@ export class UIScene extends Phaser.Scene {
     y += 4;
     txt(12, y, 'Ausrüstung (antippen = ablegen)', '#8a8aa0', 12);
     y += 18;
-    const slots: [Slot, string][] = [['weapon', 'Waffe'], ['armor', 'Rüstung'], ['amulet', 'Amulett']];
-    for (const [slot, label] of slots) {
+    for (const slot of SLOTS) {
+      const label = SLOT_NAME[slot];
       const it = h.equipped[slot];
       const row = this.add.rectangle(12, y, W - 24, 24, 0xffffff, 0.04).setOrigin(0).setInteractive({ useHandCursor: !!it }).setName(`slot-${slot}`);
       if (it) row.on('pointerdown', () => hc.unequip(slot));
       c.add(row);
-      if (it) c.add(this.add.image(24, y + 12, ATLAS, `icon:${iconFor(it)}`));
+      if (it) c.add(this.itemIcon(it, 24, y + 12));
       txt(38, y + 5, it ? `${it.name}` : `${label}: –`, it ? RARITY_COLOR[it.rarity] : '#6a6a7a', 12);
       if (it) txt(W - 16, y + 5, describeBonus(it.bonus), '#8a8aa0', 11).setOrigin(1, 0);
       y += 26;
@@ -1079,7 +1089,7 @@ export class UIScene extends Phaser.Scene {
           this.selected = it.id;
           this.buildPanel();
         });
-        c.add(this.add.image(cx + (cell - 4) / 2, cy + (cell - 4) / 2, ATLAS, `icon:${iconFor(it)}`).setScale(2));
+        c.add(this.itemIcon(it, cx + (cell - 4) / 2, cy + (cell - 4) / 2).setScale(2));
       }
     }
     y += 4 * cell + 6;

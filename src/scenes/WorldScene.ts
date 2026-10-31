@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { buildCharacter, preloadCharacter } from '../character/CharacterFactory';
+import { buildCharacter, preloadCharacter, preloadWardrobe } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
 import { debugState } from '../debug';
 import { Actor } from '../entities/Actor';
@@ -13,7 +13,8 @@ import { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
 import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
 import { enemiesForChunk } from '../combat/enemies';
-import { generateItem, type Slot } from '../rpg/items';
+import { generateItem, type Item, type Slot } from '../rpg/items';
+import { dress } from '../character/outfit';
 import { MAX_ACTIVE, accept, isReady, offerFor, onPosition, onTalk, progressText, turnIn, type Quest } from '../quests/quests';
 import { FACTIONS, type Poi } from '../world/meta';
 import { LocalWorldStore, WorldState, isDefeated, reputationRank } from '../state/worldState';
@@ -83,8 +84,7 @@ export class WorldScene extends Phaser.Scene {
 
   preload(): void {
     const look = { ...DEFAULT_APPEARANCE, ...load<{ appearance?: Appearance }>(`hero:${this.world.seedName}`)?.appearance };
-    preloadCharacter(this, { ...look, torso: 'longsleeve' });
-    preloadCharacter(this, { ...look, torso: 'leather' });
+    preloadWardrobe(this, look);
     for (const a of NpcManager.appearances(this.world)) preloadCharacter(this, a);
     for (const a of BANDIT_LOOKS) preloadCharacter(this, a);
   }
@@ -114,7 +114,8 @@ export class WorldScene extends Phaser.Scene {
     if (saved && (saved.v !== WORLD_VERSION || !this.world.isWalkable(Math.floor(saved.x / TILE_PX), Math.floor((saved.y - 1) / TILE_PX)))) saved = null;
     const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
     const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
-    this.player = new Actor(this, startX, startY, buildCharacter(this, { ...DEFAULT_APPEARANCE, ...load<{ appearance?: Appearance }>(`hero:${this.world.seedName}`)?.appearance }));
+    const savedHero = load<{ appearance?: Appearance; equipped?: Partial<Record<Slot, Item>> }>(`hero:${this.world.seedName}`);
+    this.player = new Actor(this, startX, startY, buildCharacter(this, dress({ ...DEFAULT_APPEARANCE, ...savedHero?.appearance }, savedHero?.equipped ?? {})));
 
     // Startzoom so, dass mindestens ~20 Kacheln in der Breite sichtbar sind (Handy: 1, Desktop: 2).
     this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
@@ -266,6 +267,7 @@ export class WorldScene extends Phaser.Scene {
       return it.id;
     };
     debugState.choose = (i: number) => this.choose(i);
+    debugState.heroLook = () => this.hero.appearance();
     debugState.pledge = () => this.myPledge();
     debugState.killEnemy = (id: string) => {
       const e = this.enemies.enemies.get(id);

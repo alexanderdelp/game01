@@ -1,6 +1,7 @@
 # Vorschlag: Aussehen aus Ausrüstung, Völker mit Gewicht (2026-10-31)
 
-Status: **Vorschlag, noch nicht umgesetzt** – wartet auf Entscheidungen des Nutzers (siehe unten).
+Status: **Entschieden am 2026-10-31** (siehe „Entscheidungen des Nutzers“ am Ende). Umgesetzt wird jetzt nur der
+Teil „jetzt“; alles mit „Idee“ ist für später vorgemerkt.
 
 ## Grundidee
 
@@ -56,3 +57,21 @@ Dialogen – aber nie gesperrt.
 2. **Rüstungsgrenzen je Volk** (Elf keine schwere Rüstung, Ork keine Roben) – ja oder nein?
 3. **Umfärben beim Schneider** erlauben – oder Farbe nur über die Herkunft des Gegenstands?
 4. **Fraktionen reagieren auf Völker** (Preise, Begrüßung) – ja oder nein?
+
+## Entscheidungen des Nutzers (2026-10-31)
+
+| Punkt | Entscheidung |
+|---|---|
+| Editor | Nur „wer du bist“; keine Kleidungsfarben. **Jetzt.** |
+| Mensch | Kein Volksmerkmal (keine Narben/Tattoos). |
+| Synth | **Kein Geschlecht** (ein Körperbau). Volksmerkmal: Farbe der Leuchtlinien. **Jetzt.** |
+| Kleidung | **Einzelteile** (Oberteil, Hose, Schuhe …), können Boni bringen; **möglichst alles sichtbar** (Ringe/Amulette nicht nötig). **Jetzt.** |
+| Spielweise der Völker | Idee, noch nicht konkret. |
+| Reaktionen der Welt/Fraktionen auf Völker | Später auf jeden Fall – jetzt Idee. |
+| Rüstungsgrenzen je Volk | Idee (es gibt noch keine festen Rüstungsmaterialien). |
+| Umfärben beim Schneider | Idee. |
+
+## Offene Aufgabe: Klassen und Skilltrees
+
+Zu klären (Nutzer will hier später tiefer einsteigen): Gibt es **Klassen**, die Dinge vorgeben, **Skilltrees**, die
+Dinge vorgeben, oder **Skilltrees, aus denen Klassen folgen**? Hängt eng mit Völkern, Ausrüstung und Kampf zusammen.

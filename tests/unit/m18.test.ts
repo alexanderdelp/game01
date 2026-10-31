@@ -28,7 +28,7 @@ describe('M18 – Völker und Kleidung (R2–R4)', () => {
         for (const hair of [...HAIR_STYLES, 'none'] as const) {
           for (const top of tops.length ? tops : [undefined]) {
             for (const shoes of ['shoes', 'boots'] as const) {
-              for (const torso of ['longsleeve', 'leather'] as const) {
+              for (const torso of ['longsleeve', 'leather', 'plate'] as const) {
                 for (const l of layersFor(normalizeAppearance({ ...DEFAULT_APPEARANCE, race, body, hair, top, shoes, torso }))) {
                   for (const anim of l.anims ?? Object.keys(ANIMS)) {
                     expect(existsSync(`public/assets/lpc/${l.dir}/${anim}.png`), `${l.dir}/${anim}`).toBe(true);
@@ -65,7 +65,7 @@ describe('M18 – Völker und Kleidung (R2–R4)', () => {
   });
 
   it('normalisiert ungültige oder alte Aussehen', () => {
-    expect(normalizeAppearance({ ...DEFAULT_APPEARANCE, body: 'female', top: 'vneck' }).top).toBe('shirt');
+    expect(normalizeAppearance({ ...DEFAULT_APPEARANCE, body: 'male', top: 'blouse' }).top).toBe('shirt');
     expect(METALS).toContain(normalizeAppearance({ ...DEFAULT_APPEARANCE, race: 'synth' }).torsoColor);
     expect(normalizeAppearance({ ...DEFAULT_APPEARANCE, race: 'human', torsoColor: 'steel' }).torsoColor).toBe(DEFAULT_APPEARANCE.torsoColor);
     for (const m of METALS) expect(P.metal[m], m).toBeDefined();

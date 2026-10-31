@@ -60,6 +60,8 @@ export const debugState = {
   giveItem: (_slot: string, _base?: string): string => '',
   clickPanel: (_name: string): boolean => false,
   hero: null as unknown,
+  /** Aktuelles Aussehen des Helden (Körper + Ausrüstung) */
+  heroLook: (): unknown => null,
   findEnemy: (_kind?: string): { tx: number; ty: number; kind: string } | null => null,
   damagePlayer: (_n: number): void => {},
   alive: true,

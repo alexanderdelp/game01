@@ -43,7 +43,7 @@ for f in PARTS.get('files', []):
     copied.append(f.get('credit', f['src']))
 
 pal = {}
-for mat in ('body', 'hair', 'cloth', 'metal'):
+for mat in ('body', 'hair', 'cloth', 'metal', 'eye'):
     pal[mat] = json.load(open(os.path.join(SRC, 'palette_definitions', mat, f'{mat}_ulpc.json')))
 json.dump(pal, open(os.path.join(DST, 'palettes.json'), 'w'), indent=1)
 

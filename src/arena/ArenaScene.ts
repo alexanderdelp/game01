@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { buildCharacter, preloadCharacter } from '../character/CharacterFactory';
+import { dress } from '../character/outfit';
+import { starterKit, type Item, type Slot } from '../rpg/items';
 import { ANIMS, DEFAULT_APPEARANCE, ROWS, type Appearance } from '../character/lpc';
 import { PLAYER_MOVE, PLAYER_SWING, swingCycle } from '../combat/combat';
 import type { EnemyKind } from '../combat/enemies';
@@ -57,8 +59,9 @@ export class ArenaScene extends Phaser.Scene {
   init(): void {
     // Aussehen des zuletzt gespielten Helden, sonst Standard
     const seed = (load<string[]>('recent') ?? [])[0];
-    const hero = seed ? load<{ appearance?: Appearance }>(`hero:${seed}`) : null;
-    this.look = { ...DEFAULT_APPEARANCE, ...hero?.appearance, weapon: 'dagger' };
+    const hero = seed ? load<{ appearance?: Appearance; equipped?: Partial<Record<Slot, Item>> }>(`hero:${seed}`) : null;
+    const body = { ...DEFAULT_APPEARANCE, ...hero?.appearance };
+    this.look = dress(body, hero?.equipped ?? Object.fromEntries(starterKit(body.race ?? 'human', body.body).map((i) => [i.slot, i])));
     applySnapshot(load<Record<string, number>>('arena:tuning'));
   }
 

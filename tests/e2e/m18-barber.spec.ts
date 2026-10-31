@@ -3,7 +3,7 @@ import { waitReady } from './helpers';
 
 const G = <T>(page: Page, expr: string) => page.evaluate(`(() => { const g = window.__game; return ${expr}; })()`) as Promise<T>;
 
-test('M18: Völker im Editor, Barbier ändert Frisur gegen Splitter (R2–R5)', async ({ page }) => {
+test('M18/M23: Völker und Merkmale im Editor, Barbier ändert Frisur gegen Splitter', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/?seed=barbier-test&test=1');
@@ -11,26 +11,29 @@ test('M18: Völker im Editor, Barbier ändert Frisur gegen Splitter (R2–R5)', 
   await expect.poll(() => G<unknown>(page, 'g.createLook()')).not.toBeNull();
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'screenshots/m18-human.png' });
-  // Weiblich, Pferdeschwanz, Korsett
+  // Weiblich, Pferdeschwanz
   await G(page, 'g.createChange(1, 1)');
   for (let i = 0; i < 12 && (await G<string>(page, 'g.createLook().hair')) !== 'ponytail'; i++) await G(page, 'g.createChange(3, 1)');
-  await G(page, 'g.createChange(5, -1)');
-  const f = await G<{ body: string; hair: string; top: string }>(page, 'g.createLook()');
-  expect(f).toMatchObject({ body: 'female', hair: 'ponytail', top: 'corset' });
+  expect(await G<{ body: string; hair: string }>(page, 'g.createLook()')).toMatchObject({ body: 'female', hair: 'ponytail' });
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'screenshots/m18-female.png' });
-  // Synth: Panzerung statt Kleidung
+  // Synth: kein Geschlecht, Leuchtfarbe als Volksmerkmal (Zeile 5)
   for (let i = 0; i < 3; i++) await G(page, 'g.createChange(0, 1)');
   expect(await G<string>(page, 'g.createLook().race')).toBe('synth');
-  expect(await G<string>(page, 'g.createLook().torsoColor')).toBe('silver');
+  expect(await G<string>(page, 'g.createLook().body')).toBe('male');
+  const glow0 = await G<string>(page, 'g.createLook().glow');
+  await G(page, 'g.createChange(5, 1)');
+  expect(await G<string>(page, 'g.createLook().glow')).not.toBe(glow0);
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'screenshots/m18-synth.png' });
   // Ork (männlich, muskulös)
   await G(page, 'g.createChange(0, -1)');
-  await G(page, 'g.createChange(1, 1)');
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'screenshots/m18-orc.png' });
+  // Elf mit Augenfarbe
   await G(page, 'g.createChange(0, -1)');
+  await G(page, 'g.createChange(5, 1)');
+  expect(await G<string>(page, 'g.createLook().eyes')).toBeTruthy();
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'screenshots/m18-elf.png' });
   await G(page, "g.createConfirm('Barbiertest')");

@@ -72,6 +72,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-10-31 – **Zusätzlicher Meilenstein 20 „Fog of War“** (Nutzerwunsch: erkunden statt alles sehen).
 - 2026-10-31 – **Zusätzlicher Meilenstein 21 „Kampf-Arena & Module“** (Nutzerwunsch: isoliert und mit mehreren Agenten am Kampf arbeiten), siehe `docs/modules/README.md`.
 - 2026-10-31 – **Zusätzlicher Meilenstein 22 „Zoombare Weltkarte“** (Nutzerwunsch; nötig durch große Welt + Fog of War).
+- 2026-10-31 – **Zusätzlicher Meilenstein 23 „Aussehen aus Ausrüstung“** (Nutzerwunsch: Kleidung aus Ausrüstung statt Farbwahl, Völker mit Merkmalen).
 
 ## Vorgehen
 
@@ -135,11 +136,16 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – Testmodus `?test=1` (feste Weltzeit Mittag, keine Invasionen): Die Simulation hängt an der echten Uhrzeit, automatische Tests müssen aber reproduzierbar sein (eine echte Drohnen-Invasion ließ einen Kampftest scheitern).
 - 2026-10-31 – Telegram-Bot für Updates **und Fragen** an den Nutzer (`tools/telegram.mjs`); der Nutzer ist nur vereinzelt im Chat, Telegram bleibt der Hauptkanal (Nutzerentscheidung). Token und Chat-ID liegen außerhalb des Repos in `~/.config/game01/telegram.env` (nie committen).
 - 2026-10-31 – (M18) Synth trägt keine Kleidung, sondern Implantate/Panzerung; Aussehen nach der Erschaffung nur beim Barbier (Splitter), Volk/Körper fest (Nutzerentscheidung).
+- 2026-10-31 – (M23) Aussehen aus Ausrüstung: Kleidung als sichtbare Einzelteile mit Boni, Editor ohne Kleidungsfarben, Synth ohne Geschlecht, Volksmerkmale (Nutzerentscheidung).
 - 2026-10-31 – (M19) Ziel: ein Biom in 1–2 min durchqueren (Nutzerentscheidung).
 - 2026-10-31 – (M19) Welt 8192 × 8192 Kacheln, Flüsse mit Brücken an Pfaden; Weltversion 2 (alte Positionen verfallen). Vom Nutzer freigegeben.
 - 2026-10-31 – (M20) Fog of War pro Spieler (nicht im geteilten Weltzustand; Nutzerentscheidung: jeder Spieler hat seinen eigenen), Zellen à 16 Kacheln, Sichtweite 20 Kacheln.
 - 2026-10-31 – (M21) Kampf-Arena nur für PC (Tastatur), keine Handysteuerung nötig (Nutzerentscheidung).
 - 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
+
+### Offene Aufgaben (mit dem Nutzer zu klären)
+- **Klassen und Skilltrees:** Klassen, die Dinge vorgeben – Skilltrees, die Dinge vorgeben – oder Skilltrees, aus denen Klassen folgen? Nutzer will hier später tiefer rein. Siehe `docs/VORSCHLAG-aussehen-voelker.md`.
+- **Ideen für später** (vom Nutzer als Idee vorgemerkt): Spielweise je Volk, Reaktionen der Fraktionen auf Völker, Rüstungsgrenzen je Volk, Umfärben beim Schneider.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
 - Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.

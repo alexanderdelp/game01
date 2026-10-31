@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { PLAYER_MOVE } from '../combat/combat';
 import { buildCharacter } from '../character/CharacterFactory';
+import { dress } from '../character/outfit';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
 import { load, save } from '../game/save';
 import { ATLAS } from '../render/textures';
-import { generateItem, rollDrops, type Drop, type Item, type Slot } from '../rpg/items';
+import { generateItem, rollDrops, starterKit, type Drop, type Item, type Slot } from '../rpg/items';
 import { newQuestLog, onCollect, onKill, questDropFor, type Quest, type QuestLog } from '../quests/quests';
 import {
   addItem, discard, drinkPotion, equip, finalStats, gainXp, newHero, spendTalent, unequip, xpForKill,
@@ -39,6 +40,11 @@ export class HeroController {
     private readonly combat: PlayerCombat,
   ) {
     this.hero = load<Hero>(this.key) ?? newHero();
+    // Helden von vor M23: fehlende Teile der Startausrüstung einmalig anlegen (Kleidung ist jetzt Ausrüstung)
+    if (!this.hero.kit) {
+      for (const it of starterKit(this.hero.race ?? 'human', this.hero.appearance?.body ?? 'male')) this.hero.equipped[it.slot] ??= it;
+      this.hero.kit = true;
+    }
     this.hero.quests ??= newQuestLog();
     this.refresh(true);
   }
@@ -71,10 +77,9 @@ export class HeroController {
     return text;
   }
 
-  /** Aussehen der Figur abhängig von der Rüstung. */
+  /** Aussehen der Figur: Körper aus dem Editor, Kleidung aus der Ausrüstung (M23). */
   appearance(): Appearance {
-    const armor = this.hero.equipped.armor;
-    return { ...DEFAULT_APPEARANCE, ...this.hero.appearance, weapon: 'dagger', torso: armor?.base === 'leather' ? 'leather' : 'longsleeve' };
+    return dress({ ...DEFAULT_APPEARANCE, ...this.hero.appearance }, this.hero.equipped);
   }
 
   /** Endwerte und Aussehen neu anwenden. */
@@ -236,5 +241,9 @@ export class HeroController {
 }
 
 export function iconFor(item: Item): string {
-  return item.slot === 'weapon' ? 'dagger' : item.slot === 'armor' ? item.base : 'amulet';
+  if (item.slot === 'weapon') return 'dagger';
+  if (item.slot === 'armor') return item.base === 'leather' || item.base === 'plate' ? item.base : 'tunic';
+  if (item.slot === 'legs') return 'pants';
+  if (item.slot === 'feet') return item.base === 'boots' ? 'boots' : 'shoes';
+  return 'amulet';
 }

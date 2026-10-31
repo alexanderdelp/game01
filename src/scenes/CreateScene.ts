@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { buildCharacter, preloadAllParts } from '../character/CharacterFactory';
-import { DEFAULT_APPEARANCE, HAIR_STYLES, METALS, normalizeAppearance, topsFor, type Appearance, type HairStyle, type Race, type Top } from '../character/lpc';
+import { DEFAULT_APPEARANCE, EYE_COLORS, GLOW_COLORS, HAIR_STYLES, normalizeAppearance, type Appearance, type HairStyle, type Race } from '../character/lpc';
+import { dress } from '../character/outfit';
+import { starterKit, type Item, type Slot } from '../rpg/items';
 import { debugState } from '../debug';
 import { load, save } from '../game/save';
 import { newHero, type Hero } from '../rpg/progression';
@@ -10,16 +12,16 @@ import { mulberry32 } from '../world/rng';
 
 const FONT = { fontFamily: 'monospace', fontSize: '15px', color: '#f4f0e8' };
 const HAIR_COLORS = ['black', 'raven', 'dark_brown', 'chestnut', 'light_brown', 'blonde', 'ginger', 'red', 'platinum', 'white', 'rose', 'blue', 'green', 'violet'];
-const CLOTH = ['teal', 'blue', 'navy', 'sky', 'forest', 'green', 'maroon', 'red', 'rose', 'purple', 'lavender', 'yellow', 'orange', 'brown', 'tan', 'white', 'gray', 'charcoal', 'black'];
 const HAIR_NAMES: Record<string, string> = {
   plain: 'Kurz', long: 'Lang', bob: 'Bob', spiked: 'Stachelig', messy1: 'Zerzaust', pixie: 'Pixie',
   ponytail: 'Pferdeschwanz', braid: 'Zopf', bangs_bun: 'Dutt', pigtails: 'Zöpfe', none: 'Glatze',
 };
-const TOP_NAMES: Record<Top, string> = { shirt: 'Hemd', vneck: 'V-Ausschnitt', scoop: 'Rundausschnitt', blouse: 'Bluse', corset: 'Korsett', bare: 'ohne' };
-const FEET = ['brown', 'black', 'charcoal', 'walnut', 'leather', 'tan', 'maroon'];
+const COLOR_NAMES: Record<string, string> = { blue: 'blau', green: 'grün', purple: 'violett', red: 'rot', orange: 'orange', yellow: 'gelb', brown: 'braun', gray: 'grau' };
 
 interface Row {
   label: string | (() => string);
+  /** Zeile ausblenden (z. B. Körper beim Synth). */
+  hidden?: () => boolean;
   /** Nur bei der Erschaffung änderbar (Volk, Körper, Haut), nicht beim Barbier. */
   fixed?: boolean;
   value: () => string;
@@ -80,26 +82,28 @@ export class CreateScene extends Phaser.Scene {
           if (!race().skins.includes(this.look.skin)) this.look.skin = race().skins[0];
         },
       },
-      { label: 'Körper', fixed: true, value: () => (this.look.body === 'male' ? 'männlich' : 'weiblich'), change: () => (this.look.body = this.look.body === 'male' ? 'female' : 'male') },
+      {
+        label: 'Körper',
+        fixed: true,
+        // Synth haben kein Geschlecht
+        hidden: () => synth(),
+        value: () => (this.look.body === 'male' ? 'männlich' : 'weiblich'),
+        change: () => (this.look.body = this.look.body === 'male' ? 'female' : 'male'),
+      },
       { label: 'Haut', fixed: true, value: () => this.look.skin, change: (d) => (this.look.skin = cycle(race().skins, this.look.skin, d)) },
       { label: 'Frisur', value: () => HAIR_NAMES[this.look.hair], change: (d) => (this.look.hair = cycle([...HAIR_STYLES, 'none'] as HairStyle[], this.look.hair, d)) },
       { label: 'Haarfarbe', value: () => this.look.hairColor, change: (d) => (this.look.hairColor = cycle(HAIR_COLORS, this.look.hairColor, d)) },
       {
-        label: 'Schnitt',
-        value: () => (synth() ? 'Panzerplatten' : TOP_NAMES[this.look.top ?? 'shirt']),
+        // Volksmerkmal: Elf Augenfarbe, Synth Leuchtfarbe; Mensch und Ork (noch) keines
+        label: () => (synth() ? 'Leuchtfarbe' : 'Augenfarbe'),
+        fixed: true,
+        hidden: () => this.look.race !== 'elf' && !synth(),
+        value: () => COLOR_NAMES[(synth() ? this.look.glow : this.look.eyes) ?? 'blue'] ?? '',
         change: (d) => {
-          const tops = topsFor(this.look);
-          if (tops.length) this.look.top = cycle(tops, this.look.top ?? tops[0], d);
+          if (synth()) this.look.glow = cycle(GLOW_COLORS, this.look.glow ?? GLOW_COLORS[0], d);
+          else this.look.eyes = cycle(EYE_COLORS, this.look.eyes ?? EYE_COLORS[0], d);
         },
       },
-      {
-        label: () => (synth() ? 'Panzerung' : 'Oberteil'),
-        value: () => this.look.torsoColor,
-        change: (d) => (this.look.torsoColor = cycle(synth() ? METALS : CLOTH, this.look.torsoColor, d)),
-      },
-      { label: 'Hose', value: () => (synth() ? '—' : this.look.legsColor), change: (d) => !synth() && (this.look.legsColor = cycle(CLOTH, this.look.legsColor, d)) },
-      { label: 'Schuhwerk', value: () => (this.look.shoes === 'boots' ? 'Stiefel' : 'Schuhe'), change: () => (this.look.shoes = this.look.shoes === 'boots' ? 'shoes' : 'boots') },
-      { label: 'Schuhfarbe', value: () => this.look.feetColor, change: (d) => (this.look.feetColor = cycle(FEET, this.look.feetColor, d)) },
     ];
     this.rows = this.cost ? all.filter((r) => !r.fixed) : all;
     this.layout();
@@ -120,9 +124,16 @@ export class CreateScene extends Phaser.Scene {
   }
 
   private change(row: number, dir: number): void {
+    const shown = this.visibleRows();
     this.rows[row].change(dir);
     this.look = normalizeAppearance(this.look);
-    this.refresh();
+    // Andere Zeilen sichtbar (z. B. Volk gewechselt)? Dann neu aufbauen
+    if (this.visibleRows() !== shown) this.layout();
+    else this.refresh();
+  }
+
+  private visibleRows(): string {
+    return this.rows.map((r) => (r.hidden?.() ? 0 : 1)).join('');
   }
 
   private turn(): void {
@@ -132,7 +143,8 @@ export class CreateScene extends Phaser.Scene {
 
   private playPreview(): void {
     if (!this.preview) return;
-    const prefix = buildCharacter(this, { ...this.look, weapon: 'dagger', torso: 'longsleeve' }, ['walk']);
+    // Vorschau mit der Startkleidung des Volks (Kleidung kommt im Spiel aus der Ausrüstung)
+    const prefix = buildCharacter(this, dress(this.look, this.outfit()), ['walk']);
     if (!this.builtKeys.includes(prefix)) this.builtKeys.push(prefix);
     // Alte Vorschau-Texturen begrenzen
     while (this.builtKeys.length > 12) {
@@ -148,7 +160,7 @@ export class CreateScene extends Phaser.Scene {
       this.texts[i]?.setText(r.value());
       this.labels[i]?.setText(typeof r.label === 'function' ? r.label() : r.label);
     });
-    this.priceText?.setText(this.cost ? (this.changed ? `Preis: ${this.cost} ◆ (du hast ${this.hero.shards})` : 'Wähle eine neue Frisur oder Kleidung') : '');
+    this.priceText?.setText(this.cost ? (this.changed ? `Preis: ${this.cost} ◆ (du hast ${this.hero.shards})` : 'Wähle eine neue Frisur') : '');
     this.raceDesc?.setText(RACES[this.look.race ?? 'human'].desc);
     this.playPreview();
   }
@@ -183,7 +195,8 @@ export class CreateScene extends Phaser.Scene {
       if (name) b.setName(name);
       return b;
     };
-    this.rows.forEach((_r, i) => {
+    this.rows.forEach((r, i) => {
+      if (r.hidden?.()) return;
       this.labels[i] = this.add.text(x0, y + 5, '', { ...FONT, color: '#8a8aa0' });
       btn(x0 + 100, y, '◀', () => this.change(i, -1), `row${i}-prev`);
       this.texts[i] = this.add.text(x0 + 190, y + 5, '', FONT).setOrigin(0.5, 0);
@@ -234,8 +247,14 @@ export class CreateScene extends Phaser.Scene {
       this.look = normalizeAppearance(this.look);
     }
     this.name = npcName(rnd);
-    if (this.nameInput) this.nameInput.value = this.name;
-    this.refresh();
+    // Neu aufbauen: je nach Volk sind andere Zeilen sichtbar (das Namensfeld übernimmt this.name)
+    this.layout();
+  }
+
+  /** Bei der Erschaffung die Startkleidung des Volks, sonst die angelegte Ausrüstung. */
+  private outfit(): Partial<Record<Slot, Item>> {
+    if (this.edit) return this.hero.equipped;
+    return Object.fromEntries(starterKit(this.look.race ?? 'human', this.look.body).map((i) => [i.slot, i]));
   }
 
   private get changed(): boolean {
@@ -255,8 +274,13 @@ export class CreateScene extends Phaser.Scene {
       }
       hero.shards -= this.cost;
     }
-    hero.appearance = { ...this.look };
+    hero.appearance = normalizeAppearance({ ...this.look });
     hero.race = this.look.race ?? 'human';
+    // Neuer Held: Startkleidung des Volks anlegen (Kleidung kommt aus der Ausrüstung)
+    if (!this.edit) {
+      for (const it of starterKit(hero.race, hero.appearance.body)) if (!hero.equipped[it.slot]) hero.equipped[it.slot] = it;
+      hero.kit = true;
+    }
     hero.name = this.name.trim() || 'Namenlos';
     save(`hero:${this.seed}`, hero);
     this.scene.start('world', { seed: this.seed });

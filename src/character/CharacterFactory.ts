@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ANIMS, DEFAULT_APPEARANCE, FRAME, HAIR_STYLES, ROWS, appearanceKey, layersFor, normalizeAppearance, recolor, topsFor, type Appearance, type Palettes } from './lpc';
+import { ANIMS, DEFAULT_APPEARANCE, FRAME, HAIR_STYLES, ROWS, appearanceKey, layersFor, normalizeAppearance, paintGlow, recolor, topsFor, type Appearance, type Palettes } from './lpc';
 
 const BASE = 'assets/lpc/';
 
@@ -20,15 +20,23 @@ export function preloadCharacter(scene: Phaser.Scene, a: Appearance): void {
 /** Bereits zum Laden angemeldete Bilder (der Erschaffungsbildschirm meldet viele Kombinationen an). */
 const queued = new Set<string>();
 
+/** Lädt alle Kleidungsteile, die ein Körper tragen kann (Anlegen von Ausrüstung soll sofort sichtbar sein). */
+export function preloadWardrobe(scene: Phaser.Scene, look: Appearance): void {
+  for (const torso of ['longsleeve', 'leather', 'plate'] as const) {
+    for (const top of torso === 'longsleeve' ? topsFor(look) : [undefined]) {
+      for (const shoes of ['shoes', 'boots'] as const) preloadCharacter(scene, { ...look, torso, top, shoes, legs: 'pants' });
+    }
+  }
+}
+
 /** Lädt alle Ebenen, die im Erschaffungsbildschirm wählbar sind. */
 export function preloadAllParts(scene: Phaser.Scene): void {
   queued.clear();
   for (const race of ['human', 'elf', 'orc', 'synth'] as const) {
     for (const body of ['male', 'female'] as const) {
       for (const hair of HAIR_STYLES) preloadCharacter(scene, { ...DEFAULT_APPEARANCE, race, body, hair });
-      for (const top of topsFor({ race, body })) {
-        for (const shoes of ['shoes', 'boots'] as const) preloadCharacter(scene, { ...DEFAULT_APPEARANCE, race, body, top, shoes });
-      }
+      // Startkleidung jedes Volks (Vorschau) und alles, was der Körper tragen kann
+      preloadWardrobe(scene, { ...DEFAULT_APPEARANCE, race, body });
     }
   }
 }
@@ -69,9 +77,11 @@ export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string
       } else {
         continue;
       }
-      if (layer.material) {
+      if (layer.material || layer.eyes) {
         const img = tctx.getImageData(0, 0, w, h);
-        recolor(img.data, palettes, layer.material, layer.color, layer.base);
+        if (layer.material) recolor(img.data, palettes, layer.material, layer.color, layer.base);
+        if (layer.eyes) recolor(img.data, palettes, 'eye', layer.eyes);
+        if (layer.glow) paintGlow(img.data, palettes, layer.color, layer.glow);
         tctx.putImageData(img, 0, 0);
       }
       ctx.drawImage(tmp, 0, 0);

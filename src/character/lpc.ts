@@ -3,7 +3,7 @@
 export const FRAME = 64;
 
 export type BodyType = 'male' | 'female';
-export type Material = 'body' | 'hair' | 'cloth' | 'metal' | null;
+export type Material = 'body' | 'hair' | 'cloth' | 'metal' | 'eye' | null;
 
 export interface AnimDef {
   frames: number;
@@ -28,11 +28,11 @@ export const HAIR_STYLES = ['plain', 'long', 'bob', 'spiked', 'messy1', 'pixie',
 export type HairStyle = (typeof HAIR_STYLES)[number] | 'none';
 /** Frisuren mit Teil hinter dem Kopf (eigene Ebene hinter dem Körper). */
 const HAIR_BACK: readonly string[] = ['ponytail', 'braid'];
-/** Rüstung aus der Ausrüstung: überdeckt das Oberteil. */
-export type TorsoStyle = 'longsleeve' | 'leather';
-/** Schnitt des Oberteils. */
+/** Art des Oberteils aus der Ausrüstung: Stoff (Schnitt in `top`), Leder oder Platte (Metall in `torsoColor`). */
+export type TorsoStyle = 'longsleeve' | 'leather' | 'plate';
+/** Schnitt eines Stoff-Oberteils. */
 export type Top = 'shirt' | 'vneck' | 'scoop' | 'blouse' | 'corset' | 'bare';
-export type Shoes = 'shoes' | 'boots';
+export type Shoes = 'shoes' | 'boots' | 'none';
 
 export type Race = 'human' | 'elf' | 'orc' | 'synth';
 
@@ -51,13 +51,23 @@ export interface Appearance {
   top?: Top;
   /** Schuhwerk (Standard: Schuhe – hohe Stiefel verdecken die Hose fast ganz). */
   shoes?: Shoes;
+  /** Hose oder nackte Beine (Standard: Hose). */
+  legs?: 'pants' | 'none';
+  /** Volksmerkmal Elf: Augenfarbe (Augenpalette). */
+  eyes?: string;
+  /** Volksmerkmal Synth: Farbe der Leuchtlinien und Augen (Augenpalette). */
+  glow?: string;
 }
+
+/** Augen- und Leuchtfarben (Namen der LPC-Augenpalette). */
+export const EYE_COLORS = ['blue', 'green', 'purple', 'red', 'orange', 'yellow', 'brown', 'gray'];
+export const GLOW_COLORS = ['blue', 'green', 'purple', 'red', 'orange', 'yellow'];
 
 /** Wählbare Schnitte je Körper (Ork-Männer haben einen eigenen, muskulösen Körper ohne passende Hemden). */
 export function topsFor(a: Pick<Appearance, 'race' | 'body'>): Top[] {
   if (a.race === 'synth') return [];
   if (a.race === 'orc' && a.body === 'male') return ['bare', 'shirt'];
-  return a.body === 'female' ? ['shirt', 'scoop', 'blouse', 'corset'] : ['shirt', 'vneck'];
+  return a.body === 'female' ? ['shirt', 'vneck', 'scoop', 'blouse', 'corset'] : ['shirt', 'vneck'];
 }
 
 /** Metallfarben der Synth-Panzerung. */
@@ -66,10 +76,16 @@ export const METALS = ['silver', 'steel', 'iron', 'brass', 'bronze', 'copper', '
 /** Bringt ein (evtl. älteres oder ungültiges) Aussehen in einen gültigen Zustand. */
 export function normalizeAppearance(a: Appearance): Appearance {
   const out = { ...a };
+  // Synth haben kein Geschlecht: ein Körperbau
+  if (out.race === 'synth') out.body = 'male';
   const tops = topsFor(out);
   if (tops.length && !tops.includes(out.top ?? 'shirt')) out.top = tops[0];
-  if (out.race === 'synth' && !METALS.includes(out.torsoColor)) out.torsoColor = METALS[0];
-  if (out.race !== 'synth' && METALS.includes(out.torsoColor)) out.torsoColor = DEFAULT_APPEARANCE.torsoColor;
+  const metal = out.race === 'synth' || out.torso === 'plate';
+  if (metal && !METALS.includes(out.torsoColor)) out.torsoColor = METALS[0];
+  if (!metal && METALS.includes(out.torsoColor)) out.torsoColor = DEFAULT_APPEARANCE.torsoColor;
+  if (out.race !== 'elf') delete out.eyes;
+  if (out.race !== 'synth') delete out.glow;
+  else out.glow ??= GLOW_COLORS[0];
   return out;
 }
 
@@ -94,6 +110,10 @@ export interface Layer {
   base?: string;
   /** Vorhandene Animationen, falls nicht alle (fehlendes "idle" wird aus Geh-Frame 0 gebildet). */
   anims?: string[];
+  /** Augen zusätzlich umfärben (Augenpalette). */
+  eyes?: string;
+  /** Leuchtlinien: dunkle Fugen einer Metall-Ebene in dieser Farbe (Augenpalette). */
+  glow?: string;
 }
 
 /** Ebenen in Zeichenreihenfolge (hinten nach vorne). */
@@ -109,22 +129,24 @@ export function layersFor(a: Appearance): Layer[] {
   if (HAIR_BACK.includes(a.hair)) layers.push({ dir: `hair/${a.hair}/adult/bg`, material: 'hair', color: a.hairColor });
   layers.push({ dir: `body/bodies/${muscular ? 'muscular' : a.body}`, material: 'body', color: a.skin });
   if (race === 'synth') {
-    // Synth: Panzerplatten statt Kleidung (Implantate)
+    // Synth: Panzerplatten sind der Körper (Implantate) – mit Leuchtlinien in der Volksfarbe
+    const glow = a.glow;
     layers.push(
-      { dir: `legs/armour/plate/${thin}`, material: 'metal', color: a.torsoColor },
-      { dir: `feet/boots/basic/${thin}`, material: 'cloth', color: a.feetColor },
-      { dir: `torso/armour/plate/${a.body}`, material: 'metal', color: a.torsoColor },
-      { dir: `arms/armour/plate/${thin}`, material: 'metal', color: a.torsoColor },
+      { dir: `legs/armour/plate/${thin}`, material: 'metal', color: a.torsoColor, glow },
+      { dir: `feet/boots/basic/${thin}`, material: 'cloth', color: 'black' },
+      { dir: `torso/armour/plate/${a.body}`, material: 'metal', color: a.torsoColor, glow },
+      { dir: `arms/armour/plate/${thin}`, material: 'metal', color: a.torsoColor, glow },
     );
   } else {
-    layers.push({ dir: `legs/pants/${muscular ? 'muscular' : thin}`, material: 'cloth', color: a.legsColor });
-    layers.push({ dir: `feet/${a.shoes === 'boots' ? 'boots' : 'shoes'}/basic/${thin}`, material: 'cloth', color: a.feetColor });
+    if (a.legs !== 'none') layers.push({ dir: `legs/pants/${muscular ? 'muscular' : thin}`, material: 'cloth', color: a.legsColor });
+    if (a.shoes !== 'none') layers.push({ dir: `feet/${a.shoes === 'boots' ? 'boots' : 'shoes'}/basic/${thin}`, material: 'cloth', color: a.feetColor });
     layers.push(...topLayers(a));
   }
+  const eyes = race === 'synth' ? a.glow : race === 'elf' ? a.eyes : undefined;
   layers.push(
     race === 'orc'
       ? { dir: `head/heads/orc/${a.body}`, material: 'body', color: a.skin, base: 'green' }
-      : { dir: `head/heads/human/${a.body}`, material: 'body', color: a.skin },
+      : { dir: `head/heads/human/${a.body}`, material: 'body', color: a.skin, eyes },
   );
   if (a.hair !== 'none') layers.push({ dir: HAIR_BACK.includes(a.hair) ? `hair/${a.hair}/adult/fg` : `hair/${a.hair}/adult`, material: 'hair', color: a.hairColor });
   if (race === 'elf') layers.push({ dir: 'head/ears/long/adult', material: 'body', color: a.skin });
@@ -135,7 +157,14 @@ export function layersFor(a: Appearance): Layer[] {
 /** Oberteil-Ebenen: Rüstung aus der Ausrüstung oder der gewählte Schnitt. */
 function topLayers(a: Appearance): Layer[] {
   const body = a.body === 'female' ? 'female' : 'male';
+  const thin = a.body === 'female' ? 'thin' : 'male';
   if (a.torso === 'leather') return [{ dir: `torso/armour/leather/${body}`, material: null, color: '' }];
+  if (a.torso === 'plate') {
+    return [
+      { dir: `torso/armour/plate/${body}`, material: 'metal', color: a.torsoColor },
+      { dir: `arms/armour/plate/${thin}`, material: 'metal', color: a.torsoColor },
+    ];
+  }
   const top = a.top ?? 'shirt';
   const cloth = (dir: string, color = a.torsoColor): Layer => ({ dir, material: 'cloth', color });
   // Bluse und Korsett haben upstream keine Steh-Animation: sie wird aus Geh-Bild 0 gebildet
@@ -156,10 +185,10 @@ function topLayers(a: Appearance): Layer[] {
   }
 }
 
-export type Palettes = Record<'body' | 'hair' | 'cloth' | 'metal', Record<string, string[]>>;
+export type Palettes = Record<'body' | 'hair' | 'cloth' | 'metal' | 'eye', Record<string, string[]>>;
 
 /** Basis-Palette, in der die LPC-Quellbilder gezeichnet sind. */
-export const BASE_PALETTE = { body: 'light', hair: 'orange', cloth: 'white', metal: 'steel' } as const;
+export const BASE_PALETTE = { body: 'light', hair: 'orange', cloth: 'white', metal: 'steel', eye: 'blue' } as const;
 
 const hex = (s: string) => parseInt(s.slice(1), 16);
 
@@ -198,6 +227,21 @@ export function recolor(px: Uint8ClampedArray, palettes: Palettes, material: Exc
     px[i] = n >> 16;
     px[i + 1] = (n >> 8) & 255;
     px[i + 2] = n & 255;
+  }
+}
+
+/** Leuchtlinien: färbt die dunklen Fugen (Stufe 1) einer bereits umgefärbten Metall-Ebene in der Leuchtfarbe. */
+export function paintGlow(px: Uint8ClampedArray, palettes: Palettes, metal: string, glow: string): void {
+  const seam = palettes.metal[metal]?.[1];
+  const light = palettes.eye[glow]?.[2];
+  if (!seam || !light) return;
+  const from = hex(seam);
+  const to = hex(light);
+  for (let i = 0; i < px.length; i += 4) {
+    if (px[i + 3] === 0 || ((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]) !== from) continue;
+    px[i] = to >> 16;
+    px[i + 1] = (to >> 8) & 255;
+    px[i + 2] = to & 255;
   }
 }
 
