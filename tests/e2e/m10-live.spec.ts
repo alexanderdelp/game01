@@ -33,17 +33,20 @@ test('M10: Nacht, Wetter, Karawane, Neuigkeiten (R2, R3, R6)', async ({ page }) 
   // Karawane: hinreisen, Bewegung prüfen, handeln
   const names = await G<string[]>(page, 'g.caravans');
   expect(names.length).toBeGreaterThan(0);
-  const p0 = await G<{ tx: number; ty: number }>(page, 'g.caravanAt(0)');
+  // Eine Karawane wählen, die gerade unterwegs ist (am Ziel rasten sie kurz)
+  const ci = await G<number>(page, `g.caravans.findIndex((_, i) => !g.caravanAt(i).resting)`);
+  expect(ci).toBeGreaterThanOrEqual(0);
+  const p0 = await G<{ tx: number; ty: number }>(page, `g.caravanAt(${ci})`);
   await G(page, `g.teleport(${Math.round(p0.tx)}, ${Math.round(p0.ty)})`);
   await waitReady(page);
-  await expect.poll(() => G<number>(page, "g.npcs.filter((n) => n.id === 'car0').length"), { timeout: 25_000 }).toBe(1);
+  await expect.poll(() => G<number>(page, `g.npcs.filter((n) => n.id === 'car${ci}').length`), { timeout: 25_000 }).toBe(1);
   await page.evaluate((h) => ((window as unknown as { __game: { timeOffset: number } }).__game.timeOffset += h), 60_000);
-  const p1 = await G<{ tx: number; ty: number }>(page, 'g.caravanAt(0)');
+  const p1 = await G<{ tx: number; ty: number }>(page, `g.caravanAt(${ci})`);
   expect(Math.hypot(p1.tx - p0.tx, p1.ty - p0.ty)).toBeGreaterThan(0.5);
   await page.evaluate(() => ((window as unknown as { __game: { timeOffset: number } }).__game.timeOffset = 0));
   let traded = false;
   for (let i = 0; i < 6 && !traded; i++) {
-    const c = await G<{ x: number; y: number }>(page, "({ ...g.npcs.find((n) => n.id === 'car0') })");
+    const c = await G<{ x: number; y: number }>(page, `({ ...g.npcs.find((n) => n.id === 'car${ci}') })`);
     await G(page, `g.teleport(${Math.floor(c.x / 32)}, ${Math.floor(c.y / 32)})`);
     await page.keyboard.press('e');
     const d = await G<{ choices?: string[] } | null>(page, 'g.dialog');

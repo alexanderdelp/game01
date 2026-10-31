@@ -60,7 +60,7 @@ export const debugState = {
   players: (): unknown => [],
   syncStatus: (): string => 'aus',
   syncNow: (): Promise<void> => Promise.resolve(),
-  caravanAt: (_i: number): { tx: number; ty: number } | null => null,
+  caravanAt: (_i: number): { tx: number; ty: number; resting?: boolean } | null => null,
   news: [] as string[],
   town: '',
   meta: null as unknown,
