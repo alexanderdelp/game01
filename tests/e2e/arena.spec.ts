@@ -1,11 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
+import { G, frames, shot, watchErrors } from './helpers';
 
-const G = <T>(page: Page, expr: string) => page.evaluate(`(() => { const g = window.__game; return ${expr}; })()`) as Promise<T>;
+// Kampf-Arena (Modul Kampf). Aufbauten, Wegfindung, Waffenwerte und Diagonal-Treffer selbst prüfen m25/m28.test.ts.
 
 test('Kampf-Arena: startet ohne Welt, Gegner per Knopf, Werte live einstellbar', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  const errors = watchErrors(page);
   await page.goto('/?arena=1');
   await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 30_000 }).toBe('arena');
   await expect.poll(() => G<number>(page, 'g.enemies.length')).toBe(1);
@@ -17,7 +16,7 @@ test('Kampf-Arena: startet ohne Welt, Gegner per Knopf, Werte live einstellbar',
   await G(page, "g.arenaTune('move.speed', 300)");
   const x0 = await G<number>(page, 'g.player.x');
   await page.keyboard.down('a');
-  await page.waitForTimeout(400);
+  await frames(page, 10);
   await page.keyboard.up('a');
   expect(await G<number>(page, 'g.player.x')).toBeLessThan(x0);
   await page.keyboard.press('Space');
@@ -26,7 +25,7 @@ test('Kampf-Arena: startet ohne Welt, Gegner per Knopf, Werte live einstellbar',
   await page.getByRole('button', { name: 'Werte kopieren' }).click();
   await expect(page.locator('#arena-code')).toContainText('speed: 300');
   await expect(page.locator('#arena-stats')).toContainText('Hiebe 1');
-  await page.screenshot({ path: 'screenshots/arena.png' });
+  await shot(page, 'arena');
   // Einstellungen bleiben nach Neuladen erhalten
   await page.reload();
   await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 30_000 }).toBe('arena');
@@ -42,8 +41,7 @@ const groundEnemiesFree = (page: Page) =>
   G<boolean>(page, "g.enemies.filter((e) => e.kind === 'slime' || e.kind === 'bandit').every((e) => !g.arenaBlocked(e.x - 7, e.y - 6, 14, 6))");
 
 test('M25 R1: Gelände-Aufbauten wählbar, bleiben erhalten, Hindernisse halten Held und Gegner auf', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  const errors = watchErrors(page);
   await page.goto('/?arena=1');
   await ready(page);
   expect(await G<string>(page, 'g.arenaLayout')).toBe('pillars');
@@ -51,14 +49,14 @@ test('M25 R1: Gelände-Aufbauten wählbar, bleiben erhalten, Hindernisse halten 
   for (const [name, id] of Object.entries(ids)) {
     await page.getByRole('button', { name, exact: true }).click();
     await expect.poll(() => G<string>(page, 'g.ready && g.arenaLayout'), { timeout: 30_000 }).toBe(id);
-    await G(page, "g.arenaSpawn('wave')");
-    await page.waitForTimeout(300);
-    await page.mouse.move(400, 360);
-    await page.mouse.wheel(0, 400);
-    await page.waitForTimeout(200);
-    await page.mouse.wheel(0, 400);
-    await expect.poll(() => G<number>(page, 'g.zoom')).toBe(1);
-    await page.screenshot({ path: `screenshots/m25-arena-${id}.png` });
+    if (process.env.SHOTS) {
+      await G(page, "g.arenaSpawn('wave')");
+      await page.mouse.move(400, 360);
+      await page.mouse.wheel(0, 400);
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => G<number>(page, 'g.zoom')).toBe(1);
+      await shot(page, `m25-arena-${id}`);
+    }
   }
   // Wahl bleibt nach Neuladen
   await page.reload();
@@ -70,7 +68,7 @@ test('M25 R1: Gelände-Aufbauten wählbar, bleiben erhalten, Hindernisse halten 
   await G(page, "g.arenaTune('move.speed', 300)");
   await G(page, 'g.teleport(20, 10)');
   await page.keyboard.down('w');
-  await page.waitForTimeout(2500);
+  await frames(page, 60);
   await page.keyboard.up('w');
   const y = await G<number>(page, 'g.player.y');
   expect(y).toBeGreaterThanOrEqual(8 * 32);
@@ -95,7 +93,7 @@ test('M25 R2: Gegner am Boden laufen um eine Mauer herum zum Helden', async ({ p
     .poll(() => G<number>(page, "(() => { const e = g.enemies[0]; return e ? Math.hypot(e.x - g.player.x, e.y - g.player.y) : 0; })()"), { timeout: 60_000, intervals: [500] })
     .toBeLessThan(60);
   expect(await groundEnemiesFree(page)).toBe(true);
-  await page.screenshot({ path: 'screenshots/m25-arena-chase.png' });
+  await shot(page, 'm25-arena-chase');
 });
 
 test('M25 R3: Waffe wählbar, Angriff folgt der Waffe, Grafik wechselt, Wahl bleibt', async ({ page }) => {
@@ -178,8 +176,7 @@ test('M25 R4: Gegner nach Art, Anzahl, Ort (zufällig / vorne / Klick) und als W
 });
 
 test('M28: diagonal zielen – Hieb und Splitterblitz treffen diagonal, Schwung-Bogen sichtbar', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  const errors = watchErrors(page);
   await page.goto('/?arena=1');
   await ready(page);
   await G(page, "g.arenaSetLayout('open')");
@@ -214,7 +211,7 @@ test('M28: diagonal zielen – Hieb und Splitterblitz treffen diagonal, Schwung-
   await page.keyboard.press('Space');
   // R3: Schwung-Bogen erscheint – Bildschirmfoto mitten im Hieb
   await expect.poll(() => G<number>(page, 'g.arcs')).toBe(arcs0 + 1);
-  await page.screenshot({ path: 'screenshots/m28-schwung-diagonal.png' });
+  if (process.env.SHOTS) await page.screenshot({ path: 'screenshots/m28-schwung-diagonal.png' }); // mitten im Hieb, ohne Wartezeit
   await expect.poll(() => hpOf(diag.id)).toBeLessThan(diag.hp);
   expect(await hpOf(side.id)).toBe(side.hp);
   // R2: Splitterblitz fliegt diagonal und trifft einen weiter entfernten Gegner unten rechts
@@ -241,6 +238,6 @@ test('M28: diagonal zielen – Hieb und Splitterblitz treffen diagonal, Schwung-
   const arcs1 = await G<number>(page, 'g.arcs');
   await page.keyboard.press('Space');
   await expect.poll(() => G<number>(page, 'g.arcs')).toBe(arcs1 + 1);
-  await page.screenshot({ path: 'screenshots/m28-schwung-diagonal-vorderansicht.png' });
+  if (process.env.SHOTS) await page.screenshot({ path: 'screenshots/m28-schwung-diagonal-vorderansicht.png' });
   expect(errors).toEqual([]);
 });
