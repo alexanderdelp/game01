@@ -8,7 +8,10 @@ import { tileHeight } from '../../world/terrain';
 import { WORLD_VERSION, type WorldGen } from '../../world/WorldGen';
 import type { WorldScene } from '../WorldScene';
 
-/** Radius des Sichtfelds um den Helden in Kacheln (M24) und Kantenlänge des Sichtrasters. */
+/**
+ * Radius des Sichtfelds um den Helden in Kacheln (M24) und Kantenlänge des Sichtrasters. Muss den festen
+ * Sichtausschnitt (`game/view.ts`, höchstens 32 × 18 Kacheln) ganz abdecken; dahinter gilt alles als verdeckt.
+ */
 const SIGHT_R = 24;
 const SIGHT_N = 2 * SIGHT_R + 1;
 
@@ -48,13 +51,13 @@ export class WorldSight {
     return h;
   };
 
-  /** Ist der Weltpixel vom Helden aus sichtbar? Außerhalb des Sichtfelds: ja (ohnehin nicht im Bild). */
+  /** Ist der Weltpixel vom Helden aus sichtbar? Außerhalb des Sichtfelds: nein (M27). */
   seesPx(x: number, y: number): boolean {
     const s = this.sight;
     if (!s) return true;
     const dx = Math.floor(x / TILE_PX) - s.ox + SIGHT_R;
     const dy = Math.floor(y / TILE_PX) - s.oy + SIGHT_R;
-    if (dx < 0 || dy < 0 || dx >= SIGHT_N || dy >= SIGHT_N) return true;
+    if (dx < 0 || dy < 0 || dx >= SIGHT_N || dy >= SIGHT_N) return false;
     return s.vis[dy * SIGHT_N + dx] === 1;
   }
 

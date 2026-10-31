@@ -21,6 +21,7 @@ import { TownDecor } from '../render/TownDecor';
 import { LiveWorld, worldNow } from '../sim/LiveWorld';
 import { playerId } from '../game/identity';
 import { PAD_BUTTONS, padDirection } from '../game/gamepad';
+import { effectiveZoom } from '../game/view';
 import { Markers } from '../render/Markers';
 import { SyncClient, syncUrlFromLocation } from '../state/sync';
 import { LiveSession } from '../net/live';
@@ -117,8 +118,8 @@ export class WorldScene extends Phaser.Scene {
     const savedHero = load<{ appearance?: Appearance; equipped?: Partial<Record<Slot, Item>> }>(`hero:${this.world.seedName}`);
     this.player = new Actor(this, startX, startY, buildCharacter(this, dress({ ...DEFAULT_APPEARANCE, ...savedHero?.appearance }, savedHero?.equipped ?? {})));
 
-    // Startzoom so, dass mindestens ~20 Kacheln in der Breite sichtbar sind (Handy: 1, Desktop: 2).
-    this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
+    // Startzoom: so weit draußen, wie der feste Sichtausschnitt erlaubt (M27, siehe applyZoom)
+    this.zoomIndex = 0;
     const respawn = () => {
       const t = this.player.tile;
       this.state.record({ t: Date.now(), by: this.heroName, type: 'death', tx: t.tx, ty: t.ty });
@@ -181,7 +182,10 @@ export class WorldScene extends Phaser.Scene {
     cam.setBackgroundColor(0x172a5c);
     cam.setBounds(0, 0, WORLD_TILES * TILE_PX, WORLD_TILES * TILE_PX);
     cam.setRoundPixels(true);
-    cam.setZoom(ZOOMS[this.zoomIndex]);
+    this.applyZoom();
+    // Fenstergröße/Browser-Zoom ändern den Ausschnitt nicht: Zoom nachführen (M27)
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.applyZoom, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.scale.off(Phaser.Scale.Events.RESIZE, this.applyZoom, this));
     cam.startFollow(this.player.sprite, true, 0.15, 0.15, 0, 20);
 
     const kb = this.input.keyboard!;
@@ -351,8 +355,16 @@ export class WorldScene extends Phaser.Scene {
   zoom(dir: number): void {
     // Bei offener Karte zoomt die Karte (UI-Szene), nicht die Welt
     if (debugState.mapOpen) return;
-    this.zoomIndex = Phaser.Math.Clamp(this.zoomIndex + dir, 0, ZOOMS.length - 1);
-    this.cameras.main.setZoom(ZOOMS[this.zoomIndex]);
+    // Stufen, die der feste Ausschnitt ohnehin nicht erlaubt, überspringen
+    const min = effectiveZoom(1, this.scale.width, this.scale.height, TILE_PX);
+    const lowest = Math.max(0, ZOOMS.findIndex((z) => z >= min));
+    this.zoomIndex = Phaser.Math.Clamp(Math.max(this.zoomIndex, lowest) + dir, lowest, Math.max(lowest, ZOOMS.length - 1));
+    this.applyZoom();
+  }
+
+  /** Gewählte Zoomstufe anwenden, aber nie mehr als den festen Sichtausschnitt zeigen (M27). */
+  private applyZoom(): void {
+    this.cameras.main.setZoom(effectiveZoom(ZOOMS[this.zoomIndex], this.scale.width, this.scale.height, TILE_PX));
   }
 
   /** Mittelpunkt des Interesses (die Figur) in Kachelkoordinaten. */

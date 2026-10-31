@@ -11,7 +11,8 @@ test('M1: Welt aus Seed laden, zoomen, Karte', async ({ page }) => {
   // R10: Zoom
   await page.keyboard.press('-');
   await page.keyboard.press('-');
-  expect((await state(page)).zoom).toBe(1);
+  // M27: fester Ausschnitt – bei 1280 × 720 ist Zoom 2 das Minimum (höchstens 32 × 18 Kacheln)
+  expect((await state(page)).zoom).toBe(2);
   await waitReady(page);
   await page.waitForTimeout(300);
   await page.screenshot({ path: 'screenshots/m1-zoom1.png' });
