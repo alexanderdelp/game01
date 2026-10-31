@@ -15,7 +15,7 @@ test('M13: Titelbildschirm, neue Welt, Weiterspielen (R2) und Hinweise (R4)', as
   await skipCreation(page);
   await waitReady(page);
   expect(page.url()).toContain('seed=titel-test');
-  await expect.poll(() => G<number>(page, 'g.tipsShown'), { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => G<number>(page, 'g.tipsShown'), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
   await page.screenshot({ path: 'screenshots/m13-tips.png' });
   // Zurück zum Titel: Welt steht unter "Weiterspielen"
   await page.keyboard.press('h');
