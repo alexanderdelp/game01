@@ -23,8 +23,10 @@ Welt erlebt und entscheidet (M7, M15, M18).
 
 ```bash
 npx vitest run tests/unit/m7.test.ts tests/unit/m15.test.ts
-npm run build && npx playwright test tests/e2e/m7-quests.spec.ts tests/e2e/m15-pledge.spec.ts tests/e2e/m18-barber.spec.ts tests/e2e/m16-orientation.spec.ts
+npm run build && npx playwright test tests/e2e/inhalte.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 ## Regeln
 

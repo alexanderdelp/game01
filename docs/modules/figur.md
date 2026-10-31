@@ -29,8 +29,10 @@ Erschaffungsbildschirm: neue Welt, z. B. `?seed=figurtest&test=1`. Heldenfenster
 
 ```bash
 npx vitest run tests/unit/m5.test.ts tests/unit/m6.test.ts tests/unit/m18.test.ts tests/unit/m23.test.ts
-npm run build && npx playwright test tests/e2e/m5-rpg.spec.ts tests/e2e/m6-create.spec.ts tests/e2e/m18-barber.spec.ts tests/e2e/m23-outfit.spec.ts
+npm run build && npx playwright test tests/e2e/figur.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 ## Regeln
 
