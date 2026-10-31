@@ -21,6 +21,12 @@ npm run e2e      # Akzeptanztests (Playwright, nutzt den Build)
 
 Werkzeuge: `npx vite-node tools/preview-map.ts <seed> out.png` (Weltkarte), `tools/preview-area.ts` (Ausschnitt), `tools/preview-decor.ts` (Sprites), `tools/import_lpc.py` (LPC-Import).
 
+## Gemeinsam spielen
+
+- **Per Link:** Im Spiel `G` (Teilen) → „Link kopieren“ und an Freunde schicken. Die Weltdaten stecken im Link-Anker.
+- **Automatisch über einen eigenen Server:** `node server/sync-server.mjs 8787` betreiben und das Spiel mit
+  `?seed=<welt>&sync=https://<dein-server>` öffnen (siehe [M11](docs/milestones/M11-geteilte-welt.md)).
+
 ## Lizenzen & Credits
 
 - Code: MIT (siehe `LICENSE`).

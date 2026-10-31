@@ -19,6 +19,11 @@ import { FACTIONS, type Poi } from '../world/meta';
 import { LocalWorldStore, WorldState, isDefeated, reputationRank } from '../state/worldState';
 import { TownDecor } from '../render/TownDecor';
 import { LiveWorld, worldNow } from '../sim/LiveWorld';
+import { playerId } from '../game/identity';
+import { Markers } from '../render/Markers';
+import { decodeShare, shareLink } from '../state/share';
+import { SyncClient, syncUrlFromLocation } from '../state/sync';
+import { SIGN_MAX, type WorldEvent } from '../state/worldState';
 import { TICK_MS, caravanPos, newsBetween, type News } from '../sim/simulation';
 
 const POTION_PRICE = 10;
@@ -43,6 +48,8 @@ export class WorldScene extends Phaser.Scene {
   state!: WorldState;
   towns!: TownDecor;
   live!: LiveWorld;
+  signs!: Markers;
+  sync?: SyncClient;
   hero!: HeroController;
   private combatCtx!: CombatCtx;
   /** NPC, mit dem gerade gesprochen wird. */
@@ -74,7 +81,7 @@ export class WorldScene extends Phaser.Scene {
     this.chunks = new ChunkManager(this, this.world.seedName);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
-    this.state = new WorldState(this.world.seedName, new LocalWorldStore());
+    this.state = new WorldState(this.world.seedName, new LocalWorldStore(), Date.now(), playerId());
     this.npcs = new NpcManager(this, this.world, this.chunks);
     const spawn = this.world.findSpawn();
     this.enemies = new EnemyManager(this, this.world, this.chunks, spawn);
@@ -87,7 +94,12 @@ export class WorldScene extends Phaser.Scene {
 
     // Startzoom so, dass mindestens ~20 Kacheln in der Breite sichtbar sind (Handy: 1, Desktop: 2).
     this.zoomIndex = Phaser.Math.Clamp(Math.floor(this.scale.width / 640), 1, ZOOMS.length) - 1;
-    const respawn = () => this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
+    const respawn = () => {
+      const t = this.player.tile;
+      this.state.record({ t: Date.now(), by: this.heroName, type: 'death', tx: t.tx, ty: t.ty });
+      this.signs.refresh();
+      this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
+    };
     this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
     this.hero = new HeroController(this, this.world.seedName, this.player, this.combat);
     // Alte Truhen-Daten aus M8 (im Helden) in den Weltzustand übernehmen
@@ -97,6 +109,14 @@ export class WorldScene extends Phaser.Scene {
     this.live = new LiveWorld(this.world, this.chunks, this.npcs, this.state);
     this.enemies.invasion = this.live.invasion;
     this.towns = new TownDecor(this, this.world, this.chunks, this.state, () => this.heroName, (id) => this.live.drift(id));
+    this.signs = new Markers(this, this.chunks, this.state);
+    void this.importFromHash();
+    const syncUrl = syncUrlFromLocation();
+    if (syncUrl) {
+      this.sync = new SyncClient(syncUrl, this.state, (fresh) => this.onForeign(fresh, false));
+      this.sync.start();
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.sync?.stop());
+    }
     const onDefeated = (e: Parameters<HeroController['onDefeated']>[0]) => this.hero.onDefeated(e);
     this.events.on('defeated', onDefeated);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off('defeated', onDefeated));
@@ -126,6 +146,7 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-SPACE', () => this.attack());
     kb.on('keydown-J', () => this.attack());
     kb.on('keydown-Q', () => this.hero.drink());
+    kb.on('keydown-T', () => this.placeSign());
     kb.on('keydown-ONE', () => this.pendingActions.length > 0 && this.choose(0));
     kb.on('keydown-TWO', () => this.pendingActions.length > 1 && this.choose(1));
     kb.on('keydown-THREE', () => this.pendingActions.length > 2 && this.choose(2));
@@ -147,8 +168,10 @@ export class WorldScene extends Phaser.Scene {
     const lastSeen = load<number>(`seen:${this.world.seedName}`);
     this.news = newsBetween(this.world.meta, this.world.seed, now - 24 * TICK_MS, now, this.live.caravans);
     debugState.news = this.news.map((n) => n.text);
-    if (lastSeen && now - lastSeen > TICK_MS) {
-      const missed = newsBetween(this.world.meta, this.world.seed, lastSeen, now, this.live.caravans);
+    const foreign = lastSeen ? foreignNews(this.state.events.filter((e) => e.pid !== this.state.pid && e.t > lastSeen), this.world.meta.settlements) : [];
+    if (foreign.length) this.news.push(...foreign);
+    if (lastSeen && (now - lastSeen > TICK_MS || foreign.length)) {
+      const missed = [...newsBetween(this.world.meta, this.world.seed, lastSeen, now, this.live.caravans), ...foreign];
       if (missed.length) this.time.delayedCall(800, () => this.events.emit('news-summary', { hours: Math.round((now - lastSeen) / TICK_MS), news: missed }));
     }
     save(`seen:${this.world.seedName}`, now);
@@ -185,6 +208,11 @@ export class WorldScene extends Phaser.Scene {
     });
     debugState.recordQuest = (tx: number, ty: number) => this.recordQuest(tx, ty);
     debugState.travel = (id: number) => this.travel(id);
+    debugState.placeSign = (text: string) => this.placeSign(text);
+    debugState.shareLink = () => this.shareLink();
+    debugState.players = () => this.players();
+    debugState.syncStatus = () => this.sync?.status ?? 'aus';
+    debugState.syncNow = () => this.sync?.sync() ?? Promise.resolve();
     debugState.caravanAt = (i: number) => {
       const c = this.live.caravans[i];
       return c ? caravanPos(c, worldNow()) : null;
@@ -208,6 +236,89 @@ export class WorldScene extends Phaser.Scene {
       }
       return null;
     };
+  }
+
+  /** Botschaft an der aktuellen Stelle hinterlassen (für Mitspieler). */
+  placeSign(text?: string): void {
+    const t = this.player.tile;
+    const msg = (text ?? window.prompt(`Botschaft für andere Spieler (max. ${SIGN_MAX} Zeichen):`) ?? '').trim().slice(0, SIGN_MAX);
+    if (!msg) return;
+    this.state.record({ t: Date.now(), by: this.heroName, type: 'sign', tx: t.tx, ty: t.ty, text: msg });
+    this.state.flush();
+    this.signs.refresh();
+    this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: 'Schild aufgestellt', color: '#ffd84a' });
+    void this.sync?.sync();
+  }
+
+  /** Fremde Ereignisse wurden übernommen: Darstellung auffrischen und berichten. */
+  onForeign(fresh: WorldEvent[], announce: boolean): void {
+    this.signs.refresh();
+    this.towns.refreshAll();
+    for (const id of this.state.d.chests) {
+      const [tx, ty] = id.slice(6).split(',');
+      this.chunks.builtImages.get(`${tx},${ty}`)?.setFrame('chest:1');
+    }
+    this.state.flush();
+    const others = fresh.filter((e) => e.pid !== this.state.pid);
+    const news = foreignNews(others, this.world.meta.settlements);
+    this.news.push(...news);
+    debugState.news = this.news.map((n) => n.text);
+    if (!others.length) return;
+    const names = [...new Set(others.map((e) => e.by))].join(', ');
+    if (announce) this.events.emit('news-summary', { hours: 0, title: `Welt von ${names} übernommen (${others.length} Ereignisse)`, news });
+    else this.events.emit('float', { x: this.player.x, y: this.player.y - 60, text: `Neues von ${names}`, color: '#2fe0d8' });
+  }
+
+  /** Teilen-Link im Anker übernehmen (#w=…). */
+  private async importFromHash(): Promise<void> {
+    const m = /^#w=(.+)$/.exec(location.hash);
+    if (!m) return;
+    history.replaceState(null, '', `${location.pathname}${location.search}`);
+    const p = await decodeShare(m[1]);
+    if (!p || p.seed !== this.world.seedName) return;
+    const fresh = this.state.mergeIn(p.events);
+    this.onForeign(fresh, true);
+  }
+
+  async shareLink(): Promise<string> {
+    this.state.flush();
+    return shareLink({ seed: this.world.seedName, events: this.state.events });
+  }
+
+  /** Datei-Import (Weltpaket). */
+  async importFile(file: File): Promise<number> {
+    try {
+      const p = JSON.parse(await file.text()) as { seed: string; events: WorldEvent[] };
+      if (p.seed !== this.world.seedName) return -1;
+      const fresh = this.state.mergeIn(p.events);
+      this.onForeign(fresh, true);
+      return fresh.length;
+    } catch {
+      return -1;
+    }
+  }
+
+  exportFile(): void {
+    this.state.flush();
+    const blob = new Blob([JSON.stringify({ seed: this.world.seedName, events: this.state.events })], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `welt-${this.world.seedName}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  /** Mitspieler (aus dem Protokoll). */
+  players(): { pid: string; name: string; events: number }[] {
+    const map = new Map<string, { pid: string; name: string; events: number }>();
+    for (const e of this.state.events) {
+      const pid = e.pid ?? e.by;
+      const p = map.get(pid) ?? { pid, name: e.by, events: 0 };
+      p.name = e.by || p.name;
+      p.events++;
+      map.set(pid, p);
+    }
+    return [...map.values()].filter((p) => p.name);
   }
 
   /** Schnellreise zu einem entdeckten Ort (Wegstein). */
@@ -235,8 +346,13 @@ export class WorldScene extends Phaser.Scene {
   /** Spricht den nächsten NPC an bzw. blättert/schließt den Dialog. */
   interact(): void {
     if (this.dialogOpen) return this.endTalk();
+    const mk = this.signs.nearest(this.player.x, this.player.y);
     const poi = this.nearestPoi();
     const npc = this.npcs.nearest(this.player);
+    const npcDist = npc ? Math.hypot(npc.actor.x - this.player.x, npc.actor.y - this.player.y) : Infinity;
+    if (mk && mk.dist < (poi?.dist ?? Infinity) && mk.dist < npcDist) {
+      return this.say(mk.kind === 'sign' ? `Botschaft von ${mk.by}` : 'Grabstein', mk.kind === 'sign' ? 'Schild' : 'Erinnerung', mk.text);
+    }
     if (poi && (!npc || poi.dist < Math.hypot(npc.actor.x - this.player.x, npc.actor.y - this.player.y))) return this.usePoi(poi.poi);
     if (!npc) return;
     npc.talking = true;
@@ -381,7 +497,10 @@ export class WorldScene extends Phaser.Scene {
     const h = this.hero.hero;
     h.chronicle ??= [];
     if (p.kind === 'chest') {
-      if (this.state.d.chests.has(p.id)) return this.say('Truhe', 'leer', `Die Truhe ist leer.`);
+      if (this.state.d.chests.has(p.id)) {
+        const by = this.state.d.chestsBy.get(p.id);
+        return this.say('Truhe', 'leer', by && by !== this.heroName ? `Die Truhe ist leer – ${by} war schneller.` : 'Die Truhe ist leer.');
+      }
       this.state.record({ t: Date.now(), by: this.heroName, type: 'chest', id: p.id });
       this.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('chest:1');
       this.hero.lootChest(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
@@ -558,4 +677,23 @@ export class WorldScene extends Phaser.Scene {
     debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state }));
     debugState.ready = this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0;
   }
+}
+
+/** Taten anderer Spieler als Neuigkeiten. */
+function foreignNews(events: WorldEvent[], towns: { id: number; name: string }[]): News[] {
+  const out: News[] = [];
+  const quests = new Map<string, number>();
+  for (const e of events) {
+    if (e.type === 'chest') out.push({ tick: 0, text: `${e.by} hat eine Truhe geöffnet.` });
+    if (e.type === 'sign') out.push({ tick: 0, text: `${e.by} hat eine Botschaft hinterlassen: „${e.text}“` });
+    if (e.type === 'death') out.push({ tick: 0, text: `${e.by} ist gefallen – ein Grabstein erinnert daran.` });
+    if (e.type === 'discover' && e.id.startsWith('obelisk')) out.push({ tick: 0, text: `${e.by} hat einen Obelisken entdeckt.` });
+    if (e.type === 'discover' && e.id.startsWith('town')) out.push({ tick: 0, text: `${e.by} hat ${towns[Number(e.id.slice(5))]?.name ?? 'einen Ort'} besucht.` });
+    if (e.type === 'quest' && e.town !== null) quests.set(`${e.by}|${e.town}`, (quests.get(`${e.by}|${e.town}`) ?? 0) + 1);
+  }
+  for (const [k, n] of quests) {
+    const [by, town] = k.split('|');
+    out.push({ tick: 0, text: `${by} hat in ${towns[Number(town)]?.name ?? 'einem Ort'} ${n} Quest${n > 1 ? 's' : ''} erledigt.` });
+  }
+  return out;
 }

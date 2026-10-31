@@ -771,3 +771,24 @@ export function statue(): Pixels {
   img.outline();
   return img.result();
 }
+
+// ---------------------------------------------------------------- Botschaften und Gefallen-Marker
+
+export function signpost(): Pixels {
+  const img = new Img(26, 34);
+  img.rect(11, 12, 4, 22, WOOD[1]);
+  for (let y = 2; y < 14; y++) for (let x = 1; x < 25; x++) img.shade(x, y, 0.85 - (y - 2) / 12 * 0.4, WOOD);
+  for (const y of [5, 8, 11]) img.rect(4, y, 18, 1, WOOD[0]);
+  img.outline();
+  return img.result();
+}
+
+export function grave(): Pixels {
+  const img = new Img(20, 26);
+  img.polygon([[3, 25], [3, 8], [6, 3], [14, 3], [17, 8], [17, 25]], (x, y) => STONE[Math.max(0, Math.min(5, Math.round((0.85 - (x - 3) / 14 * 0.5 - y / 26 * 0.1) * 5)))]);
+  img.rect(9, 8, 2, 10, STONE[1]);
+  img.rect(6, 11, 8, 2, STONE[1]);
+  img.rect(1, 23, 18, 3, 0x4a6a3a);
+  img.outline();
+  return img.result();
+}

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { prosperityLevel, type WorldState } from '../state/worldState';
+import { prosperityLevel, topContributor, type WorldState } from '../state/worldState';
 import { BIOMES } from '../world/biomes';
 import type { Box } from '../world/collision';
 import { hash2, mulberry32 } from '../world/rng';
@@ -40,6 +40,11 @@ export class TownDecor {
     this.objects.get(id)?.forEach((o) => o.destroy());
     this.objects.delete(id);
     this.chunks.extraBlockers.delete(`town:${id}`);
+  }
+
+  /** Alle geladenen Orte neu aufbauen (z. B. nach dem Übernehmen fremder Ereignisse). */
+  refreshAll(): void {
+    for (const s of this.world.meta.settlements) this.refresh(s.id);
   }
 
   /** Nach Wohlstandsänderung neu aufbauen (nur wenn der Ort gerade geladen ist). */
@@ -91,7 +96,7 @@ export class TownDecor {
     if (lvl >= 3) {
       add('statue', s.tx, s.ty - 3, { w: 28, h: 12 });
       const label = this.scene.add
-        .text(px(s.tx), py(s.ty - 3) + 4, this.heroName(), { fontFamily: 'monospace', fontSize: '24px', color: '#ffd84a', stroke: '#0b0b14', strokeThickness: 4 })
+        .text(px(s.tx), py(s.ty - 3) + 4, topContributor(this.state.d, s.id) ?? this.heroName(), { fontFamily: 'monospace', fontSize: '24px', color: '#ffd84a', stroke: '#0b0b14', strokeThickness: 4 })
         .setOrigin(0.5, 0)
         .setScale(0.25)
         .setResolution(4)

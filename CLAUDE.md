@@ -117,7 +117,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M9) Trennung **Weltzustand** (Ereignisprotokoll, gehört allen) ↔ **Held** (gehört dem Spieler). Persistente Folgen: Truhen, Kills (20 min), Entdeckungen/Wegsteine, Wohlstand der Orte (sichtbar bis zur Heldenstatue), Ansehen je Reich (Rabatt, Titel).
 - 2026-10-31 – (M9) Schnellreise zwischen entdeckten Orten (große Welt + casual).
 - 2026-10-31 – (M10) Lebendige Welt als **reine Funktion von Seed + echter Uhrzeit** (statt Tick-für-Tick-Nachrechnen, wie ursprünglich angenommen): kein Server nötig, keine Wartezeit nach langer Pause, und alle Spieler sehen dieselbe Welt (Basis für M11). 1 Spieltag = 24 min, 1 Simulationsschritt = 1 h. Spielerhandlungen (M9) fließen als Einfluss ein.
+- 2026-10-31 – (M11) Geteilte Welt in zwei Stufen, weil ein Online-Server ein Konto des Nutzers braucht: (1) **Teilen per Link/Datei** ohne Server (Ereignisprotokoll komprimiert im URL-Anker, Zusammenführen konfliktfrei), (2) optionaler **Sync-Server** (`server/sync-server.mjs`, ohne Abhängigkeiten) über `?sync=<URL>`. Keine Fremddienste ohne Zustimmung des Nutzers.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
-- Gemeinsame Welt / Multiplayer (M11/M12) braucht einen Server-Dienst (z. B. Supabase/Firebase). Ein Konto dort muss der Nutzer anlegen.
+- Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.
 

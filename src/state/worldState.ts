@@ -6,11 +6,40 @@
 export const STATE_VERSION = 1;
 export const RESPAWN_MS = 20 * 60_000;
 
+type Base = { t: number; by: string; /** Spieler-ID (fehlt bei sehr alten Ereignissen) */ pid?: string };
+
 export type WorldEvent =
-  | { t: number; by: string; type: 'chest'; id: string }
-  | { t: number; by: string; type: 'kill'; id: string; realm: number }
-  | { t: number; by: string; type: 'discover'; id: string }
-  | { t: number; by: string; type: 'quest'; town: number | null; realm: number };
+  | (Base & { type: 'chest'; id: string })
+  | (Base & { type: 'kill'; id: string; realm: number })
+  | (Base & { type: 'discover'; id: string })
+  | (Base & { type: 'quest'; town: number | null; realm: number })
+  | (Base & { type: 'sign'; tx: number; ty: number; text: string })
+  | (Base & { type: 'death'; tx: number; ty: number });
+
+export const SIGN_MAX = 80;
+export const DEATH_MS = 24 * 60 * 60_000;
+
+/** Eindeutiger Schlüssel eines Ereignisses (für konfliktfreies Zusammenführen). */
+export function eventKey(e: WorldEvent): string {
+  const target = 'id' in e ? e.id : 'tx' in e ? `${e.tx},${e.ty}` : `${e.town},${e.realm}`;
+  return `${e.pid ?? e.by}|${e.t}|${e.type}|${target}`;
+}
+
+/** Vereinigt zwei Protokolle (kommutativ, idempotent), zeitlich sortiert. */
+export function merge(a: WorldEvent[], b: WorldEvent[]): WorldEvent[] {
+  const map = new Map<string, WorldEvent>();
+  for (const e of a) map.set(eventKey(e), e);
+  for (const e of b) map.set(eventKey(e), e);
+  return [...map.values()].sort((x, y) => x.t - y.t || eventKey(x).localeCompare(eventKey(y)));
+}
+
+export interface Sign {
+  tx: number;
+  ty: number;
+  text: string;
+  by: string;
+  t: number;
+}
 
 export interface WorldSave {
   version: number;
@@ -29,16 +58,34 @@ export interface Derived {
   prosperity: Map<number, number>;
   /** Ansehen je Reich */
   reputation: Map<number, number>;
+  /** Wer welche Truhe geöffnet hat */
+  chestsBy: Map<string, string>;
+  /** Quests je Ort und Spielername (für die Statue) */
+  questsBy: Map<number, Map<string, number>>;
+  /** Botschaften nach Kachel */
+  signs: Map<string, Sign>;
+  /** Gefallen-Marker */
+  deaths: { tx: number; ty: number; by: string; t: number }[];
 }
 
 export function emptyDerived(): Derived {
-  return { chests: new Set(), kills: new Map(), discovered: new Map(), prosperity: new Map(), reputation: new Map() };
+  return {
+    chests: new Set(), kills: new Map(), discovered: new Map(), prosperity: new Map(), reputation: new Map(),
+    chestsBy: new Map(), questsBy: new Map(), signs: new Map(), deaths: [],
+  };
 }
 
 export function apply(d: Derived, e: WorldEvent): void {
   switch (e.type) {
     case 'chest':
       d.chests.add(e.id);
+      if (!d.chestsBy.has(e.id)) d.chestsBy.set(e.id, e.by);
+      break;
+    case 'sign':
+      d.signs.set(`${e.tx},${e.ty}`, { tx: e.tx, ty: e.ty, text: e.text.slice(0, SIGN_MAX), by: e.by, t: e.t });
+      break;
+    case 'death':
+      d.deaths.push({ tx: e.tx, ty: e.ty, by: e.by, t: e.t });
       break;
     case 'kill':
       d.kills.set(e.id, e.t);
@@ -48,7 +95,12 @@ export function apply(d: Derived, e: WorldEvent): void {
       if (!d.discovered.has(e.id)) d.discovered.set(e.id, e.by);
       break;
     case 'quest':
-      if (e.town !== null) d.prosperity.set(e.town, (d.prosperity.get(e.town) ?? 0) + 1);
+      if (e.town !== null) {
+        d.prosperity.set(e.town, (d.prosperity.get(e.town) ?? 0) + 1);
+        const by = d.questsBy.get(e.town) ?? new Map<string, number>();
+        by.set(e.by, (by.get(e.by) ?? 0) + 1);
+        d.questsBy.set(e.town, by);
+      }
       d.reputation.set(e.realm, (d.reputation.get(e.realm) ?? 0) + 10);
       break;
   }
@@ -87,6 +139,7 @@ export function compact(events: WorldEvent[], now: number): WorldEvent[] {
   const out: WorldEvent[] = [];
   const oldKills = new Map<number, number>();
   for (const e of events) {
+    if (e.type === 'death' && now - e.t >= DEATH_MS) continue;
     if (e.type === 'kill' && now - e.t >= RESPAWN_MS) {
       oldKills.set(e.realm, (oldKills.get(e.realm) ?? 0) + 1);
       continue;
@@ -126,26 +179,52 @@ export class LocalWorldStore implements WorldStore {
   }
 }
 
+/** Held mit den meisten Quests in einem Ort (für die Statue). */
+export function topContributor(d: Derived, town: number): string | null {
+  const by = d.questsBy.get(town);
+  if (!by) return null;
+  return [...by.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? null;
+}
+
 /** Laufzeit-Weltzustand: Protokoll + abgeleiteter Zustand, speichert verzögert. */
 export class WorldState {
-  readonly events: WorldEvent[];
-  readonly d: Derived;
+  events: WorldEvent[];
+  d: Derived;
   private dirty = false;
+  private readonly keys = new Set<string>();
 
   constructor(
     readonly seed: string,
     private readonly store: WorldStore,
     now = Date.now(),
+    /** Spieler-ID für neue Ereignisse */
+    readonly pid = '',
   ) {
     const saved = store.load(seed);
     this.events = compact(saved?.events ?? [], now);
     this.d = derive(this.events);
+    for (const e of this.events) this.keys.add(eventKey(e));
   }
 
   record(e: WorldEvent): void {
+    if (this.pid && !e.pid) e.pid = this.pid;
+    const k = eventKey(e);
+    if (this.keys.has(k)) return;
+    this.keys.add(k);
     this.events.push(e);
     apply(this.d, e);
     this.dirty = true;
+  }
+
+  /** Übernimmt fremde Ereignisse; gibt die tatsächlich neuen zurück. */
+  mergeIn(incoming: WorldEvent[]): WorldEvent[] {
+    const fresh = incoming.filter((e) => !this.keys.has(eventKey(e)));
+    if (!fresh.length) return [];
+    this.events = merge(this.events, fresh);
+    for (const e of fresh) this.keys.add(eventKey(e));
+    this.d = derive(this.events);
+    this.dirty = true;
+    return fresh;
   }
 
   flush(): void {

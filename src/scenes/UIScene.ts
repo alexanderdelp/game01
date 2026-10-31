@@ -52,6 +52,7 @@ export class UIScene extends Phaser.Scene {
     this.questLog = undefined;
     this.chronicle = undefined;
     this.newsPanel = undefined;
+    this.sharePanel = undefined;
     this.drops = [];
     this.bannerObj = undefined;
     this.markerTexts = [];
@@ -67,7 +68,7 @@ export class UIScene extends Phaser.Scene {
     this.createAtmosphere();
     this.hud = this.add.text(8, 8, '', { ...FONT, backgroundColor: '#0b0b14cc', padding: { x: 6, y: 4 } });
     this.help = this.add
-      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · E reden · Q Trank · C Held · L Quests · B Chronik · U News · M Karte · N neue Welt', {
+      .text(8, 0, this.sys.game.device.input.touch ? 'Ziehen: laufen' : 'WASD laufen · Leertaste Angriff · E reden · Q Trank · C Held · L Quests · B Chronik · U News · M Karte · T Schild · G Teilen', {
         ...FONT,
         fontSize: '12px',
         backgroundColor: '#0b0b14cc',
@@ -109,7 +110,8 @@ export class UIScene extends Phaser.Scene {
     kb.on('keydown-L', () => this.toggleQuestLog());
     kb.on('keydown-B', () => this.toggleChronicle());
     kb.on('keydown-U', () => this.toggleNews());
-    const onSummary = (d: { hours: number; news: News[] }) => this.showNews(`Während du weg warst (${d.hours} Std.) …`, d.news);
+    kb.on('keydown-G', () => this.toggleShare());
+    const onSummary = (d: { hours: number; news: News[]; title?: string }) => this.showNews(d.title ?? `Während du weg warst (${d.hours} Std.) …`, d.news);
     ws.events.on('news-summary', onSummary);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('news-summary', onSummary));
     const onBanner = (b: { title: string; sub: string }) => this.banner(b.title, b.sub, true);
@@ -157,7 +159,7 @@ export class UIScene extends Phaser.Scene {
     let pointerId = -1;
     const onButton = (p: Phaser.Input.Pointer) => this.input.hitTestPointer(p).length > 0;
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle || this.newsPanel) return;
+      if (pointerId !== -1 || onButton(p) || this.map || this.panel || this.questLog || this.chronicle || this.newsPanel || this.sharePanel) return;
       pointerId = p.id;
       base.setPosition(p.x, p.y).setVisible(true);
       knob.setPosition(p.x, p.y).setVisible(true);
@@ -197,6 +199,8 @@ export class UIScene extends Phaser.Scene {
       ['Quests', () => this.toggleQuestLog()],
       ['Chronik', () => this.toggleChronicle()],
       ['News', () => this.toggleNews()],
+      ['Teilen', () => this.toggleShare()],
+      ['Schild', () => ws().placeSign()],
       ['Trank', () => ws().hero.drink()],
       ['+', () => ws().zoom(1)],
       ['−', () => ws().zoom(-1)],
@@ -329,6 +333,81 @@ export class UIScene extends Phaser.Scene {
       if (this.flash < -4 - Math.random() * 6) this.flash = 0.12;
       if (this.flash > 0) g.fillStyle(0xffffff, 0.35).fillRect(0, 0, width, height);
     }
+  }
+
+  sharePanel?: Phaser.GameObjects.Container;
+
+  toggleShare(): void {
+    if (this.sharePanel) {
+      this.sharePanel.destroy();
+      this.sharePanel = undefined;
+      debugState.shareOpen = false;
+      return;
+    }
+    this.buildShare();
+  }
+
+  /** Teilen-Fenster: Link, Datei, Sync, Mitspieler. */
+  private buildShare(note = ''): void {
+    this.sharePanel?.destroy();
+    debugState.shareOpen = true;
+    const ws = this.scene.get('world') as WorldScene;
+    const W = Math.min(this.scale.width - 16, 480);
+    const c = this.add.container(Math.round((this.scale.width - W) / 2), 40).setDepth(56);
+    const bg = this.add.rectangle(0, 0, W, 300, 0x0b0b14, 0.95).setOrigin(0).setStrokeStyle(2, 0xffd84a, 0.9).setInteractive();
+    c.add(bg);
+    const txt = (y: number, s: string, color = '#c0c0cc', size = 12) => {
+      const t = this.add.text(12, y, s, { ...FONT, fontSize: `${size}px`, color, wordWrap: { width: W - 24 } });
+      c.add(t);
+      return t;
+    };
+    const btn = (x: number, y: number, label: string, cb: () => void, name: string) => {
+      const b = this.add.text(x, y, label, { ...FONT, fontSize: '13px', color: '#0b0b14', backgroundColor: '#ffd84a', padding: { x: 6, y: 4 } }).setInteractive({ useHandCursor: true }).setName(name);
+      b.on('pointerdown', cb);
+      c.add(b);
+      return b;
+    };
+    txt(10, `Welt „${this.seed}“ gemeinsam spielen`, '#ffd84a', 16);
+    const close = this.add.text(W - 34, 8, '✕', { ...FONT, color: '#0b0b14', backgroundColor: '#ffd84a', padding: { x: 6, y: 3 } }).setInteractive({ useHandCursor: true });
+    close.on('pointerdown', () => this.toggleShare());
+    c.add(close);
+    let y = 40;
+    y += txt(y, 'Schicke Freunden den Link: Sie spielen dieselbe Welt und sehen deine Taten (offene Truhen, Orte, Statuen, Botschaften). Schicken sie dir ihren Link zurück, siehst du ihre.').height + 10;
+    const b1 = btn(12, y, 'Link kopieren', async () => {
+      const link = await ws.shareLink();
+      debugState.lastShareLink = link;
+      try {
+        await navigator.clipboard.writeText(link);
+        this.buildShare('Link kopiert – z. B. per Messenger verschicken.');
+      } catch {
+        window.prompt('Link kopieren:', link);
+      }
+    }, 'share-link');
+    const b2 = btn(12 + b1.width + 8, y, 'Datei speichern', () => ws.exportFile(), 'share-export');
+    btn(12 + b1.width + b2.width + 16, y, 'Datei laden', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/json,.json';
+      input.onchange = async () => {
+        const f = input.files?.[0];
+        if (!f) return;
+        const n = await ws.importFile(f);
+        this.buildShare(n < 0 ? 'Datei passt nicht zu dieser Welt.' : `${n} neue Ereignisse übernommen.`);
+      };
+      input.click();
+    }, 'share-import');
+    y += 36;
+    if (note) y += txt(y, note, '#4cb53e').height + 6;
+    const st = ws.sync ? `Automatischer Abgleich: ${ws.sync.status} (${ws.sync.url})` : 'Automatischer Abgleich: aus (mit ?sync=<Server> aktivierbar, siehe server/sync-server.mjs)';
+    y += txt(y, st, ws.sync?.status === 'verbunden' ? '#2fe0d8' : '#8a8aa0', 11).height + 10;
+    txt(y, 'Spieler in dieser Welt:', '#f4f0e8', 13);
+    y += 20;
+    for (const p of ws.players().slice(0, 6)) {
+      txt(y, `• ${p.name}${p.pid === ws.state.pid ? ' (du)' : ''} – ${p.events} ${p.events === 1 ? 'Tat' : 'Taten'}`);
+      y += 17;
+    }
+    bg.setSize(W, y + 12);
+    this.sharePanel = c;
   }
 
   toggleNews(): void {
@@ -530,7 +609,7 @@ export class UIScene extends Phaser.Scene {
 
   /** Für Tests: löst den Klick auf ein benanntes Element im Heldenfenster (oder der Karte) aus. */
   clickPanel(name: string): boolean {
-    const o = (this.panel?.getByName(name) ?? this.map?.getByName(name)) as Phaser.GameObjects.GameObject | null;
+    const o = (this.panel?.getByName(name) ?? this.map?.getByName(name) ?? this.sharePanel?.getByName(name)) as Phaser.GameObjects.GameObject | null;
     if (!o) return false;
     o.emit('pointerdown');
     return true;
