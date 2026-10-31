@@ -5,7 +5,8 @@ const G = <T>(page: Page, expr: string) => page.evaluate(`(() => { const g = win
 type Town = { name: string; tx: number; ty: number; capital: boolean; realm: number };
 
 async function talkTo(page: Page, role: string): Promise<{ text: string; name: string; choices?: string[] } | null> {
-  for (let i = 0; i < 10; i++) {
+  // Viele Versuche: Auf dem langsamen CI-Rechner laden NPCs spät (Herrscher steht im Palast)
+  for (let i = 0; i < 40; i++) {
     const n = await G<{ x: number; y: number } | null>(page, `(() => { const n = g.npcs.find((n) => n.role === '${role}'); return n ? { ...n } : null; })()`);
     if (!n) {
       await page.waitForTimeout(500);

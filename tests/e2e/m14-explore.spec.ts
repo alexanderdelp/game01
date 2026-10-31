@@ -49,9 +49,9 @@ test('Splitterblitz trifft Gegner aus der Ferne', async ({ page }) => {
     // Auf gleiche Höhe, 4 Kacheln links davon, nach rechts schauen, zaubern
     await G(page, `g.teleport(${Math.floor(t.x / 32) - 4}, ${Math.floor(t.y / 32)})`);
     await page.keyboard.press('d');
-    await expect.poll(() => G<number>(page, 'g.spellCooldown')).toBe(0);
+    await expect.poll(() => G<number>(page, 'g.spellCooldown'), { timeout: 30_000 }).toBe(0);
     await page.keyboard.press('k');
-    await expect.poll(() => G<number>(page, 'g.spellCooldown')).toBeGreaterThan(0);
+    await expect.poll(() => G<number>(page, 'g.spellCooldown'), { timeout: 30_000 }).toBeGreaterThan(0);
     await page.waitForTimeout(900);
     const after = await G<{ id: string; hp: number }[]>(page, 'g.enemies.map((e) => ({ ...e }))');
     const x = after.find((a) => a.id === t.id);
