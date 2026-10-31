@@ -5,7 +5,7 @@
 //   TELEGRAM_CHAT_ID=...     (trägt `setup` selbst ein)
 //
 // Befehle:
-//   setup                         Chat-ID aus der letzten Nachricht an den Bot ermitteln
+//   setup [--wait s]              Chat-ID aus der letzten Nachricht an den Bot ermitteln
 //   send <text>                   Textnachricht (Markdown-frei, damit nichts falsch formatiert)
 //   photo <datei> [beschriftung]  Bild senden (z. B. Screenshot)
 //   ask <frage> <option>...       Frage mit Knöpfen; wartet (max. --wait Sekunden, Standard 0) auf die Antwort
@@ -81,7 +81,11 @@ async function main() {
 
   switch (cmd) {
     case 'setup': {
-      const updates = await api(token, 'getUpdates', { timeout: 0 });
+      const deadline = Date.now() + waitArg(args) * 1000;
+      let updates = await api(token, 'getUpdates', { timeout: 0 });
+      while (!updates.length && Date.now() < deadline) {
+        updates = await api(token, 'getUpdates', { timeout: Math.min(50, Math.ceil((deadline - Date.now()) / 1000)) });
+      }
       const last = updates.map(describe).filter(Boolean).at(-1);
       if (!last) fail('Keine Nachricht gefunden – bitte dem Bot erst „/start“ schreiben.');
       mkdirSync(DIR, { recursive: true });
