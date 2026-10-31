@@ -57,7 +57,15 @@ test('M4: Gegner angreifen und besiegen (R1, R3, R5)', async ({ page }) => {
 test('M4: Gegner greifen an, Spieler stirbt und erwacht am Startpunkt (R3, R4)', async ({ page }) => {
   await open(page, 'test');
   await goToEnemy(page, 'slime');
-  await expect.poll(async () => page.evaluate(() => (window as unknown as { __game: G }).__game.hp), { timeout: 30_000 }).toBeLessThan(100);
+  // Immer wieder direkt neben den nächsten Gegner stellen: Gegner wandern, auf dem langsamen Testrechner
+  // kann ein Hindernis dazwischen liegen
+  await expect.poll(async () => page.evaluate(() => {
+    const g = (window as unknown as { __game: G }).__game;
+    const p = g.player;
+    const e = [...g.enemies].sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0];
+    if (e && g.hp >= 100) g.teleport(Math.floor(e.x / 32) - 1, Math.floor(e.y / 32));
+    return g.hp;
+  }), { timeout: 45_000, intervals: [3000] }).toBeLessThan(100);
   await page.screenshot({ path: 'screenshots/m4-hurt.png' });
   await page.evaluate(() => (window as unknown as { __game: G }).__game.damagePlayer(999));
   await page.evaluate(() => (window as unknown as { __game: G }).__game.damagePlayer(999));
