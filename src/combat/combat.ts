@@ -29,6 +29,29 @@ export function attackBox(x: number, y: number, facing: Facing, reach = 30, widt
   }
 }
 
+/**
+ * Zeitverhalten des Spieler-Nahkampfs (Feedback: „wie Super Mario World“ – die Figur tut sofort, was man drückt).
+ * Schlag läuft im Laufen, kein Vormerken von Tasten, kein automatisches Drehen.
+ */
+export const PLAYER_SWING = {
+  /** Bilder/s der Hieb-Animation (6 Bilder → 250 ms) */
+  frameRate: 24,
+  frames: 6,
+  /** Treffer nach … s (zweites Bild, Klinge vorn) */
+  hitDelay: 0.06,
+  /** Pause nach dem Hieb, bevor der nächste möglich ist (s) */
+  cooldown: 0.04,
+  /** Tempo während des Hiebs relativ zum Laufen */
+  moveFactor: 0.85,
+  /** Kontrollverlust nach einem Treffer (Rückstoß, s) */
+  knockLock: 0.1,
+};
+
+/** Zeit vom Tastendruck bis der nächste Hieb möglich ist (s). */
+export function swingCycle(s = PLAYER_SWING): number {
+  return s.frames / s.frameRate + s.cooldown;
+}
+
 /** Rückstoß-Vektor von `from` weg mit gegebener Stärke (px). */
 export function knockback(fromX: number, fromY: number, toX: number, toY: number, strength: number): { x: number; y: number } {
   const dx = toX - fromX;

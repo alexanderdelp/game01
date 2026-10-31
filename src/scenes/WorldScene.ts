@@ -884,6 +884,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.invasion = this.live.invasion;
     debugState.caravans = this.live.caravans.map((c) => c.name);
     debugState.attacks = this.combat.attacks;
+    debugState.swinging = this.combat.swinging;
     debugState.spellCooldown = this.combat.spellCooldown;
     debugState.hero = this.hero.hero;
     debugState.pickups = this.hero.pickupCount;

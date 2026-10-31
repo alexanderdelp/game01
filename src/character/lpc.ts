@@ -16,9 +16,9 @@ export interface AnimDef {
 export const ANIMS: Record<string, AnimDef> = {
   walk: { frames: 9, rows: 4, frameRate: 10, repeat: -1 },
   idle: { frames: 2, rows: 4, frameRate: 2, repeat: -1 },
-  slash: { frames: 6, rows: 4, frameRate: 16, repeat: 0 },
+  slash: { frames: 6, rows: 4, frameRate: 24, repeat: 0 },
   thrust: { frames: 8, rows: 4, frameRate: 16, repeat: 0 },
-  spellcast: { frames: 7, rows: 4, frameRate: 12, repeat: 0 },
+  spellcast: { frames: 7, rows: 4, frameRate: 16, repeat: 0 },
   hurt: { frames: 6, rows: 1, frameRate: 12, repeat: 0 },
 };
 

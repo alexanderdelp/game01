@@ -36,7 +36,7 @@ Erreicht am 2026-10-31. R1, R2 per Unit-Test (`tests/unit/m16.test.ts`, `m7.test
 
 - Warteschlange als reine Klasse `src/ui/bannerQueue.ts`; die vier Einstiegshinweise stehen sofort alle in der
   Schlange und zeigen „(klicken oder loslaufen)“.
-- Minimap: 1 Bildpunkt der Übersichtskarte (8 Kacheln) = 4 Bildschirmpixel → ca. 300 Kacheln Umkreis am PC,
-  200 am Handy. Bekannte Orte türkis, unbekannte weiß/gelb, Karawanen orange.
+- Minimap: 1 Bildpunkt der Übersichtskarte (8 Kacheln) = 4 Bildschirmpixel → Ausschnitt ca. 300 × 300 Kacheln am PC,
+  200 × 200 am Handy. Bekannte Orte türkis, unbekannte weiß/gelb, Karawanen orange.
 - Ungefähres Gebiet: Kreis mit 14 Kacheln Radius um das Zuhause; liegt es außerhalb, sitzt der Kreis am Rand der
   Minimap in Zielrichtung.

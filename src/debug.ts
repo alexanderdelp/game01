@@ -41,6 +41,8 @@ export const debugState = {
   spellCooldown: 0,
   killEnemy: (_id: string): boolean => false,
   attacks: 0,
+  /** M17: Hieb läuft gerade */
+  swinging: false,
   maxHp: 100,
   pickups: 0,
   pickupPos: [] as { x: number; y: number }[],

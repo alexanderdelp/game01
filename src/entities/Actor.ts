@@ -46,7 +46,7 @@ export class Actor {
   /** Bewegt die Figur um eine Richtung (Länge ≤ 1) für `dt` Sekunden. */
   update(dirX: number, dirY: number, sprint: boolean, dt: number, env: MoveEnv): void {
     const len = Math.hypot(dirX, dirY);
-    if (this.busy) {
+    if (this.busy && !this.mobile) {
       this.moving = false;
       this.sync();
       return;
@@ -55,13 +55,16 @@ export class Actor {
     if (this.moving) {
       const nx = dirX / Math.max(1, len);
       const ny = dirY / Math.max(1, len);
-      const speed = this.baseSpeed * (sprint ? 1.6 : 1) * Math.max(0.3, env.speedAt(this.x, this.y - 2));
+      const speed = this.baseSpeed * (sprint ? 1.6 : 1) * (this.busy ? this.mobileFactor : 1) * Math.max(0.3, env.speedAt(this.x, this.y - 2));
       const moved = moveBox(this.box, nx * speed * dt, ny * speed * dt, (b) => env.blocked(b), env.terrainBlocked && ((b) => env.terrainBlocked!(b)));
       this.x = moved.x + FOOT_W / 2;
       this.y = moved.y + FOOT_H;
-      this.facing = facingFrom(nx, ny, this.facing);
-      this.play(`walk:${this.facing}`, sprint ? 1.5 : 1);
-    } else {
+      // Während einer Aktion bleiben Blickrichtung und Animation (der Hieb geht dorthin, wohin man beim Drücken sah).
+      if (!this.busy) {
+        this.facing = facingFrom(nx, ny, this.facing);
+        this.play(`walk:${this.facing}`, sprint ? 1.5 : 1);
+      }
+    } else if (!this.busy) {
       this.play(`idle:${this.facing}`, 1);
     }
     this.sync();
@@ -75,11 +78,19 @@ export class Actor {
 
   /** Läuft gerade eine Aktions-Animation (Angriff, Zusammensacken)? */
   busy = false;
+  /** Darf sich die Figur während der laufenden Aktion bewegen (und mit welchem Tempo)? */
+  private mobile = false;
+  private mobileFactor = 1;
 
-  /** Spielt eine einmalige Animation (z. B. "slash"); Bewegungsanimationen pausieren solange. */
-  playAction(anim: string, onDone?: () => void): void {
+  /**
+   * Spielt eine einmalige Animation (z. B. "slash"); Bewegungsanimationen pausieren solange.
+   * Mit `moveFactor` > 0 kann die Figur dabei weiterlaufen (Spieler-Hieb).
+   */
+  playAction(anim: string, onDone?: () => void, moveFactor = 0): void {
     const key = anim === 'hurt' ? `${this.prefix}:hurt:any` : `${this.prefix}:${anim}:${this.facing}`;
     this.busy = true;
+    this.mobile = moveFactor > 0;
+    this.mobileFactor = moveFactor;
     this.sprite.anims.timeScale = 1;
     this.sprite.play(key);
     this.sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
