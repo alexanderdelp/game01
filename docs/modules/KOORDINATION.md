@@ -31,7 +31,7 @@ mit dem Koordinator (Telegram oder Chat); der Koordinator startet und steuert di
    (`SendMessage` an die Session), Fragen an den Nutzer bündeln.
 5. **Prüfen:** Diff der Branches lesen (nicht nur die Übergabe glauben), Tests des Moduls im Worktree grün?
 6. **Zusammenführen** nacheinander auf `main` (Reihenfolge: Schnittstellen-Anbieter zuerst, z. B. Welt vor
-   Inhalten). Nach **jedem** Merge: `npm run check` (Unit + Build + alle E2E, ca. 8–10 min, im Hintergrund).
+   Inhalten). Nach **jedem** Merge: `npm run check` (Unit + Build + alle E2E, ca. 4 min, im Hintergrund; Grundsätze in `docs/TESTS.md`).
    Knotenpunkt-Änderungen aus den Übergaben jetzt selbst einbauen.
 7. **Abschließen:** Meilenstein-Ergebnis eintragen, `CLAUDE.md` (Entscheidungen, Meilensteinliste) pflegen,
    committen (als `alexanderdelp`, Trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`), pushen,

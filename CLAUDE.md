@@ -159,6 +159,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-10-31 – (M26) Dekor hält Abstand zu Höhenkanten statt teilweiser Verdeckung durch die Klippe (einfacher, Kanten bleiben lesbar); im zerklüfteten Gebirge Dekor dafür ×1,5 dichter. `WORLD_VERSION` bleibt 3.
 - 2026-10-31 – (M27) Sichtbarer Weltausschnitt höchstens 32 × 18 Kacheln (lange × kurze Seite), ganzzahliger Mindest-Zoom statt Rand (Pixel-Art bleibt scharf); außerhalb des Sichtrasters gilt alles als verdeckt. Arena ausgenommen.
 - 2026-11-01 – (M28) LPC hat nur 4 Blickrichtungen: Zielen/Schlagen/Blitz in 8 Richtungen (`aim`), Sprite diagonal in Seitenansicht, Schwung-Bogen macht die Diagonale sichtbar.
+- 2026-11-01 – Tests aufgeräumt (Nutzerwunsch): Logik per Unit, E2E je Modul ein schlanker Ablauf, Polling statt fester Wartezeiten, parallel (4 Worker lokal, 2 in CI), Testfenster 960 × 540; E2E von ~9 auf ~4 min. Grundsätze und Abdeckung je Anforderung: `docs/TESTS.md`.
 - 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
 
 ### Offene Aufgaben (mit dem Nutzer zu klären)
