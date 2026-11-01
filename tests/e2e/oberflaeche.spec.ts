@@ -71,6 +71,56 @@ test('M22: Weltkarte zoomen und verschieben, feiner Ausschnitt ab 4× (R1, R2)',
   expect(errors).toEqual([]);
 });
 
+test('M29: Spielleiter-Karte ohne Nebel, Klick teleportiert, Fog bleibt (R3)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  const errors = watchErrors(page);
+  await page.goto('/?seed=gm-karte&test=1&gm=1');
+  await skipCreation(page);
+  await waitReady(page);
+  // Menüeintrag schaltet den Modus (nur mit ?gm=1 vorhanden), Abzeichen im HUD
+  await page.keyboard.press('h');
+  await expect.poll(() => G<boolean>(page, 'g.menuOpen')).toBe(true);
+  expect(await G<boolean>(page, "g.clickPanel('menu-12')")).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.gm')).toBe(true);
+  expect(await G<boolean>(page, 'g.gmBadge')).toBe(true);
+
+  await page.keyboard.press('m');
+  await expect.poll(() => G<boolean>(page, 'g.mapReady'), { timeout: 20_000 }).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.mapTileToScreen(0, 0) !== null')).toBe(true);
+  expect(await G<boolean>(page, 'g.mapFog')).toBe(false);
+  await shot(page, 'm29-gm-karte');
+  // Ziehen verschiebt nur, teleportiert nicht
+  const s = await G<{ tx: number; ty: number }>(page, '({ ...g.spawn })');
+  const start = (await state(page)).focus;
+  await page.mouse.move(640, 380);
+  await page.mouse.down();
+  await page.mouse.move(560, 330, { steps: 5 });
+  await page.mouse.up();
+  expect(await G<boolean>(page, 'g.mapOpen')).toBe(true);
+  expect((await state(page)).focus).toEqual(start);
+  // Klick auf einen fernen, unerkundeten Punkt
+  const far = { tx: s.tx + 800, ty: s.ty - 500 };
+  expect(await G<boolean>(page, `g.fogKnows(${far.tx}, ${far.ty})`)).toBe(false);
+  // Bei Zoom 1 ist ein Bildschirmpixel ~13 Kacheln: per Mausrad auf das Ziel zoomen (16×), dann klicken
+  const toScreen = () => G<{ x: number; y: number }>(page, `g.mapTileToScreen(${far.tx}, ${far.ty})`);
+  for (let z = 2; z <= 16; z *= 2) {
+    const p = await toScreen();
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.wheel(0, -100);
+    await expect.poll(() => G<number>(page, 'g.mapZoom')).toBe(z);
+  }
+  const at = await toScreen();
+  await page.mouse.click(at.x, at.y);
+  await expect.poll(() => G<boolean>(page, 'g.mapOpen')).toBe(false);
+  await expect.poll(async () => {
+    const f = (await state(page)).focus;
+    return Math.max(Math.abs(f.tx - far.tx), Math.abs(f.ty - far.ty));
+  }).toBeLessThanOrEqual(2);
+  await frames(page, 10);
+  expect(await G<boolean>(page, `g.fogKnows(${far.tx}, ${far.ty})`)).toBe(false);
+  expect(errors).toEqual([]);
+});
+
 test.describe('Handy', () => {
   test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
 

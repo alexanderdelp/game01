@@ -19,6 +19,8 @@ const FOG_EDGE = 'rgba(23, 19, 31, 0.55)';
 const FONT = { fontFamily: 'monospace', fontSize: '14px', color: '#f4f0e8' };
 /** Zoomstufen der Weltkarte. */
 const MAP_ZOOMS = [1, 2, 4, 8, 16];
+/** M29: Zeigerweg in Bildschirmpixeln, bis zu dem ein Drücken im Spielleiter-Modus als Klick (Teleport) zählt. */
+const GM_CLICK_SLOP = 6;
 
 /**
  * Weltkarte (M8, M22) und Minimap (M16) mit Fog of War (M20) in der UI-Szene: Übersicht und feine Ausschnitte
@@ -57,6 +59,7 @@ export class WorldMap {
     // Übersichtskarte im Hintergrund erzeugen.
     this.ensureMapWorker().postMessage({ type: 'overview', step: MAP_STEP } satisfies ChunkRequest);
     debugState.mapZoomBy = (dir: number) => this.zoomMap(dir);
+    debugState.mapTileToScreen = (tx: number, ty: number) => (this.mapLayer ? this.mapToScreen(tx, ty) : null);
     // Karte: Ziehen und Mausrad
     this.ui.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (!this.map || !this.mapDrag || !p.isDown) return;
@@ -64,7 +67,19 @@ export class WorldMap {
       this.mapCenter = { tx: this.mapDrag.cx - (p.x - this.mapDrag.x) / k, ty: this.mapDrag.cy - (p.y - this.mapDrag.y) / k };
       this.layoutMap();
     });
-    this.ui.input.on('pointerup', () => (this.mapDrag = null));
+    this.ui.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      const d = this.mapDrag;
+      this.mapDrag = null;
+      // M29: Klick ohne Ziehen auf die Karte teleportiert im Spielleiter-Modus
+      const ws = this.ui.scene.get('world') as WorldScene;
+      if (!d || !this.map || !ws.gm || Math.hypot(p.x - d.x, p.y - d.y) > GM_CLICK_SLOP) return;
+      const v = this.view;
+      if (d.x < v.x || d.y < v.y || d.x > v.x + v.side || d.y > v.y + v.side) return;
+      const k = this.mapK;
+      const tx = Math.floor(d.cx + (d.x - v.x - v.side / 2) / k);
+      const ty = Math.floor(d.cy + (d.y - v.y - v.side / 2) / k);
+      if (ws.gmTeleport(tx, ty)) this.close();
+    });
     this.ui.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.map && this.zoomMap(dy < 0 ? 1 : -1, { x: p.x, y: p.y }));
     this.ui.input.keyboard!.on('keydown-PLUS', () => this.zoomMap(1));
     this.ui.input.keyboard!.on('keydown-NUMPAD_ADD', () => this.zoomMap(1));
@@ -109,7 +124,8 @@ export class WorldMap {
     this.updateFog(ws);
     this.miniFog ??= this.ui.add.image(0, 0, this.fogKey).setOrigin(0).setDepth(4.15).setScale(MINI_ZOOM);
     this.mini.setVisible(show);
-    this.miniFog.setVisible(show);
+    // M29: im Spielleiter-Modus ohne Nebel (der Fog des Spielers bleibt unverändert)
+    this.miniFog.setVisible(show && !ws.gm);
     this.miniG.clear().setVisible(show);
     debugState.minimap = show;
     this.miniFg?.clear();
@@ -134,7 +150,7 @@ export class WorldMap {
     for (const st of ws.world.meta.settlements) {
       const x = px(st.tx);
       const y = py(st.ty);
-      if (!inside(x, y, 3) || !ws.fog.knows(st.tx, st.ty)) continue;
+      if (!inside(x, y, 3) || (!ws.gm && !ws.fog.knows(st.tx, st.ty))) continue;
       const known = ws.state.d.discovered.has(`town:${st.id}`);
       const sz = st.capital ? 6 : 4;
       fg.fillStyle(known ? 0x2fe0d8 : st.capital ? 0xffd84a : 0xf4f0e8, 1).fillRect(x - sz / 2, y - sz / 2, sz, sz);
@@ -144,7 +160,7 @@ export class WorldMap {
       const p = caravanPos(car, worldNow());
       const x = px(p.tx);
       const y = py(p.ty);
-      if (inside(x, y, 2) && ws.fog.knows(p.tx, p.ty)) fg.fillStyle(0xf08a3a, 1).fillTriangle(x, y - 3, x - 3, y + 3, x + 3, y + 3);
+      if (inside(x, y, 2) && (ws.gm || ws.fog.knows(p.tx, p.ty))) fg.fillStyle(0xf08a3a, 1).fillTriangle(x, y - 3, x - 3, y + 3, x + 3, y + 3);
     }
     for (const r of ws.remote.remotes.values()) {
       const x = px(r.x / TILE_PX);
@@ -281,13 +297,18 @@ export class WorldMap {
     if (this.map) this.layoutMap();
   }
 
+  /** Offene Karte neu zeichnen (z. B. nach Wechsel des Spielleiter-Modus). */
+  refresh(): void {
+    if (this.map && this.mapSize) {
+      this.close();
+      this.open();
+    }
+  }
+
   toggle(): void {
     if (this.map) this.close();
     else this.open();
   }
-
-  /** Zoomstufen der Weltkarte. */
-  
 
   open(): void {
     debugState.mapOpen = true;
@@ -389,14 +410,18 @@ export class WorldMap {
       layer.add(this.ui.add.image(p.x, p.y, `mapdetail:${this.seed}`).setOrigin(0).setDisplaySize(d.size * d.step * k, d.size * d.step * k));
     }
     if (z >= 4) this.requestRegion();
-    // Fog of War darüber
+    // Fog of War darüber – im Spielleiter-Modus (M29) die ganze Welt ohne Nebel
+    const gm = ws.gm;
+    debugState.mapFog = !gm;
     this.updateFog(ws);
-    this.refreshFog();
-    layer.add(this.ui.add.image(o.x, o.y, this.fogKey).setOrigin(0).setDisplaySize(WORLD_TILES * k, WORLD_TILES * k));
+    if (!gm) {
+      this.refreshFog();
+      layer.add(this.ui.add.image(o.x, o.y, this.fogKey).setOrigin(0).setDisplaySize(WORLD_TILES * k, WORLD_TILES * k));
+    }
 
     const v = this.view;
     const inView = (x: number, y: number) => x >= v.x - 4 && y >= v.y - 4 && x <= v.x + side + 4 && y <= v.y + side + 4;
-    const knows = (tx: number, ty: number) => ws.fog.knows(tx, ty);
+    const knows = (tx: number, ty: number) => gm || ws.fog.knows(tx, ty);
     const small = side < 500 && z < 4;
     for (const r of meta.realms) {
       const p = this.mapToScreen(r.tx, r.ty);
@@ -409,7 +434,7 @@ export class WorldMap {
       const known = ws.state.d.discovered.has(`town:${s.id}`);
       const sz = (s.capital ? 7 : 4) + (z >= 8 ? 2 : 0);
       layer.add(this.ui.add.rectangle(p.x, p.y, sz, sz, s.capital ? 0xffd84a : 0xf4f0e8).setStrokeStyle(1, 0x0b0b14));
-      if (known) {
+      if (known && !gm) {
         // Wegstein: anklickbar für Schnellreise
         const hit = this.ui.add.circle(p.x, p.y, 12, 0x2fe0d8, 0.25).setStrokeStyle(1, 0x2fe0d8).setInteractive({ useHandCursor: true }).setName(`travel-${s.id}`);
         hit.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e?: Phaser.Types.Input.EventData) => {
@@ -421,7 +446,7 @@ export class WorldMap {
       if (s.capital || !small) layer.add(this.ui.add.text(p.x + 6, p.y, s.name, { fontFamily: 'monospace', fontSize: small ? '9px' : '11px', color: s.capital ? '#ffd84a' : '#e0e0e8', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0, 0.5));
     }
     for (const r of meta.ruins) {
-      if (!ws.state.d.discovered.has(`ruin:${r.id}`)) continue;
+      if (!gm && !ws.state.d.discovered.has(`ruin:${r.id}`)) continue;
       const p = this.mapToScreen(r.tx, r.ty);
       if (!inView(p.x, p.y)) continue;
       const looted = ws.state.d.chests.has(`ruinchest:${r.tx + 2},${r.ty + 1}`);
@@ -430,7 +455,7 @@ export class WorldMap {
     const found = new Set(ws.hero.hero.chronicle ?? []);
     for (const ob of meta.obelisks) {
       const p = this.mapToScreen(ob.tx, ob.ty);
-      if (found.has(ob.fragment ?? -1) && inView(p.x, p.y)) layer.add(this.ui.add.star(p.x, p.y, 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
+      if ((gm || found.has(ob.fragment ?? -1)) && inView(p.x, p.y)) layer.add(this.ui.add.star(p.x, p.y, 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
     }
     for (const q of ws.hero.quests.active) {
       const t = questTarget(q);
@@ -445,7 +470,8 @@ export class WorldMap {
       const p = this.mapToScreen(cp.tx, cp.ty);
       if (knows(cp.tx, cp.ty) && inView(p.x, p.y)) layer.add(this.ui.add.triangle(p.x, p.y, 0, 6, 3, 0, 6, 6, 0xf08a3a).setStrokeStyle(1, 0x0b0b14));
     }
-    this.mapInfo?.setText(`Zoom ${z}× · Erkundet: ${(ws.fog.fraction * 100).toFixed(2)} % · Ziehen: verschieben · Rad/+/−: zoomen · türkis: Schnellreise`);
+    if (gm) this.mapInfo?.setText(`Spielleiter: Klick = Teleport · Zoom ${z}× · Ziehen: verschieben · Rad/+/−: zoomen`);
+    else this.mapInfo?.setText(`Zoom ${z}× · Erkundet: ${(ws.fog.fraction * 100).toFixed(2)} % · Ziehen: verschieben · Rad/+/−: zoomen · türkis: Schnellreise`);
   }
 
   /** Feinen Ausschnitt um den sichtbaren Bereich anfordern (verzögert, nur wenn der vorhandene nicht reicht). */

@@ -63,6 +63,11 @@ export const debugState = {
   mapZoom: 1,
   mapDetail: 0,
   mapZoomBy: (_dir: number): void => {},
+  /** M29: Kachel → Bildschirmpunkt auf der offenen Weltkarte (null = Karte zu) */
+  /** M29: Nebel auf der Weltkarte gezeichnet (aus im Spielleiter-Modus), GM-Abzeichen im HUD sichtbar */
+  mapFog: false,
+  gmBadge: false,
+  mapTileToScreen: (_tx: number, _ty: number): { x: number; y: number } | null => null,
   teleport: (_tx: number, _ty: number): void => {},
   findShore: (): { tx: number; ty: number } | null => null,
   npcs: [] as { id: string; x: number; y: number; role: string; name: string }[],
