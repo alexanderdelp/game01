@@ -79,6 +79,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-10-31 – **Zusätzlicher Meilenstein 27 „Fester Sichtausschnitt“** (Nutzerwunsch): Fenster, Auflösung und Zoom bringen keinen Sichtvorteil.
 - 2026-11-01 – **Zusätzlicher Meilenstein 28 „Kampf in 8 Richtungen“** (Nutzerwunsch): Zielen und Schlagen diagonal.
 - 2026-11-01 – **Zusätzlicher Meilenstein 29 „Spielleiter-Modus“** (Nutzerwunsch): fliegen, Teleport über die Karte.
+- 2026-11-01 – **Zusätzliche Meilensteine 30 „Oberweite-Regler“ und 31 „Blocken & Ausweichen“** (Nutzerwünsche); dazu Prototyp „schräge Perspektive“ auf eigenem Branch `prototyp/perspektive` (nicht auf main).
 
 ## Mehrere Agenten
 
@@ -162,6 +163,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-11-01 – (M28) LPC hat nur 4 Blickrichtungen: Zielen/Schlagen/Blitz in 8 Richtungen (`aim`), Sprite diagonal in Seitenansicht, Schwung-Bogen macht die Diagonale sichtbar.
 - 2026-11-01 – Tests aufgeräumt (Nutzerwunsch): Logik per Unit, E2E je Modul ein schlanker Ablauf, Polling statt fester Wartezeiten, parallel (4 Worker lokal, 2 in CI), Testfenster 960 × 540; E2E von ~9 auf ~4 min. Grundsätze und Abdeckung je Anforderung: `docs/TESTS.md`.
 - 2026-11-01 – (M29) Spielleiter-Modus nur mit `?gm=1` (F2 / Menü): fliegen ohne Kollision, unverwundbar, Karte ohne Nebel mit Klick-Teleport; hinterlässt keine Spuren (kein Fog, keine Entdeckungen, Position nicht gespeichert).
+- 2026-11-01 – (M30) Oberweite als Regler (4 Stufen) nur für Mensch + weiblich, prozedurale Verformung von Körper und Oberteilen; nach der Erschaffung fest wie Volk/Körper.
+- 2026-11-01 – (M31) Blocken (L halten, Parieren kurz vor dem Treffer) und Ausweichen (Leertaste) vorerst nur in der Arena; ins Spiel nach Freigabe des Nutzers.
 - 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
 
 ### Offene Aufgaben (mit dem Nutzer zu klären)
