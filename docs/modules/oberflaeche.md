@@ -27,8 +27,10 @@ Musik und Klänge (M13, M16, M22).
 
 ```bash
 npx vitest run tests/unit/m13.test.ts tests/unit/m16.test.ts
-npm run build && npx playwright test tests/e2e/m13-polish.spec.ts tests/e2e/m16-orientation.spec.ts tests/e2e/m22-map.spec.ts tests/e2e/m5-rpg.spec.ts
+npm run build && npx playwright test tests/e2e/oberflaeche.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 ## Regeln
 

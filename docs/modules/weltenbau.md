@@ -25,8 +25,10 @@ Karawanen, Wetter, Invasionen, Wohlstand. Persistente Folgen von Handlungen im E
 
 ```bash
 npx vitest run tests/unit/m3.test.ts tests/unit/m8.test.ts tests/unit/m9.test.ts tests/unit/m10.test.ts tests/unit/m14.test.ts tests/unit/m15.test.ts
-npm run build && npx playwright test tests/e2e/m3-npcs.spec.ts tests/e2e/m8-world.spec.ts tests/e2e/m9-persist.spec.ts tests/e2e/m10-live.spec.ts tests/e2e/m14-explore.spec.ts tests/e2e/m15-pledge.spec.ts
+npm run build && npx playwright test tests/e2e/weltenbau.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 ## Regeln
 

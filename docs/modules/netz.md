@@ -30,8 +30,10 @@ node server/sync-server.mjs            # Referenz-Server (ohne Abhängigkeiten),
 
 ```bash
 npx vitest run tests/unit/m11.test.ts tests/unit/m12.test.ts
-npm run build && npx playwright test tests/e2e/m11-shared.spec.ts tests/e2e/m12-live.spec.ts
+npm run build && npx playwright test tests/e2e/netz.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 ## Regeln
 

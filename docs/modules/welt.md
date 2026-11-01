@@ -42,8 +42,10 @@ Im Spiel: `?seed=test&test=1`. `window.__game.teleport(tx, ty)` springt an eine 
 
 ```bash
 npx vitest run tests/unit/world.test.ts tests/unit/m19.test.ts tests/unit/m20.test.ts tests/unit/m24.test.ts
-npm run build && npx playwright test tests/e2e/m1-world.spec.ts tests/e2e/m2-avatar.spec.ts tests/e2e/m20-fog.spec.ts tests/e2e/m24-terrain.spec.ts
+npm run build && npx playwright test tests/e2e/welt.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 ## Regeln
 

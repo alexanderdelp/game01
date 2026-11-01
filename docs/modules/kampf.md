@@ -49,8 +49,10 @@ Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 
 ```bash
 npx vitest run tests/unit/m4.test.ts tests/unit/m17.test.ts tests/unit/m25.test.ts    # Kampflogik und Zeitwerte
-npm run build && npx playwright test tests/e2e/arena.spec.ts tests/e2e/m4-combat.spec.ts tests/e2e/m17-feel.spec.ts tests/e2e/m14-explore.spec.ts
+npm run build && npx playwright test tests/e2e/kampf.spec.ts tests/e2e/arena.spec.ts
 ```
+
+Grundsätze und Hilfen für Tests (Polling statt Wartezeit, Bewegen nach Bildern, `SHOTS=1`): `docs/TESTS.md`.
 
 Hinweis: Der Testbrowser läuft gedrosselt (ein Hieb dauert dort > 1 s Echtzeit). Abläufe am Spielzustand prüfen
 (`g.swinging`, `g.attacks`), nicht an der Uhr; Zeitwerte per Unit-Test.

@@ -21,7 +21,7 @@ Kontext zu haben – und mehrere Agenten gleichzeitig arbeiten lassen, ohne dass
 | **Kampf** | `src/combat`, `src/arena`, `src/entities/{PlayerCombat,Enemy,Actor}.ts` | `npm run arena` | [kampf.md](kampf.md) |
 | **Welt** (Gelände, Höhen, Sicht, Darstellung) | `src/world` (ohne `meta.ts`, `npcs.ts`), `src/render` (ohne `TownDecor`, `Markers`), `src/scenes/world/WorldSight.ts` | `tools/preview-area.ts`, `preview-map.ts`, `biome-stats.ts` | [welt.md](welt.md) |
 | **Weltenbau** (Reiche, Orte, lebendige Welt) | `src/world/{meta,npcs}.ts`, `src/sim`, `src/state/worldState.ts`, `src/render/{TownDecor,Markers}.ts`, `src/entities/NpcManager.ts` | Unit-Tests | [weltenbau.md](weltenbau.md) |
-| **Inhalte** (Quests, Gespräche) | `src/quests`, `src/scenes/world/WorldTalk.ts` | Unit-Tests, E2E m7/m15 | [inhalte.md](inhalte.md) |
+| **Inhalte** (Quests, Gespräche) | `src/quests`, `src/scenes/world/WorldTalk.ts` | Unit-Tests, `tests/e2e/inhalte.spec.ts` | [inhalte.md](inhalte.md) |
 | **Figur** (Völker, Aussehen, Ausrüstung, Fortschritt) | `src/character`, `src/rpg`, `src/entities/HeroController.ts`, `src/scenes/CreateScene.ts`, `src/ui/HeroPanel.ts` | Erschaffungsbildschirm | [figur.md](figur.md) |
 | **Oberfläche** (HUD, Karte, Menüs, Klang) | `src/scenes/{UIScene,TitleScene}.ts`, `src/ui`, `src/audio` | Spiel in Handy- und Laptop-Größe | [oberflaeche.md](oberflaeche.md) |
 | **Netz** (geteilte Welt, Live) | `src/net`, `src/state/{share,sync}.ts`, `src/entities/RemotePlayers.ts`, `src/scenes/world/WorldNet.ts`, `server/` | `node server/sync-server.mjs` | [netz.md](netz.md) |

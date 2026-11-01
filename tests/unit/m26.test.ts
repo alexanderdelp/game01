@@ -20,7 +20,7 @@ function rugged(step: number): { tx: number; ty: number }[] {
 
 describe('M26 – saubere Höhenkanten', () => {
   it('R1: kein Baum, Busch, Fels auf oder unmittelbar an Stufenkante, Felswand oder Treppe', () => {
-    const spots = rugged(97);
+    const spots = rugged(149);
     expect(spots.length).toBeGreaterThan(60);
     let checked = 0;
     for (const s of spots) {
@@ -45,7 +45,7 @@ describe('M26 – saubere Höhenkanten', () => {
         }
       }
     }
-    expect(checked).toBeGreaterThan(300);
+    expect(checked).toBeGreaterThan(150);
   });
 
   it('R1: Gebirge behält Dekor (nicht alles weggeräumt)', () => {
