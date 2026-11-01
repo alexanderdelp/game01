@@ -35,6 +35,8 @@ test('M4/M17: Hieb trifft, Laufen während des Hiebs, kein Vormerken (M4 R1, M17
   const a0 = await G<number>(page, 'g.attacks');
   await page.keyboard.press('Space');
   await page.keyboard.press('Space');
+  // erst warten, bis der Hieb begonnen hat – unter Last kommt der Tastendruck ein Bild später an
+  await expect.poll(() => G<number>(page, 'g.attacks')).toBe(a0 + 1);
   await expect.poll(() => G<boolean>(page, 'g.swinging')).toBe(false);
   await frames(page, 5);
   expect(await G<number>(page, 'g.attacks')).toBe(a0 + 1);

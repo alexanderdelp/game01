@@ -14,11 +14,11 @@ test('M7: Quest annehmen, Questlog, abgeben, Neuladen (R3, R5)', async ({ page }
   await talkTo(page, { id: giverId }, (d) => !!d.choices);
   await shot(page, 'm7-offer');
   await page.keyboard.press('1');
-  expect(await G<number>(page, 'g.quests.active.length')).toBe(1);
+  await expect.poll(() => G<number>(page, 'g.quests.active.length')).toBe(1);
   await shot(page, 'm7-tracker');
 
   await page.keyboard.press('l');
-  expect(await G<boolean>(page, 'g.questLogOpen')).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.questLogOpen')).toBe(true);
   await shot(page, 'm7-log');
   await page.keyboard.press('l');
 

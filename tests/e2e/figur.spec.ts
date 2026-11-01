@@ -73,7 +73,7 @@ test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M
   const legs = await G<string>(page, "g.giveItem('legs')");
   const color = await G<string>(page, `g.hero.inventory.find((i) => i.id === "${legs}").color`);
   await page.keyboard.press('c');
-  expect(await G<boolean>(page, 'g.panelOpen')).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.panelOpen')).toBe(true);
   expect(await G<boolean>(page, `g.clickPanel('inv-${await inv(legs)}')`)).toBe(true);
   expect(await G<boolean>(page, "g.clickPanel('equip')")).toBe(true);
   expect(await G<string>(page, 'g.hero.equipped.legs.id')).toBe(legs);
@@ -101,7 +101,7 @@ test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M
   const hpLow = await G<number>(page, 'g.hp');
   const potions = await G<number>(page, 'g.hero.potions');
   await page.keyboard.press('q');
-  expect(await G<number>(page, 'g.hp')).toBeGreaterThan(hpLow + 30);
+  await expect.poll(() => G<number>(page, 'g.hp')).toBeGreaterThan(hpLow + 30);
 
   // Barbier: neue Frisur gegen 20 Splitter, Volk bleibt
   const s = await G<{ tx: number; ty: number; id: number }>(page, '(() => { const t = g.meta.settlements[0]; return { tx: t.tx, ty: t.ty, id: t.id }; })()');

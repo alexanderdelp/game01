@@ -25,7 +25,7 @@ test('Titel, neue Welt, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13
 
   // Zurück zum Titel: Welt steht unter "Weiterspielen"
   await page.keyboard.press('h');
-  expect(await G<boolean>(page, 'g.menuOpen')).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.menuOpen')).toBe(true);
   expect(await G<boolean>(page, "g.clickPanel('menu-11')")).toBe(true);
   await expect.poll(() => G<string>(page, 'g.scene')).toBe('title');
   await shot(page, 'm13-title2');
@@ -50,7 +50,7 @@ test('M22: Weltkarte zoomen und verschieben, feiner Ausschnitt ab 4× (R1, R2)',
   // Zoomen per Knopf und Tastatur
   expect(await G<boolean>(page, "g.clickPanel('map-zoom-in')")).toBe(true);
   await page.keyboard.press('+');
-  expect(await G<number>(page, 'g.mapZoom')).toBe(4);
+  await expect.poll(() => G<number>(page, 'g.mapZoom')).toBe(4);
   await expect.poll(() => G<number>(page, 'g.mapDetail'), { timeout: 30_000 }).toBeGreaterThan(0);
   await shot(page, 'm22-zoom4');
   for (let i = 0; i < 3; i++) await G(page, 'g.mapZoomBy(1)');
@@ -67,7 +67,7 @@ test('M22: Weltkarte zoomen und verschieben, feiner Ausschnitt ab 4× (R1, R2)',
   await expect.poll(() => G<number>(page, 'g.mapZoom')).toBe(8);
   expect(await G<number>(page, 'g.zoom')).toBe(zoomBefore);
   await page.keyboard.press('m');
-  expect(await G<boolean>(page, 'g.mapOpen')).toBe(false);
+  await expect.poll(() => G<boolean>(page, 'g.mapOpen')).toBe(false);
   expect(errors).toEqual([]);
 });
 
@@ -101,7 +101,7 @@ test.describe('Handy', () => {
     // Menü öffnet Fenster; Aktionsknopf
     await G(page, "g.clickPanel('action')");
     await page.keyboard.press('h');
-    expect(await G<boolean>(page, 'g.menuOpen')).toBe(true);
+    await expect.poll(() => G<boolean>(page, 'g.menuOpen')).toBe(true);
     await shot(page, 'm13-menu');
     expect(await G<boolean>(page, "g.clickPanel('menu-0')")).toBe(true);
     expect(await G<boolean>(page, 'g.panelOpen')).toBe(true);

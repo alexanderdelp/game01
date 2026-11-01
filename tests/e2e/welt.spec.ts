@@ -29,10 +29,10 @@ test('M1/M2: Welt aus Seed, Zoom, Karte, Laufen in alle Richtungen (M1 R7–R10,
   await shot(page, 'm1-zoom1');
   await expect.poll(async () => (await state(page)).mapReady, { timeout: 30_000 }).toBe(true);
   await page.keyboard.press('m');
-  expect((await state(page)).mapOpen).toBe(true);
+  await expect.poll(async () => (await state(page)).mapOpen).toBe(true);
   await shot(page, 'm1-map');
   await page.keyboard.press('m');
-  expect((await state(page)).mapOpen).toBe(false);
+  await expect.poll(async () => (await state(page)).mapOpen).toBe(false);
   expect(errors).toEqual([]);
 });
 

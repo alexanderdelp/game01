@@ -19,7 +19,7 @@ test('M3: NPCs wandern und lassen sich ansprechen (R3, R5)', async ({ page }) =>
   await talkTo(page, { id: before[0].id });
   await shot(page, 'm3-dialog');
   await page.keyboard.press('e');
-  expect(await G<unknown>(page, 'g.dialog')).toBeNull();
+  await expect.poll(() => G<unknown>(page, 'g.dialog')).toBeNull();
   expect(errors).toEqual([]);
 });
 
@@ -40,7 +40,7 @@ test('M8/M15: Hauptstadt ohne Gegner, Treueschwur, Händler mit Gruß, Rivale ve
   expect(d.choices?.[0]).toBe('Treue schwören');
   await shot(page, 'm15-ruler');
   await page.keyboard.press('1');
-  expect(await G<number | null>(page, 'g.pledge()')).toBe(capA.realm);
+  await expect.poll(() => G<number | null>(page, 'g.pledge()')).toBe(capA.realm);
 
   // Händler im eigenen Reich: grüßt den Gefolgsmann und verkauft einen Trank
   await G(page, 'g.hero.shards = 50');
@@ -49,7 +49,7 @@ test('M8/M15: Hauptstadt ohne Gegner, Treueschwur, Händler mit Gruß, Rivale ve
   await shot(page, 'm8-merchant');
   const potions = await G<number>(page, 'g.hero.potions');
   await page.keyboard.press('1');
-  expect(await G<number>(page, 'g.hero.potions')).toBe(potions + 1);
+  await expect.poll(() => G<number>(page, 'g.hero.potions')).toBe(potions + 1);
   expect(await G<number>(page, 'g.hero.shards')).toBeLessThan(50);
   await page.keyboard.press('e');
 
@@ -81,7 +81,7 @@ test('M8: Truhe öffnen, Obelisk lesen, Chronik (R4)', async ({ page }) => {
   await shot(page, 'm8-obelisk');
   await page.keyboard.press('e');
   await page.keyboard.press('b');
-  expect(await G<boolean>(page, 'g.chronicleOpen')).toBe(true);
+  await expect.poll(() => G<boolean>(page, 'g.chronicleOpen')).toBe(true);
   await shot(page, 'm8-chronicle');
   await page.keyboard.press('b');
   expect(errors).toEqual([]);
