@@ -59,7 +59,7 @@
 | `oberflaeche.spec.ts` | Titel/Hinweise/Minimap · Weltkarte zoomen · Handy (Stick, Menü, Ton, Minimap) |
 | `netz.spec.ts` | Link teilen · Abgleich über Server · Live-Spiel |
 | `kampf.spec.ts` | Hieb + Spielgefühl · Sterben · Splitterblitz · Ruine · Touch-Angriff |
-| `arena.spec.ts` | Kampf-Arena: Grundfunktionen, Aufbauten, Umweg, Waffen, Gegner setzen, Diagonal (M28) |
+| `arena.spec.ts` | Kampf-Arena: Grundfunktionen, Aufbauten, Umweg, Waffen, Gegner setzen, Diagonal (M28), Block/Parade/Ausweichen (M31) |
 
 ## Abdeckung je Anforderung
 

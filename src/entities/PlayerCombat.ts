@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { PLAYER_SWING, SPELL, attackZone, knockback, regen, rollDamage, zoneBounds, zoneHits, type Stats, type Vec } from '../combat/combat';
+import { Dodge, PLAYER_BLOCK, PLAYER_DODGE, PLAYER_SWING, SPELL, aimFrom, attackZone, guardAgainst, knockback, regen, rollDamage, zoneBounds, zoneHits, type GuardKind, type Stats, type Vec } from '../combat/combat';
 import { CREATURES } from '../render/textures';
 import { mulberry32 } from '../world/rng';
 import type { Actor, MoveEnv } from './Actor';
-import type { EnemyManager } from './Enemy';
+import { burst, type Enemy, type EnemyManager } from './Enemy';
 
 const INVULN = 0.8;
 
@@ -46,6 +46,9 @@ function ensureArcTextures(scene: Phaser.Scene): void {
   }
 }
 
+/** Abstand der Nachbilder beim Ausweichen (s). */
+const GHOST_EVERY = 0.03;
+
 /** Kampfzustand des Spielers: Angriff, Leben, Unverwundbarkeit, Tod und Wiedererwachen. */
 export class PlayerCombat {
   readonly stats: Stats = { maxHp: 100, hp: 100, attack: 14, defense: 2 };
@@ -63,6 +66,23 @@ export class PlayerCombat {
   private arc?: { img: Phaser.GameObjects.Image; aim: Vec; t: number };
   /** Anzahl gezeigter Schwung-Bögen (für Tests). */
   arcs = 0;
+
+  /**
+   * Blocken, Parieren und Ausweichen (M31). Vorerst nur in der Kampf-Arena an, bis der Nutzer das Gefühl freigibt;
+   * aus = Kampf wie bisher (Welt unverändert).
+   */
+  guardEnabled = false;
+  /** Block-Taste gehalten (Wunsch); wirkt, sobald kein Hieb läuft */
+  private blockWanted = false;
+  /** Wie lange der Block schon gehoben ist (s), null = kein Block */
+  blockFor: number | null = null;
+  readonly dodge = new Dodge();
+  private ghostT = 0;
+  private shield?: Phaser.GameObjects.Graphics;
+  /** Kennzahlen (Arena-Statistik, Tests) */
+  readonly guardStats = { blocks: 0, parries: 0, dodges: 0, evaded: 0 };
+  /** Letztes Ergebnis eines Treffers am Spieler (Tests) */
+  lastGuard: GuardKind | 'evaded' | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -83,7 +103,7 @@ export class PlayerCombat {
 
   /** Fernzauber „Splitterblitz“: Kristallgeschoss in Zielrichtung (8 Richtungen). */
   cast(): void {
-    if (!this.alive || this.actor.busy || this.spellCooldown > 0) return;
+    if (!this.alive || this.actor.busy || this.spellCooldown > 0 || this.blocking || this.dodge.active) return;
     this.spellCooldown = SPELL.cooldown;
     this.actor.playAction('spellcast');
     this.scene.events.emit('sfx', 'cast');
@@ -150,13 +170,106 @@ export class PlayerCombat {
     this.stats.hp = Math.min(this.stats.maxHp, hp);
   }
 
-  /** Blockiert Rückstoß oder eine Aktion gerade die Steuerung? */
+  /** Blockiert Rückstoß, Ausweichen oder eine Aktion gerade die Steuerung? */
   get locked(): boolean {
-    return !this.alive || (this.actor.busy && !this.swinging) || this.knock.t > 0;
+    return !this.alive || (this.actor.busy && !this.swinging) || this.knock.t > 0 || this.dodge.active;
+  }
+
+  /** Schonzeit nach einem Treffer beenden (Testtreffer in der Arena). */
+  clearInvuln(): void {
+    this.invuln = 0;
+  }
+
+  /** Block ist gehoben (M31). */
+  get blocking(): boolean {
+    return this.blockFor !== null;
+  }
+
+  /** Tempofaktor fürs Laufen (Blocken verlangsamt). */
+  get moveFactor(): number {
+    return this.blocking ? PLAYER_BLOCK.moveFactor : 1;
+  }
+
+  /** Block-Taste gedrückt / losgelassen (M31). */
+  setBlock(down: boolean): void {
+    this.blockWanted = down && this.guardEnabled;
+    if (!this.blockWanted) this.blockFor = null;
+  }
+
+  /**
+   * Ausweichen (M31) in Eingaberichtung, ohne Eingabe in Zielrichtung. Sofort oder gar nicht (kein Vormerken):
+   * nicht während eines Hiebs, eines Rückstoßes oder der Abklingzeit.
+   */
+  dodgeStart(dx: number, dy: number): boolean {
+    if (!this.guardEnabled || !this.alive || this.actor.busy || this.knock.t > 0) return false;
+    const dir = aimFrom(dx, dy) ?? this.actor.aim;
+    if (!this.dodge.start(dir, PLAYER_DODGE)) return false;
+    this.guardStats.dodges++;
+    this.ghostT = 0;
+    this.ghost();
+    this.scene.events.emit('sfx', 'dodge');
+    return true;
+  }
+
+  /** Nachbild der Figur an der aktuellen Stelle, verblasst schnell. */
+  private ghost(): void {
+    const sp = this.actor.sprite;
+    const g = this.scene.add
+      .image(sp.x, sp.y, sp.texture.key, sp.frame.name)
+      .setOrigin(sp.originX, sp.originY)
+      .setFlipX(sp.flipX)
+      .setTintFill(0xa8f4ff)
+      .setAlpha(0.6)
+      .setDepth(this.actor.y - 1);
+    this.scene.tweens.add({ targets: g, alpha: 0, duration: 240, onComplete: () => g.destroy() });
+  }
+
+  /** Schild-Effekt vor der Figur in Zielrichtung (LPC hat keine Block-Animation). */
+  private drawShield(): void {
+    if (!this.blocking || !this.alive) {
+      this.shield?.setVisible(false);
+      return;
+    }
+    if (!this.shield) this.shield = this.scene.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    const g = this.shield.setVisible(true).clear();
+    const a = Math.atan2(this.actor.aim.y, this.actor.aim.x);
+    const half = (Math.min(PLAYER_BLOCK.halfAngle, 120) * Math.PI) / 180;
+    const parry = (this.blockFor ?? 1) <= PLAYER_BLOCK.parryWindow;
+    const cx = this.actor.x;
+    const cy = this.actor.y - 24;
+    // Flacher Bogen (Ellipse, Draufsicht) auf Körperhöhe, im Parier-Fenster heller und dicker
+    const ring = (r: number, span: number) => {
+      const pts: Phaser.Math.Vector2[] = [];
+      for (let i = 0; i <= 12; i++) {
+        const t = a - span + (2 * span * i) / 12;
+        pts.push(new Phaser.Math.Vector2(Math.round(cx + Math.cos(t) * r), Math.round(cy + Math.sin(t) * r * 0.7)));
+      }
+      return pts;
+    };
+    g.lineStyle(parry ? 5 : 3, parry ? 0xfff2a0 : 0x7fd8ff, parry ? 0.95 : 0.75);
+    g.strokePoints(ring(21, half), false);
+    g.lineStyle(1, 0xffffff, parry ? 0.9 : 0.5);
+    g.strokePoints(ring(24, half * 0.8), false);
+    // Nach oben hinter der Figur, sonst über allem (ein Gegner direkt davor verdeckte den Schild)
+    g.setDepth(this.actor.aim.y < -0.1 ? this.actor.y - 1 : 1_000_000 - 3);
+  }
+
+  /** Funken bei einer Parade bzw. ein kurzer Schimmer bei einem geblockten Treffer. */
+  private guardFlash(kind: 'block' | 'parry', fromX: number, fromY: number): void {
+    const a = Math.atan2(fromY - this.actor.y, fromX - this.actor.x);
+    const x = this.actor.x + Math.cos(a) * 20;
+    const y = this.actor.y - 22 + Math.sin(a) * 14;
+    if (kind === 'parry') {
+      burst(this.scene, x, y, 0xffd84a);
+      burst(this.scene, x, y, 0xffffff);
+    } else {
+      const r = this.scene.add.circle(x, y, 6, 0x9fe8ff, 0.8).setBlendMode(Phaser.BlendModes.ADD).setDepth(1_000_000);
+      this.scene.tweens.add({ targets: r, scale: 2.2, alpha: 0, duration: 200, onComplete: () => r.destroy() });
+    }
   }
 
   attack(): void {
-    if (!this.alive || this.actor.busy || this.cooldown > 0) return;
+    if (!this.alive || this.actor.busy || this.cooldown > 0 || this.blocking || this.dodge.active) return;
     this.swinging = true;
     this.actor.playAction(
       'slash',
@@ -222,16 +335,46 @@ export class PlayerCombat {
     this.placeArc();
   }
 
-  hurt(amount: number, fromX: number, fromY: number, ignoreInvuln = false): void {
+  /** Treffer am Spieler; `source` = angreifender Gegner (wankt bei einer Parade, M31). */
+  hurt(amount: number, fromX: number, fromY: number, ignoreInvuln = false, source?: Enemy): void {
     if (!this.alive || (this.invuln > 0 && !ignoreInvuln)) return;
-    const dmg = Math.max(1, amount - Math.floor(this.stats.defense / 2));
+    if (this.guardEnabled && !ignoreInvuln && this.dodge.invulnerable(PLAYER_DODGE)) {
+      // Durch den Angriff hindurch ausgewichen
+      this.guardStats.evaded++;
+      this.lastGuard = 'evaded';
+      this.scene.events.emit('guard', { kind: 'evaded', x: this.actor.x, y: this.actor.y - 44 });
+      return;
+    }
+    const g = this.guardEnabled ? guardAgainst(this.actor.aim, this.actor.x, this.actor.y - 18, fromX, fromY, this.blockFor) : { kind: 'hit' as const, damageFactor: 1, knockFactor: 1 };
+    this.lastGuard = g.kind;
+    if (g.kind === 'parry') {
+      this.guardStats.parries++;
+      this.invuln = 0.25;
+      source?.stagger(PLAYER_BLOCK.stagger, this.actor.x, this.actor.y);
+      this.guardFlash('parry', fromX, fromY);
+      this.scene.cameras.main.shake(60, 0.002);
+      this.scene.events.emit('sfx', 'parry');
+      this.scene.events.emit('guard', { kind: 'parry', x: this.actor.x, y: this.actor.y - 44 });
+      return;
+    }
+    const raw = Math.max(1, amount - Math.floor(this.stats.defense / 2));
+    const dmg = Math.round(raw * g.damageFactor);
     this.stats.hp = Math.max(0, this.stats.hp - dmg);
-    this.invuln = INVULN;
     this.sinceHit = 0;
-    const k = knockback(fromX, fromY, this.actor.x, this.actor.y, 28);
+    const k = knockback(fromX, fromY, this.actor.x, this.actor.y, 28 * g.knockFactor);
     this.knock = { x: k.x, y: k.y, t: PLAYER_SWING.knockLock };
-    this.scene.cameras.main.shake(120, 0.004);
-    this.scene.events.emit('damage', { x: this.actor.x, y: this.actor.y - 44, amount: dmg, color: '#ff6070' });
+    if (g.kind === 'block') {
+      // Geblockt: kurze Schonzeit statt der vollen, damit man im Block weiter reagieren kann
+      this.guardStats.blocks++;
+      this.invuln = 0.3;
+      this.guardFlash('block', fromX, fromY);
+      this.scene.events.emit('sfx', 'block');
+      this.scene.events.emit('guard', { kind: 'block', x: this.actor.x, y: this.actor.y - 56 });
+    } else {
+      this.invuln = INVULN;
+      this.scene.cameras.main.shake(120, 0.004);
+    }
+    this.scene.events.emit('damage', { x: this.actor.x, y: this.actor.y - 44, amount: dmg, color: g.kind === 'block' ? '#9fe8ff' : '#ff6070' });
     if (this.stats.hp <= 0) this.die();
   }
 
@@ -249,11 +392,31 @@ export class PlayerCombat {
         this.alive = true;
         this.actor.busy = false;
         this.swinging = false;
+        this.blockFor = null;
+        this.dodge.t = -1;
         this.invuln = 1.5;
         cam.fadeIn(600, 0, 0, 0);
         this.scene.events.emit('player-respawned');
       });
     });
+  }
+
+  /** Block heben/halten und Ausweich-Sprung (mit Kollision über `MoveEnv`) fortschreiben. */
+  private updateGuard(dt: number): void {
+    if (!this.guardEnabled) return;
+    const canBlock = this.blockWanted && this.alive && !this.actor.busy && !this.dodge.active;
+    this.blockFor = canBlock ? (this.blockFor === null ? 0 : this.blockFor + dt) : null;
+    this.actor.holdAim = this.blocking && PLAYER_BLOCK.holdAim >= 0.5;
+    if (this.dodge.active) {
+      const s = this.dodge.step(dt, PLAYER_DODGE);
+      this.actor.push(s.x, s.y, this.chunks);
+      this.ghostT += dt;
+      if (this.ghostT >= GHOST_EVERY) {
+        this.ghostT = 0;
+        this.ghost();
+      }
+    } else this.dodge.step(dt, PLAYER_DODGE);
+    this.drawShield();
   }
 
   update(dt: number): void {
@@ -268,6 +431,7 @@ export class PlayerCombat {
       this.knock.t -= dt;
       this.actor.push((this.knock.x * dt) / PLAYER_SWING.knockLock, (this.knock.y * dt) / PLAYER_SWING.knockLock, this.chunks);
     }
+    this.updateGuard(dt);
     this.stats.hp = regen(this.stats.hp, this.stats.maxHp, this.sinceHit, dt, 4, this.regenRate);
     // Blinken während der Unverwundbarkeit
     if (this.alive && this.invuln > 0) {

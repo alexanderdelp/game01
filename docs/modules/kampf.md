@@ -21,13 +21,15 @@ Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 - **Regler für alle Kampfwerte, live**: Lauftempo, Hieb-Bildrate, Treffer-Zeitpunkt, Pause nach dem Hieb, Tempo beim
   Hieb, Kontrollverlust bei Treffern. Werte bleiben im Browser gespeichert.
 - „Werte kopieren“ erzeugt den Code für `src/combat/combat.ts` → so wandern gute Einstellungen ins Spiel.
-- Statistik: Hiebe, Treffer, Schaden/s, erlittener Schaden, Hieb-Zyklus.
+- Statistik: Hiebe, Treffer, Schaden/s, erlittener Schaden, Blocks/Paraden/Ausweichen, Hieb-Zyklus.
+- **Blocken/Parieren/Ausweichen** (M31, vorerst nur Arena): J Hieb, K Zauber, L halten = Block, Leertaste = Ausweichen.
+  Schalter `PlayerCombat.guardEnabled`.
 
 ## Dateien des Moduls
 
 | Datei | Inhalt |
 |---|---|
-| `src/combat/combat.ts` | reine Kampflogik: Schaden, Trefferboxen, Rückstoß, Stufen, **`PLAYER_SWING`, `PLAYER_MOVE`** |
+| `src/combat/combat.ts` | reine Kampflogik: Schaden, Trefferboxen, Rückstoß, Stufen, **`PLAYER_SWING`, `PLAYER_MOVE`**, Block/Ausweichen (`PLAYER_BLOCK`, `PLAYER_DODGE`, `guardAgainst`, `Dodge`) |
 | `src/combat/enemies.ts` | Gegnerarten (`ENEMIES`) und seed-basiertes Auftreten |
 | `src/combat/tuning.ts` | Regler-Definitionen der Arena, Export als Code |
 | `src/entities/PlayerCombat.ts` | Hieb, Zauber, Treffer, Tod des Spielers |
@@ -40,7 +42,7 @@ Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 
 - **`CombatTerrain`** (`Enemy.ts`): alles, was der Kampf vom Gelände braucht (`biomeAt`, `blocked`,
   `terrainBlocked`, `speedAt`, `isWalkable`). Welt: Chunks + Weltgenerator; Arena: flache Fläche mit Säulen.
-- **`CombatCtx`**: Gelände, Spielerfigur, Schaden an den Spieler, Geschosse, Mitspieler.
+- **`CombatCtx`**: Gelände, Spielerfigur, Schaden an den Spieler (`hurtPlayer(…, source?)`, Angreifer für die Parade), Geschosse, Mitspieler.
 - **Ereignisse** der Szene: `player-attack`, `enemy-hit`, `damage`, `defeated`, `player-died`, `sfx` – die Welt
   hängt daran EP, Beute, Quests, Klänge und Weltzustand. Namen und Daten nicht ohne Absprache ändern.
 - `EnemyManager.add(spawn)` setzt Gegner direkt ein; mit `source` erscheinen sie seed-basiert mit den Chunks.
@@ -48,7 +50,7 @@ Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
 ## Tests
 
 ```bash
-npx vitest run tests/unit/m4.test.ts tests/unit/m17.test.ts tests/unit/m25.test.ts    # Kampflogik und Zeitwerte
+npx vitest run tests/unit/m4.test.ts tests/unit/m17.test.ts tests/unit/m25.test.ts tests/unit/m28.test.ts tests/unit/m31.test.ts    # Kampflogik und Zeitwerte
 npm run build && npx playwright test tests/e2e/kampf.spec.ts tests/e2e/arena.spec.ts
 ```
 
