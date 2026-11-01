@@ -36,6 +36,9 @@ export function installDebugHooks(ws: WorldScene, spawn: { tx: number; ty: numbe
     };
     debugState.fogFraction = () => ws.fog.fraction;
     debugState.fogReveal = (tx: number, ty: number, r: number) => void ws.fog.reveal(tx, ty, r);
+    debugState.gmSet = (on: boolean) => ws.setGm(on);
+    debugState.walkable = (tx: number, ty: number) => ws.world.isWalkable(tx, ty);
+    debugState.gmTeleport = (tx: number, ty: number) => ws.gmTeleport(tx, ty);
     debugState.teleport = (tx: number, ty: number) => ws.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 1);
     debugState.findEnemy = (kind?: string) => {
       const c = { x: Math.floor(spawn.tx / CHUNK_TILES), y: Math.floor(spawn.ty / CHUNK_TILES) };

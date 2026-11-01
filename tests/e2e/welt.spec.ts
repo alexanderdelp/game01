@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { G, hold, open, saveAndReload, shot, state, tp, walk } from './helpers';
+import { G, frames, hold, open, saveAndReload, shot, skipCreation, state, tp, waitReady, walk } from './helpers';
 
 // Modul Welt: Laden aus dem Seed, Bewegung, Grenzen, Höhen/Sicht, Fog of War.
 // Generierung, Kollision, Höhen und Sicht selbst prüfen die Unit-Tests (world, m2, m19, m20, m24, m26).
@@ -85,5 +85,43 @@ test('M24: Klippen versperren den Weg, Sichtschatten verdeckt Gelände und Gegne
   const mismatch = await G<number>(page, 'g.enemies.filter((e) => e.seen !== g.seesTile(Math.floor(e.x / 32), Math.floor((e.y - 4) / 32))).length');
   expect(mismatch).toBe(0);
   await shot(page, 'm24-klippe');
+  expect(errors).toEqual([]);
+});
+
+test('M29: Spielleiter-Modus – nur mit ?gm=1, fliegt über Wasser, hinterlässt keine Spuren (R1, R2, R4)', async ({ page }) => {
+  // Ohne ?gm=1 nicht erreichbar
+  const errors = await open(page, 'gm-test');
+  await G(page, 'g.gmSet(true)');
+  expect(await G<boolean>(page, 'g.gm')).toBe(false);
+  expect(await G<boolean>(page, 'g.gmTeleport(10, 10)')).toBe(false);
+
+  await page.goto('/?seed=gm-test&test=1&gm=1');
+  await skipCreation(page);
+  await waitReady(page);
+  await page.keyboard.press('F2');
+  await expect.poll(() => G<boolean>(page, 'g.gm')).toBe(true);
+
+  // Über das Wasser hinaus fliegen
+  const shore = await G<{ tx: number; ty: number }>(page, 'g.findShore()');
+  await G(page, `g.gmTeleport(${shore.tx}, ${shore.ty})`);
+  await hold(page, 'd', 30);
+  const over = (await state(page)).focus;
+  expect(over.tx).toBeGreaterThan(shore.tx + 1);
+  expect(await G<boolean>(page, `g.walkable(${over.tx}, ${over.ty})`)).toBe(false);
+
+  // Fernes Ziel: nichts wird aufgedeckt, kein Schaden
+  const s = await G<{ tx: number; ty: number }>(page, '({ ...g.spawn })');
+  const far = { tx: s.tx + 900, ty: s.ty - 400 };
+  await G(page, `g.gmTeleport(${far.tx}, ${far.ty})`);
+  await expect.poll(async () => (await state(page)).focus.tx).toBe(far.tx);
+  await frames(page, 10);
+  expect(await G<boolean>(page, `g.fogKnows(${far.tx}, ${far.ty})`)).toBe(false);
+
+  // Zurück übers Wasser, ausschalten: Landung auf begehbarem Boden
+  await G(page, `g.gmTeleport(${over.tx}, ${over.ty})`);
+  await page.keyboard.press('F2');
+  await expect.poll(() => G<boolean>(page, 'g.gm')).toBe(false);
+  const land = (await state(page)).focus;
+  expect(await G<boolean>(page, `g.walkable(${land.tx}, ${land.ty})`)).toBe(true);
   expect(errors).toEqual([]);
 });

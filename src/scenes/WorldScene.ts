@@ -36,6 +36,8 @@ import { WorldTalk } from './world/WorldTalk';
 import { installDebugHooks } from './world/worldDebug';
 
 const ZOOMS = [1, 2, 3, 4];
+/** Fliegen im Spielleiter-Modus (M29): nichts blockiert, dreifaches Tempo. */
+const GM_FLIGHT = { blocked: () => false, speedAt: () => 3 };
 
 interface SavedPlayer {
   x: number;
@@ -171,7 +173,9 @@ export class WorldScene extends Phaser.Scene {
       },
       player: this.player,
       playerAlive: true,
-      hurtPlayer: (a, x, y) => this.combat.hurt(a, x, y),
+      hurtPlayer: (a, x, y) => {
+        if (!this.gm) this.combat.hurt(a, x, y);
+      },
       fireBolt: (x, y, vx, vy, d) => this.enemies.fireBolt(x, y, vx, vy, d),
       others: [],
     };
@@ -215,6 +219,10 @@ export class WorldScene extends Phaser.Scene {
       }
     });
     kb.on('keydown-ENTER', () => this.chat());
+    kb.on('keydown-F2', (e: KeyboardEvent) => {
+      e.preventDefault();
+      this.setGm(!this.gm);
+    });
     kb.on('keydown-ONE', () => this.talk.pendingActions.length > 0 && this.choose(0));
     kb.on('keydown-TWO', () => this.talk.pendingActions.length > 1 && this.choose(1));
     kb.on('keydown-THREE', () => this.talk.pendingActions.length > 2 && this.choose(2));
@@ -337,6 +345,9 @@ export class WorldScene extends Phaser.Scene {
   private lastTown = -1;
 
   private markerTimer = 0;
+  /** Spielleiter-Modus (M29): nur mit `?gm=1` erreichbar. */
+  readonly gmAllowed = new URLSearchParams(location.search).has('gm');
+  gm = false;
 
   cast(): void {
     if (this.dialogOpen) return this.endTalk();
@@ -350,6 +361,36 @@ export class WorldScene extends Phaser.Scene {
 
   get saveKey(): string {
     return `player:${this.world.seedName}`;
+  }
+
+  /** Spielleiter-Modus an/aus (M29): fliegen, unverwundbar, keine Spuren in Fog/Weltzustand. */
+  setGm(on: boolean): void {
+    if (!this.gmAllowed || on === this.gm) return;
+    this.gm = on;
+    this.sight.gm = on;
+    if (!on) {
+      // Nicht über Wasser oder in einer Klippe landen: nächste begehbare Kachel suchen
+      const t = this.player.tile;
+      let best: { tx: number; ty: number } | null = null;
+      for (let r = 0; r < 64 && !best; r++)
+        for (let dy = -r; dy <= r && !best; dy++)
+          for (let dx = -r; dx <= r; dx++)
+            if (Math.max(Math.abs(dx), Math.abs(dy)) === r && this.world.isWalkable(t.tx + dx, t.ty + dy)) {
+              best = { tx: t.tx + dx, ty: t.ty + dy };
+              break;
+            }
+      if (best) this.player.setPosition(best.tx * TILE_PX + TILE_PX / 2, best.ty * TILE_PX + TILE_PX - 1);
+    }
+    this.events.emit('gm-changed', on);
+    this.events.emit('banner', { title: on ? 'Spielleiter-Modus' : 'Spielleiter-Modus aus', sub: on ? 'Fliegen · unverwundbar · Karte (M): Klick teleportiert · F2: aus' : 'Zurück auf festem Boden' });
+  }
+
+  /** Teleport an eine beliebige Kachel – nur im Spielleiter-Modus (M29). */
+  gmTeleport(tx: number, ty: number): boolean {
+    if (!this.gm) return false;
+    this.endTalk();
+    this.player.setPosition(Phaser.Math.Clamp(tx, 0, WORLD_TILES - 1) * TILE_PX + TILE_PX / 2, Phaser.Math.Clamp(ty, 0, WORLD_TILES - 1) * TILE_PX + TILE_PX - 1);
+    return true;
   }
 
   zoom(dir: number): void {
@@ -391,12 +432,14 @@ export class WorldScene extends Phaser.Scene {
     }
     const dt = Math.min(delta, 50) / 1000;
     this.chunks.update(this.cameras.main.worldView);
-    if (this.combat.locked) this.player.update(0, 0, false, dt, this.chunks);
+    if (this.gm) this.player.update(dx, dy, sprint, dt, GM_FLIGHT);
+    else if (this.combat.locked) this.player.update(0, 0, false, dt, this.chunks);
     else this.player.update(dx, dy, sprint, dt, this.chunks);
     this.combat.update(dt);
     this.hero.update(dt);
     this.markerTimer -= dt;
-    if (this.markerTimer <= 0) {
+    // Im Spielleiter-Modus keine Entdeckungen und Quest-Fortschritte durch Orte (M29)
+    if (this.markerTimer <= 0 && !this.gm) {
       this.markerTimer = 0.5;
       const t = this.player.tile;
       const visited = onPosition(this.hero.quests, t.tx, t.ty);
@@ -462,11 +505,12 @@ export class WorldScene extends Phaser.Scene {
       this.sight.save();
       this.state.flush();
       save(`seen:${this.world.seedName}`, worldNow());
-      save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
+      if (!this.gm) save(this.saveKey, { x: Math.round(this.player.x), y: Math.round(this.player.y), v: WORLD_VERSION } satisfies SavedPlayer);
     }
 
     const f = this.focusTile;
     debugState.focus = f;
+    debugState.gm = this.gm;
     debugState.player = { x: this.player.x, y: this.player.y, facing: this.player.facing, moving: this.player.moving };
     debugState.zoom = this.cameras.main.zoom;
     debugState.chunksLoaded = this.chunks.loadedCount;

@@ -27,6 +27,8 @@ export class WorldSight {
   private readonly tex: Phaser.Textures.CanvasTexture;
   private readonly img: Phaser.GameObjects.Image;
   private last = { tx: -1, ty: -1 };
+  /** Spielleiter-Modus (M29): kein Aufdecken, kein Sichtschatten, alles sichtbar. */
+  gm = false;
 
   constructor(private readonly ws: WorldScene, private readonly world: WorldGen) {
     this.fog = ExploredMap.decode(load<string>(this.key));
@@ -63,6 +65,14 @@ export class WorldSight {
 
   /** Jeden Frame: bei neuer Kachel aufdecken und Sichtfeld neu berechnen; Verdecktes ausblenden. */
   update(): void {
+    if (this.gm) {
+      this.img.setVisible(false);
+      this.sight = null;
+      this.last = { tx: -1, ty: -1 };
+      for (const n of this.ws.npcs.npcs.values()) n.setSeen(true);
+      for (const e of this.ws.enemies.enemies.values()) e.setSeen(true);
+      return;
+    }
     const pt = this.ws.player.tile;
     if (pt.tx !== this.last.tx || pt.ty !== this.last.ty) {
       this.last = pt;

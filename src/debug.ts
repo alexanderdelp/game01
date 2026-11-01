@@ -108,6 +108,11 @@ export const debugState = {
   state: (): unknown => null,
   recordQuest: (_tx: number, _ty: number): void => {},
   travel: (_id: number): boolean => false,
+  /** M29: Spielleiter-Modus */
+  gm: false,
+  gmSet: (_on: boolean): void => {},
+  gmTeleport: (_tx: number, _ty: number): boolean => false,
+  walkable: (_tx: number, _ty: number): boolean => true,
   markers: {} as Record<string, string>,
   choose: (_i: number): void => {},
   dialog: null as { name: string; role: string; text: string; choices?: string[] } | null,
