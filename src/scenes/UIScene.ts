@@ -163,7 +163,24 @@ export class UIScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('talk', onTalk));
 
     this.worldMap = new WorldMap(this, this.seed, () => 8 + (this.touchButtons.length ? Math.ceil(this.touchButtons.length / 3) * 40 : 0));
+
+    // M29: Abzeichen im HUD, solange der Spielleiter-Modus an ist; offene Karte neu zeichnen
+    this.gmBadge = this.add
+      .text(0, 8, 'GM', { ...FONT, fontSize: '16px', color: '#0b0b14', backgroundColor: '#ff3355', padding: { x: 8, y: 3 }, fontStyle: 'bold' })
+      .setDepth(45)
+      .setName('gm-badge')
+      .setVisible(ws.gm);
+    debugState.gmBadge = ws.gm;
+    const onGm = (on: boolean) => {
+      this.gmBadge.setVisible(on);
+      debugState.gmBadge = on;
+      this.worldMap.refresh();
+    };
+    ws.events.on('gm-changed', onGm);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => ws.events.off('gm-changed', onGm));
   }
+
+  private gmBadge!: Phaser.GameObjects.Text;
 
   /** Virtueller Stick (Ziehen irgendwo auf dem Bildschirm) und Buttons für Touch-Geräte. */
   private createTouchControls(): void {
@@ -267,6 +284,8 @@ export class UIScene extends Phaser.Scene {
       [`Musik: ${audio.enabled ? 'an' : 'aus'}`, close(() => audio.toggle())],
       ['Titelbildschirm', close(() => ws.toTitle())],
     ];
+    // M29: nur mit ?gm=1; am Ende, damit die Nummern der übrigen Einträge bleiben
+    if (ws.gmAllowed) entries.push([`Spielleiter-Modus: ${ws.gm ? 'an' : 'aus'}`, close(() => ws.setGm(!ws.gm))]);
     const cols = this.scale.width < 500 ? 2 : 3;
     const bw = Math.min(170, Math.floor((this.scale.width - 40) / cols) - 8);
     const W = cols * (bw + 8) + 16;
@@ -866,6 +885,8 @@ export class UIScene extends Phaser.Scene {
     if (!narrow) lines.push(`Position: ${tx}, ${ty}`, `FPS: ${Math.round(this.game.loop.actualFps)}`);
     this.hud.setText(lines.join('\n'));
     this.help.setY(this.scale.height - 6);
+    // rechts neben dem HUD-Text (oben rechts liegen Minimap und Handy-Knöpfe)
+    this.gmBadge.setX(this.hud.x + this.hud.width + 6);
     this.drawAtmosphere(ws, Math.min(0.05, this.game.loop.delta / 1000));
     if (this.time.now - this.moodAt > 1000) {
       this.moodAt = this.time.now;
