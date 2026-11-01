@@ -57,6 +57,8 @@ export interface Appearance {
   eyes?: string;
   /** Volksmerkmal Synth: Farbe der Leuchtlinien und Augen (Augenpalette). */
   glow?: string;
+  /** Oberweite (M30): Stufe 0–3, nur Mensch mit weiblichem Körper (Standard 0 = LPC-Figur). */
+  bust?: number;
 }
 
 /** Augen- und Leuchtfarben (Namen der LPC-Augenpalette). */
@@ -73,6 +75,21 @@ export function topsFor(a: Pick<Appearance, 'race' | 'body'>): Top[] {
 /** Metallfarben der Synth-Panzerung. */
 export const METALS = ['silver', 'steel', 'iron', 'brass', 'bronze', 'copper', 'gold', 'ceramic'];
 
+/** Stufen des Oberweite-Reglers (M30): 0 = LPC-Figur wie bisher. */
+export const BUST_MAX = 3;
+
+/** Oberweite-Regler nur für Menschen mit weiblichem Körper. */
+export function bustAllowed(a: Pick<Appearance, 'race' | 'body'>): boolean {
+  return (a.race ?? 'human') === 'human' && a.body === 'female';
+}
+
+/** Gültige Stufe (alte Spielstände ohne Wert, andere Völker/Körper: 0). */
+export function bustLevel(a: Pick<Appearance, 'race' | 'body' | 'bust'>): number {
+  if (!bustAllowed(a)) return 0;
+  const b = Math.round(Number(a.bust) || 0);
+  return Math.max(0, Math.min(BUST_MAX, b));
+}
+
 /** Bringt ein (evtl. älteres oder ungültiges) Aussehen in einen gültigen Zustand. */
 export function normalizeAppearance(a: Appearance): Appearance {
   const out = { ...a };
@@ -86,6 +103,10 @@ export function normalizeAppearance(a: Appearance): Appearance {
   if (out.race !== 'elf') delete out.eyes;
   if (out.race !== 'synth') delete out.glow;
   else out.glow ??= GLOW_COLORS[0];
+  // Oberweite nur bei Mensch + weiblich; Stufe 0 wird nicht gespeichert (gleich wie ältere Stände)
+  const bust = bustLevel(out);
+  if (bust) out.bust = bust;
+  else delete out.bust;
   return out;
 }
 

@@ -4,7 +4,7 @@ import { G, frames, open, saveAndReload, shot, talkTo, tp, waitCreate, waitReady
 // Modul Figur: Erschaffung, Aussehen, Ausrüstung, Fortschritt. Ebenen, Umfärben, Boni, Werte, Beute und
 // Startausrüstung je Volk prüfen die Unit-Tests m5, m6, m18, m23.
 
-type Look = { race: string; body: string; hair: string; glow?: string; eyes?: string; shoes?: string; legsColor?: string };
+type Look = { race: string; body: string; hair: string; glow?: string; eyes?: string; shoes?: string; legsColor?: string; bust?: number };
 const look = (page: Page) => G<Look>(page, '({ ...g.createLook() })');
 
 test('Erschaffung: Völker, Merkmale, Frisur, Name; nach Neuladen direkt ins Spiel (M6 R3–R6, M18 R4/R5, M23 R3/R4)', async ({ page }) => {
@@ -17,9 +17,13 @@ test('Erschaffung: Völker, Merkmale, Frisur, Name; nach Neuladen direkt ins Spi
   for (let i = 0; i < 12 && (await look(page)).hair !== 'ponytail'; i++) await G(page, 'g.createChange(3, 1)');
   expect(await look(page)).toMatchObject({ body: 'female', hair: 'ponytail' });
   await shot(page, 'm18-female');
-  // Elf: Augenfarbe als Volksmerkmal (Zeile 5)
+  // Oberweite (Zeile 6, M30 R1): nur Mensch + weiblich
+  await G(page, 'g.createChange(6, 1)');
+  expect((await look(page)).bust).toBe(1);
+  // Elf: Augenfarbe als Volksmerkmal (Zeile 5), keine Oberweite
   await G(page, 'g.createChange(0, 1)');
   expect((await look(page)).race).toBe('elf');
+  expect((await look(page)).bust).toBeUndefined();
   await G(page, 'g.createChange(5, 1)');
   expect((await look(page)).eyes).toBeTruthy();
   await shot(page, 'm18-elf');
@@ -60,10 +64,22 @@ test('Erschaffung: Völker, Merkmale, Frisur, Name; nach Neuladen direkt ins Spi
   expect(errors).toEqual([]);
 });
 
-test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M23 R1/R4)', async ({ page }) => {
+test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M23 R1/R4, M30 R1/R3)', async ({ page }) => {
   // Niedriges Laptop-Fenster: „Anlegen“ muss trotzdem im Heldenfenster sichtbar sein
   await page.setViewportSize({ width: 1280, height: 560 });
-  const errors = await open(page, 'barbier-test');
+  const errors = watchErrors(page);
+  await page.goto('/?seed=barbier-test&test=1');
+  await waitCreate(page);
+  // Menschenfrau mit größter Oberweite (Zeile 1 Körper, Zeile 6 Oberweite)
+  await G(page, 'g.createChange(1, 1)');
+  for (let i = 0; i < 3; i++) await G(page, 'g.createChange(6, 1)');
+  expect(await look(page)).toMatchObject({ race: 'human', body: 'female', bust: 3 });
+  await shot(page, 'm30-create');
+  await G(page, "g.createConfirm('Testheldin')");
+  await expect.poll(() => G<string>(page, 'g.scene')).toBe('world');
+  await waitReady(page);
+  expect(await G<number>(page, 'g.hero.appearance.bust')).toBe(3);
+  expect(await G<number>(page, 'g.heroLook().bust')).toBe(3);
   // Mensch: Leinenhemd, Leinenhose, Schuhe
   expect(await G<string[]>(page, 'Object.keys(g.hero.equipped).sort()')).toEqual(['armor', 'feet', 'legs', 'weapon']);
   expect(await G<string>(page, 'g.heroLook().shoes')).toBe('shoes');
@@ -113,7 +129,7 @@ test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M
   const hair0 = (await look(page)).hair;
   await G(page, 'g.createChange(0, 1)'); // beim Barbier ist die erste Zeile die Frisur
   expect((await look(page)).hair).not.toBe(hair0);
-  expect((await look(page)).race).toBe('human');
+  expect(await look(page)).toMatchObject({ race: 'human', bust: 3 });
   await shot(page, 'm18-barber');
   await G(page, 'g.createConfirm()');
   await expect.poll(() => G<string>(page, 'g.scene')).toBe('world');
@@ -124,6 +140,8 @@ test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M
   await saveAndReload(page);
   expect(await G<string>(page, 'g.hero.equipped.armor?.id')).toBe(armor);
   expect(await G<number>(page, 'g.hero.potions')).toBe(potions - 1);
+  // Oberweite ist Teil des Körpers: übersteht Barbier und Neuladen
+  expect(await G<number>(page, 'g.hero.appearance.bust')).toBe(3);
   expect(errors).toEqual([]);
 });
 

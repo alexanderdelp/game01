@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { applyWarp, bustMaps, bustWarps, type WarpMap } from './bust';
 import { ANIMS, DEFAULT_APPEARANCE, FRAME, HAIR_STYLES, ROWS, appearanceKey, layersFor, normalizeAppearance, paintGlow, recolor, topsFor, type Appearance, type Palettes } from './lpc';
 
 const BASE = 'assets/lpc/';
@@ -64,6 +65,7 @@ export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string
     tmp.width = w;
     tmp.height = h;
     const tctx = tmp.getContext('2d', { willReadFrequently: true })!;
+    const bust = a.bust ? bustFor(scene, layers, anim, a.bust) : null;
     for (const layer of layers) {
       const key = `lpc:${layer.dir}/${anim}`;
       const walkKey = `lpc:${layer.dir}/walk`;
@@ -77,11 +79,14 @@ export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string
       } else {
         continue;
       }
-      if (layer.material || layer.eyes) {
+      const warp = bust && bustWarps(layer.dir);
+      if (layer.material || layer.eyes || warp) {
         const img = tctx.getImageData(0, 0, w, h);
         if (layer.material) recolor(img.data, palettes, layer.material, layer.color, layer.base);
         if (layer.eyes) recolor(img.data, palettes, 'eye', layer.eyes);
         if (layer.glow) paintGlow(img.data, palettes, layer.color, layer.glow);
+        // Oberweite: Körper und Oberteile gleich verformen (M30)
+        if (warp) bust.forEach((row, r) => row.forEach((m, f) => m && applyWarp(img.data, w, f, r, m)));
         tctx.putImageData(img, 0, 0);
       }
       ctx.drawImage(tmp, 0, 0);
@@ -102,4 +107,43 @@ export function buildCharacter(scene: Phaser.Scene, a: Appearance, anims: string
     }
   }
   return prefix;
+}
+
+/** Pixel eines geladenen LPC-Bildes. */
+function pixels(scene: Phaser.Scene, key: string): { data: Uint8ClampedArray; width: number } | null {
+  if (!scene.textures.exists(key)) return null;
+  const src = scene.textures.get(key).getSourceImage() as HTMLImageElement;
+  const c = document.createElement('canvas');
+  c.width = src.width;
+  c.height = src.height;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(src, 0, 0);
+  return { data: ctx.getImageData(0, 0, c.width, c.height).data, width: c.width };
+}
+
+/** Verformung für die Oberweite (M30): Lage je Bild aus der Kopf-Ebene (fehlende Steh-Animation: Geh-Bild 0). */
+function bustFor(scene: Phaser.Scene, layers: ReturnType<typeof layersFor>, anim: string, level: number): (WarpMap | null)[][] | null {
+  const head = layers.find((l) => l.dir.startsWith('head/heads/'));
+  if (!head) return null;
+  // Gleich für alle Figuren mit diesem Kopf und dieser Stufe (Haarfarbe, Kleidung usw. egal)
+  const key = `${head.dir}/${anim}/${level}`;
+  if (!bustCache.has(key)) bustCache.set(key, computeBust(scene, head.dir, anim, level));
+  return bustCache.get(key)!;
+}
+
+const bustCache = new Map<string, (WarpMap | null)[][] | null>();
+
+function computeBust(scene: Phaser.Scene, dir: string, anim: string, level: number): (WarpMap | null)[][] | null {
+  const head = { dir };
+  const walk = pixels(scene, `lpc:${head.dir}/walk`);
+  const own = pixels(scene, `lpc:${head.dir}/${anim}`);
+  if (!walk) return null;
+  const def = ANIMS[anim];
+  if (!own) {
+    // Stehpose aus Geh-Bild 0: Lage wie dort
+    if (anim !== 'idle') return null;
+    const one = bustMaps(level, walk.data, walk.width, 1, def.rows, walk.data, walk.width);
+    return one.map((row) => Array.from({ length: def.frames }, () => row[0]));
+  }
+  return bustMaps(level, own.data, own.width, def.frames, def.rows, walk.data, walk.width);
 }
