@@ -44,6 +44,7 @@ export function yearText(y: number): string {
 export function roleName(f: Figure): string {
   if (f.race === 'beast') return BEASTS[f.beastKind ?? 0].kind;
   if (f.offices.length && f.role !== 'hero') return ROLE.ruler[f.female ? 1 : 0];
+  if (f.role === 'ruler') return f.female ? 'Adelige' : 'Adeliger';
   return ROLE[f.role][f.female ? 1 : 0];
 }
 
@@ -60,6 +61,15 @@ function beastLabel(h: History, id: number, L: Linker, cap = false): string {
   return `${art} ${b.kind} ${L.fig(id)}`;
 }
 
+/** Ort mit passender Präposition: „im Grabmal bei X“, „auf dem Schlachtfeld von X“, „in Borzul“. */
+function inSite(h: History, id: number, L: Linker): string {
+  const s = h.sites[id];
+  if (!s) return 'irgendwo';
+  const prep: Partial<Record<SiteKind, string>> = { tomb: 'im', battlefield: 'auf dem', lair: 'im', crater: 'im', tower: 'im', temple: 'im', relic: 'im', fortress: 'in der', mine: 'in der' };
+  const p = s.kind === 'lab' ? (s.name.startsWith('Labor') ? 'im' : 'in') : prep[s.kind] ?? 'in';
+  return `${p} ${L.site(id)}`;
+}
+
 const list = (a: string[]) => (a.length <= 1 ? a.join('') : `${a.slice(0, -1).join(', ')} und ${a[a.length - 1]}`);
 
 /** Ein Ereignis als Satz. */
@@ -69,6 +79,7 @@ export function eventText(h: History, e: HEvent, L: Linker): string {
   const [s0, s1] = e.sites;
   const f = (id?: number) => (id === undefined ? 'jemand' : beastLabel(h, id, L));
   const F = (id?: number) => (id === undefined ? 'Jemand' : beastLabel(h, id, L, true));
+  const at = (id: number) => inSite(h, id, L);
   const fem = (id?: number) => (id !== undefined && h.figures[id]?.female ? 'in' : '');
   switch (e.k) {
     case 'prehistory':
@@ -88,23 +99,23 @@ export function eventText(h: History, e: HEvent, L: Linker): string {
     case 'birth':
       return `${L.fig(f0)} wurde geboren, Kind von ${L.fig(f1)}.`;
     case 'hero_rise':
-      return `${L.fig(f0)} trat in ${L.site(s0)} als Held${fem(f0)} von ${L.civ(c0)} hervor.`;
+      return `${L.fig(f0)} trat ${at(s0)} als Held${fem(f0)} von ${L.civ(c0)} hervor.`;
     case 'death': {
       const who = F(f0);
       const by = f1 !== undefined ? ` durch ${f(f1)}` : '';
-      const at = s0 !== undefined ? ` bei ${L.site(s0)}` : '';
+      const where = s0 !== undefined ? ` ${at(s0)}` : '';
       switch (e.cause) {
         case 'age': return h.figures[f0].race === 'synth' ? `${who} schaltete sich nach langem Dienst ab.` : h.figures[f0].race === 'beast' ? `${who} verendete in hohem Alter.` : `${who} starb hochbetagt.`;
-        case 'battle': return `${who} fiel in der Schlacht${at}${by}.`;
+        case 'battle': return `${who} fiel in der Schlacht${where}${by}.`;
         case 'beast': return `${who} wurde von ${f(f1)} getötet.`;
-        case 'slain': return `${who} wurde${at}${by} erschlagen.`;
+        case 'slain': return `${who} wurde${where}${by} erschlagen.`;
         case 'plague': return `${who} erlag der Seuche.`;
-        case 'shattering': return `${who} verging in der Zersplitterung${at}.`;
+        case 'shattering': return `${who} verging in der Zersplitterung${where}.`;
         default: return `${who} wurde ermordet${by}.`;
       }
     }
     case 'burial':
-      return `${L.fig(f0)} wurde in ${L.site(s0)} beigesetzt${e.arts.length ? `, als Grabbeigabe ${list(e.arts.map(L.art))}` : ''}.`;
+      return `${L.fig(f0)} wurde ${at(s0)} beigesetzt${e.arts.length ? `, als Grabbeigabe ${list(e.arts.map(L.art))}` : ''}.`;
     case 'war':
       return `${L.civ(c0)} erklärte ${L.civ(c1)} den Krieg – ${e.cause === 'shard' ? 'es ging um die Splitter-Adern an der Grenze' : 'es ging um Land an der Grenze'}.`;
     case 'peace':
@@ -113,7 +124,7 @@ export function eventText(h: History, e: HEvent, L: Linker): string {
       return `${L.civ(c0)} und ${L.civ(c1)} schlossen ein Bündnis.`;
     case 'battle': {
       const lead = e.figs.length ? ` Es führten ${list(e.figs.map((x) => L.fig(x)))}.` : '';
-      return `Schlacht bei ${L.site(s0)}: ${L.civ(c0)} gegen ${L.civ(c1)}, etwa ${e.n ?? 0} Tote.${lead} ${e.win !== undefined ? `${L.civ(e.win)} siegte.` : ''}`;
+      return `Schlacht ${at(s0)}: ${L.civ(c0)} gegen ${L.civ(c1)}, etwa ${e.n ?? 0} Tote.${lead} ${e.win !== undefined ? `${L.civ(e.win)} siegte.` : ''}`;
     }
     case 'conquest':
       return `${L.civ(c0)} eroberte ${L.site(s0)} von ${L.civ(c1)}.`;
@@ -132,22 +143,22 @@ export function eventText(h: History, e: HEvent, L: Linker): string {
     case 'abandon':
       return `${L.site(s0)} wurde nach der ${e.cause === 'famine' ? 'Hungersnot' : 'Seuche'} verlassen.`;
     case 'beast_arrive':
-      return `${F(f0)} nahm ${L.site(s0)} als Hort.`;
+      return `${F(f0)} hauste fortan ${at(s0)}.`;
     case 'beast_raid':
       return `${F(f0)} überfiel ${L.site(s0)}${f1 !== undefined ? ` und tötete ${L.fig(f1)}` : ''}.`;
     case 'beast_slain':
-      return `${L.fig(f0)} erschlug ${f(f1)} in ${L.site(s0)}.`;
+      return `${L.fig(f0)} erschlug ${f(f1)} ${at(s0)}.`;
     case 'hero_falls':
       return `${L.fig(f0)} zog gegen ${f(f1)} und kehrte nie zurück.`;
     case 'artifact_made':
-      if (h.artifacts[e.arts[0]]?.great) return `${L.fig(f0)} und ${L.fig(f1)} schufen in ${L.site(s0)} ${L.art(e.arts[0])}: den größten Splitter, gebändigt in einem Kern aus Rune und Maschine.`;
+      if (h.artifacts[e.arts[0]]?.great) return `${L.fig(f0)} und ${L.fig(f1)} schufen ${at(s0)} ${L.art(e.arts[0])}: den größten Splitter, gebändigt in einem Kern aus Rune und Maschine.`;
       return `${L.fig(f0)} schuf ${L.art(e.arts[0])} (${ARTIFACT_KINDS[h.artifacts[e.arts[0]].kind]}).`;
     case 'artifact_lost': {
-      const how = e.cause === 'hoard' ? `liegt seither im ${L.site(s0)}` : e.cause === 'shattering' ? `versank in ${L.site(s0)}` : `blieb auf dem ${L.site(s0)} liegen`;
+      const how = e.cause === 'hoard' ? `liegt seither ${at(s0)}` : e.cause === 'shattering' ? `versank ${at(s0)}` : `blieb ${at(s0)} liegen`;
       return `${L.art(e.arts[0])} ${how}, verloren mit ${L.fig(f0)}.`;
     }
     case 'artifact_loot':
-      return `${L.fig(f0)} erbeutete ${L.art(e.arts[0])}${f1 !== undefined ? ` von ${L.fig(f1)}` : ''}${s0 !== undefined ? ` in ${L.site(s0)}` : ''}.`;
+      return `${L.fig(f0)} erbeutete ${L.art(e.arts[0])}${f1 !== undefined ? ` von ${L.fig(f1)}` : ''}${s0 !== undefined ? ` ${at(s0)}` : ''}.`;
     case 'trade':
       return `Händler aus ${L.civ(c0)} eröffneten einen Handelsweg zwischen ${L.site(s0)} und ${L.site(s1)} (${L.civ(c1)}).`;
     case 'shattering': {
@@ -159,7 +170,7 @@ export function eventText(h: History, e: HEvent, L: Linker): string {
 
 /** Kurze Lebensbeschreibung. */
 export function figureText(h: History, f: Figure, L: Linker): string {
-  const life = `${f.born < 0 ? 'Vorzeit' : f.born}–${f.died ?? 'heute'}`;
+  const life = `${f.born}–${f.died ?? 'heute'}`;
   const parts = [`${raceName(f)}, ${roleName(f)} (${life}).`];
   if (f.civ >= 0) parts.push(`Gehörte zu ${L.civ(f.civ)}.`);
   for (const o of f.offices) parts.push(`Herrschte über ${L.civ(o.civ)} von ${o.from} bis ${o.to ?? 'heute'}.`);

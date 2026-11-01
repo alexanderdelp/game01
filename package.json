@@ -12,7 +12,8 @@
     "check": "npm run test && npm run build && npm run e2e",
     "arena": "vite --open /?arena=1",
     "e2e:smoke": "playwright test welt.spec.ts oberflaeche.spec.ts",
-    "shots": "SHOTS=1 playwright test"
+    "shots": "SHOTS=1 playwright test",
+    "legenden": "vite --open \"/?legends=1&seed=nebel-kristall-427\""
   },
   "dependencies": {
     "phaser": "^3.87.0"

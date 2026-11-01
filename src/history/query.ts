@@ -13,9 +13,9 @@ export function existsAt(s: Site, y: number): boolean {
   return s.founded <= y && (s.destroyed === undefined || s.destroyed > y);
 }
 
-/** Einflussradius in Zellen, wie in der Simulation. */
-function reach(s: Site): number {
-  return s.kind === 'city' ? 4 : s.kind === 'village' ? 3 : 2;
+/** Einflussradius eines Ortes in Zellen (Grenzen in Simulation und Karte). */
+export function reach(s: Site): number {
+  return s.kind === 'city' ? 6 : s.kind === 'village' ? 4 : 3;
 }
 
 /** Reichsgrenzen in einem Jahr: Reich je Zelle (−1 = niemand). Wie `Sim.recomputeOwner`. */

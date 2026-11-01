@@ -7,6 +7,7 @@ import { FACTIONS, traceRivers, type Faction, type Terrain } from '../world/meta
 import { Simplex2 } from '../world/noise';
 import { mulberry32 } from '../world/rng';
 import { RUGGED_H, SEA_LEVEL, WORLD_TILES } from '../world/WorldGen';
+import { reach } from './query';
 import { ARTIFACT_KINDS, BEASTS, artifactName, beastName, personName, placeName, realmName, specialName, worldName } from './names';
 import {
   HISTORY_CELL, HISTORY_GRID, INHABITED,
@@ -219,7 +220,10 @@ class Sim {
 
   addFigure(role: Role, race: Race | 'beast', civ: number, age: number, parent?: number): Figure {
     const female = race !== 'beast' && race !== 'synth' && this.rnd() < 0.5;
-    const name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
+    // Keine zwei Lebenden gleichen Namens
+    const taken = (n: string) => this.figures.some((f) => f.name === n && f.died === undefined);
+    let name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
+    for (let k = 0; k < 6 && taken(name); k++) name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
     const f: Figure = { id: this.figures.length, name, race, female, role, civ, born: this.y - age, children: [], offices: [], events: [], holds: [], kills: 0 };
     if (parent !== undefined) {
       f.parent = parent;
@@ -241,7 +245,7 @@ class Sim {
 
   /** Einflussgebiet eines Ortes (Radius in Zellen nach Größe). */
   reach(s: Site): number {
-    return s.kind === 'city' ? 4 : s.kind === 'village' ? 3 : 2;
+    return reach(s);
   }
 
   private paintOwner(s: Site): void {
@@ -434,7 +438,7 @@ class Sim {
     for (const civ of this.aliveCivs()) {
       if (!this.ruler(civ)) this.succession(civ);
       const race = civ.race;
-      if (this.rnd() < 0.012) {
+      if (this.rnd() < 0.007) {
         const h = this.addFigure('hero', race, civ.id, 18 + Math.floor(this.rnd() * 6));
         this.ev('hero_rise', { figs: [h.id], civs: [civ.id], sites: [civ.capital] });
       }
@@ -617,7 +621,7 @@ class Sim {
     let best: { cx: number; cy: number; s: number } | null = null;
     for (let k = 0; k < 10; k++) {
       const a = this.rnd() * Math.PI * 2;
-      const d = 2.5 + this.rnd() * 3;
+      const d = 3 + this.rnd() * 4;
       const nx = Math.round(cx + Math.cos(a) * d);
       const ny = Math.round(cy + Math.sin(a) * d);
       const c = this.cell(nx, ny);
