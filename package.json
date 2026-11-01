@@ -11,6 +11,7 @@
     "e2e": "playwright test",
     "check": "npm run test && npm run build && npm run e2e",
     "arena": "vite --open /?arena=1",
+    "perspektive": "vite --open /?perspektive=1",
     "e2e:smoke": "playwright test welt.spec.ts oberflaeche.spec.ts",
     "shots": "SHOTS=1 playwright test"
   },
