@@ -16,6 +16,9 @@ const CLEAR: Partial<Record<DecorKind, [number, number, number]>> = {
 const CLEAR_DEFAULT: [number, number, number] = [24, 32, 24];
 import { Simplex2 } from './noise';
 import { WorldMeta } from './meta';
+import { generateHistory } from '../history/simulate';
+import { metaSourceFrom } from '../history/toWorld';
+import type { History } from '../history/types';
 import { hashString, rand2 } from './rng';
 import { RUGGED_H, TERRACE_SCALE, edgeNear, wallAt } from './terrain';
 
@@ -85,6 +88,12 @@ const smoothstep = (a: number, b: number, x: number) => {
   return t * t * (3 - 2 * t);
 };
 
+/** Optionen der Weltgenerierung. */
+export interface WorldOptions {
+  /** Prototyp Vorgeschichte (`?vorgeschichte=1`): Welt aus einer simulierten Geschichte (Jahre). */
+  history?: { years?: number };
+}
+
 /**
  * Die Welt als reine Funktion des Seeds. Jede Abfrage ist deterministisch und unabhängig
  * davon, in welcher Reihenfolge Chunks erzeugt werden.
@@ -108,14 +117,27 @@ export class WorldGen {
   private readonly groundCache = new Map<number, Ground>();
 
   private metaCache?: WorldMeta;
+  private historyCache?: History;
 
   /** Reiche, Siedlungen, Geheimnisse, Chronik (lazy, deterministisch). */
   get meta(): WorldMeta {
     // Die Metadaten sehen das Gelände ohne Flüsse (die legen sie selbst an)
-    return (this.metaCache ??= new WorldMeta({ seed: this.seed, biomeAt: (x, y) => this.baseBiomeAt(x, y), elevationAt: (x, y) => this.elevation(x, y) }));
+    if (!this.metaCache) {
+      const terrain = { seed: this.seed, biomeAt: (x: number, y: number) => this.baseBiomeAt(x, y), elevationAt: (x: number, y: number) => this.elevation(x, y) };
+      // Prototyp Vorgeschichte: Die Welt entsteht aus einer simulierten Geschichte
+      if (this.opts.history) this.historyCache = generateHistory(terrain, this.opts.history);
+      this.metaCache = new WorldMeta(terrain, this.historyCache && metaSourceFrom(this.historyCache));
+    }
+    return this.metaCache;
   }
 
-  constructor(seedName: string) {
+  /** Vorgeschichte dieser Welt (nur mit `history`-Option, sonst undefined). */
+  get history(): History | undefined {
+    void this.meta;
+    return this.historyCache;
+  }
+
+  constructor(seedName: string, readonly opts: WorldOptions = {}) {
     this.seedName = seedName;
     this.seed = hashString(seedName);
     const s = this.seed;
@@ -300,6 +322,7 @@ export class WorldGen {
     const poi = meta.poiAt(tx, ty);
     if (poi) return { tx, ty, kind: poi.kind, variant: 0 };
     if (meta.ruinNear(tx, ty, 4)) return null;
+    if (meta.source && meta.historicNear(tx, ty, 2)) return null;
     if (meta.isRoad(tx, ty)) return null;
     const inTown = meta.settlementNear(tx, ty, 2);
     if (inTown && (meta.isPlaza(tx, ty) || rand2(this.seed, tx, ty, 79) < 0.85)) return null;

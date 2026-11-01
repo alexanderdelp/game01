@@ -8,6 +8,7 @@ import { caravanPos } from '../sim/simulation';
 import { B, BIOMES } from '../world/biomes';
 import { WORLD_TILES } from '../world/WorldGen';
 import type { WorldScene } from '../scenes/WorldScene';
+import { closeHistoryPanel, showHistoryPanel } from './HistoryPanel';
 
 /** Tiles je Pixel der Übersichtskarte. */
 const MAP_STEP = 16;
@@ -78,6 +79,25 @@ export class WorldMap {
       const k = this.mapK;
       const tx = Math.floor(d.cx + (d.x - v.x - v.side / 2) / k);
       const ty = Math.floor(d.cy + (d.y - v.y - v.side / 2) / k);
+      // Vorgeschichte: Klick auf einen historischen Ort zeigt seine Geschichte und teleportiert davor
+      const h = ws.world.history;
+      if (h) {
+        let best: (typeof h.sites)[number] | null = null;
+        let bd = 9 / k;
+        for (const s of h.sites) {
+          const dd = Math.hypot(s.tx - tx, s.ty - ty);
+          if (dd < bd) {
+            bd = dd;
+            best = s;
+          }
+        }
+        if (best && ws.gmTeleport(best.tx, best.ty + 4)) {
+          showHistoryPanel(h, best, this.seed);
+          this.close();
+          return;
+        }
+        closeHistoryPanel();
+      }
       if (ws.gmTeleport(tx, ty)) this.close();
     });
     this.ui.input.on('wheel', (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.map && this.zoomMap(dy < 0 ? 1 : -1, { x: p.x, y: p.y }));
@@ -452,6 +472,17 @@ export class WorldMap {
       const looted = ws.state.d.chests.has(`ruinchest:${r.tx + 2},${r.ty + 1}`);
       layer.add(this.ui.add.triangle(p.x, p.y, 0, 8, 4, 0, 8, 8, looted ? 0x8a8aa0 : 0x3fc4d4).setStrokeStyle(1, 0x0b0b14));
     }
+    // Vorgeschichte: alle historischen Fundorte im Spielleiter-Modus
+    if (gm && ws.world.history) {
+      for (const hp of meta.historic) {
+        const p = this.mapToScreen(hp.tx, hp.ty);
+        if (!inView(p.x, p.y)) continue;
+        if (hp.kind === 'tomb') layer.add([this.ui.add.rectangle(p.x, p.y, 3, 9, 0xc0c0d0).setStrokeStyle(1, 0x0b0b14), this.ui.add.rectangle(p.x, p.y - 1, 7, 2, 0xc0c0d0)]);
+        else if (hp.kind === 'memorial') layer.add(this.ui.add.text(p.x, p.y, '✕', { fontFamily: 'monospace', fontSize: '11px', color: '#ff5050', stroke: '#0b0b14', strokeThickness: 2 }).setOrigin(0.5));
+        else layer.add(this.ui.add.circle(p.x, p.y, 4).setStrokeStyle(2, 0xff9030));
+        if (z >= 4) layer.add(this.ui.add.text(p.x + 6, p.y, ws.world.history.sites[hp.site!].name, { fontFamily: 'monospace', fontSize: '10px', color: '#c8c0b0', stroke: '#0b0b14', strokeThickness: 3 }).setOrigin(0, 0.5));
+      }
+    }
     const found = new Set(ws.hero.hero.chronicle ?? []);
     for (const ob of meta.obelisks) {
       const p = this.mapToScreen(ob.tx, ob.ty);
@@ -499,7 +530,7 @@ export class WorldMap {
     if (!this.mapWorker) {
       this.mapWorker = new Worker(new URL('../render/chunkWorker.ts', import.meta.url), { type: 'module' });
       this.mapWorker.onmessage = (ev: MessageEvent<OverviewResult | RegionResult>) => (ev.data.type === 'overview' ? this.buildMap(ev.data) : this.onRegion(ev.data));
-      this.mapWorker.postMessage({ type: 'init', seed: this.seed } satisfies ChunkRequest);
+      this.mapWorker.postMessage({ type: 'init', seed: this.seed, opts: (this.ui.scene.get('world') as WorldScene).world.opts } satisfies ChunkRequest);
     }
     return this.mapWorker;
   }

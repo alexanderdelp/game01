@@ -3,6 +3,7 @@ import { B, BIOMES, DECOR_BLOCK } from '../world/biomes';
 import { hash2, mulberry32 } from '../world/rng';
 import { CHUNK_TILES, type WorldGen } from '../world/WorldGen';
 import { levelForDistance } from './combat';
+import { BEASTS } from '../history/names';
 
 export type EnemyKind = 'slime' | 'bandit' | 'drone' | 'wisp';
 
@@ -78,6 +79,18 @@ export function enemiesForChunk(
     const kind = (['bandit', 'drone', 'wisp'] as const)[r.id % 3];
     const dist = Math.hypot(r.tx - spawn.tx, r.ty - spawn.ty);
     out.push({ id: `g${r.id}`, kind, tx: r.tx, ty: r.ty + 3, level: levelForDistance(dist) + 3, color: 0, look: r.id % 4, elite: true });
+  }
+  // Vorgeschichte: Großbestien, die noch leben, wachen über ihren Hort
+  const hist = world.history;
+  if (hist) {
+    for (const p of world.meta.historic) {
+      if (p.kind !== 'lair' || p.site === undefined || Math.floor(p.tx / CHUNK_TILES) !== cx || Math.floor(p.ty / CHUNK_TILES) !== cy) continue;
+      const beast = hist.figures[hist.sites[p.site].beast ?? -1];
+      if (!beast || beast.died !== undefined) continue;
+      const kind = BEASTS[beast.beastKind ?? 0].enemy;
+      const dist = Math.hypot(p.tx - spawn.tx, p.ty - spawn.ty);
+      out.push({ id: `b${p.site}`, kind, tx: p.tx, ty: p.ty + 3, level: levelForDistance(dist) + 5, color: 0, look: p.site % 4, elite: true });
+    }
   }
   const groupRoll = rnd();
   const tx0 = cx * CHUNK_TILES + Math.floor(rnd() * CHUNK_TILES);

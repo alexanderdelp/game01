@@ -4,6 +4,8 @@ import { MAX_ACTIVE, accept, isReady, offerFor, onTalk, progressText, turnIn, ty
 import { TILE_PX } from '../../render/chunkPixels';
 import { reputationRank } from '../../state/worldState';
 import { FACTIONS, type Poi } from '../../world/meta';
+import { SITE_KIND, artifactText, eventText, plainLinker, siteEvents, yearText } from '../../history/narrate';
+import { rumorAt } from '../../history/rumors';
 import type { WorldScene } from '../WorldScene';
 
 const POTION_PRICE = 10;
@@ -79,9 +81,12 @@ export class WorldTalk {
         ['Ablehnen', () => {}],
       ]);
     }
-    // 5. Plaudern (mit Bezug auf Reich und Ort)
-    const line = npc.role.lines[npc.talks % npc.role.lines.length];
+    // 5. Plaudern (mit Bezug auf Reich und Ort); in Welten mit Vorgeschichte jedes zweite Mal ein Gerücht
+    const h = this.ws.world.history;
+    const rumor = h && npc.talks % 2 === 0 ? rumorAt(h, npc.spawn.tx, npc.spawn.ty, npc.talks / 2 + npc.spawn.tx) : null;
     npc.talks++;
+    if (rumor) return say(rumor);
+    const line = npc.role.lines[npc.talks % npc.role.lines.length];
     const rank = this.rankAt(npc.spawn.tx, npc.spawn.ty);
     const greet = rank.rank > 0 ? `Ah, ${rank.title === 'Held' ? 'der Held' : rank.title === 'Freund' ? 'ein Freund' : 'ein bekanntes Gesicht'} von ${rank.realm.name}! ` : '';
     say(greet + this.fillLore(line, npc.spawn.tx, npc.spawn.ty));
@@ -223,7 +228,32 @@ export class WorldTalk {
     return best;
   }
 
+  /** Fundorte der Vorgeschichte: Inschrift lesen, verlorene Artefakte bergen (Prototyp). */
+  private useHistoric(p: Poi): void {
+    const h = this.ws.world.history;
+    if (!h || p.site === undefined) return;
+    const site = h.sites[p.site];
+    const L = plainLinker(h);
+    if (p.kind === 'lair' && site.beast !== undefined && h.figures[site.beast].died === undefined) {
+      const guard = [...this.ws.enemies.enemies.values()].find((e) => e.spawn.id === `b${site.id}` && e.alive);
+      if (guard) return this.say(site.name, 'Hort', `Hier haust ${h.figures[site.beast].name}. Besiege die Bestie, dann gehört der Hort dir.`);
+    }
+    let text = siteEvents(h, site, 3).map((e) => `${yearText(e.y)}: ${eventText(h, e, L)}`).join(' ');
+    const id = `relic:${site.id}`;
+    if (site.arts.length && !this.ws.state.d.chests.has(id)) {
+      const a = h.artifacts[site.arts[0]];
+      this.ws.state.record({ t: Date.now(), by: this.ws.heroName, type: 'chest', id });
+      this.ws.events.emit('sfx', 'open');
+      this.ws.hero.lootRuin(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 10);
+      this.ws.events.emit('banner', { title: `Fund: »${a.name}«`, sub: artifactText(h, a, L).split('. ')[0] });
+      this.ws.hero.persist();
+      text = `Du findest »${a.name}«! ${text}`;
+    } else if (site.arts.length) text = `Hier wurde schon gegraben. ${text}`;
+    this.say(site.name, p.kind === 'memorial' ? 'Gedenkstein' : SITE_KIND[site.kind], text || 'Die Inschrift ist verwittert.');
+  }
+
   private usePoi(p: Poi): void {
+    if (p.kind === 'tomb' || p.kind === 'memorial' || p.kind === 'lair') return this.useHistoric(p);
     const h = this.ws.hero.hero;
     h.chronicle ??= [];
     if (p.kind === 'chest') {
@@ -250,7 +280,12 @@ export class WorldTalk {
       this.ws.events.emit('sfx', 'open');
       this.ws.chunks.builtImages.get(`${p.tx},${p.ty}`)?.setFrame('ruinchest:1');
       this.ws.hero.lootRuin(p.tx * TILE_PX + TILE_PX / 2, p.ty * TILE_PX + TILE_PX + 6);
-      this.ws.events.emit('banner', { title: 'Ruinenschatz!', sub: 'Ein seltener Fund aus der alten Zeit' });
+      // Vorgeschichte: Liegt hier ein verlorenes Artefakt?
+      const hist = this.ws.world.history;
+      const site = hist && this.ws.world.meta.ruinAt(p.tx - 2, p.ty - 1)?.site;
+      const art = hist && site !== undefined ? hist.artifacts[hist.sites[site].arts[0]] : undefined;
+      if (hist && art) this.ws.events.emit('banner', { title: `Fund: »${art.name}«`, sub: artifactText(hist, art, plainLinker(hist)).split('. ')[0] });
+      else this.ws.events.emit('banner', { title: 'Ruinenschatz!', sub: 'Ein seltener Fund aus der alten Zeit' });
       this.ws.hero.persist();
       return;
     }

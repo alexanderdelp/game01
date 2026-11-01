@@ -12,7 +12,7 @@ let painter: ChunkPainter | null = null;
 self.onmessage = (ev: MessageEvent<ChunkRequest>) => {
   const msg = ev.data;
   if (msg.type === 'init') {
-    world = new WorldGen(msg.seed);
+    world = new WorldGen(msg.seed, msg.opts);
     painter = new ChunkPainter(world);
     return;
   }

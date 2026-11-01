@@ -56,13 +56,15 @@ export interface Settlement {
   buildings: Building[];
 }
 
-export type PoiKind = 'chest' | 'shrine' | 'obelisk' | 'ruinchest';
+export type PoiKind = 'chest' | 'shrine' | 'obelisk' | 'ruinchest' | 'tomb' | 'memorial' | 'lair';
 
 export interface Ruin {
   id: number;
   tx: number;
   ty: number;
   realm: number;
+  /** Ort der Vorgeschichte (nur mit `?vorgeschichte=1`) */
+  site?: number;
 }
 
 export interface Poi {
@@ -72,6 +74,27 @@ export interface Poi {
   ty: number;
   /** Für Obelisken: Index des Chronik-Fragments */
   fragment?: number;
+  /** Ort der Vorgeschichte (Grabmal, Gedenkstein, Hort) */
+  site?: number;
+}
+
+/**
+ * Vorgaben aus der simulierten Vorgeschichte (`src/history/toWorld.ts`): ersetzen die zufällige Platzierung von
+ * Reichen, Orten, Ruinen, Obelisken und Chronik. Flüsse und Wege entstehen wie sonst.
+ */
+export interface MetaSource {
+  realms: Omit<Realm, 'capital'>[];
+  rivals: number[];
+  settlements: { name: string; realm: number; capital: boolean; tx: number; ty: number; site: number }[];
+  ruins: { tx: number; ty: number; realm: number; site: number }[];
+  /** Ankerpunkte der acht Obelisken (in der Nähe wird ein freier Platz gesucht) */
+  obelisks: { tx: number; ty: number }[];
+  lore: Lore;
+  rivers: Set<number>;
+  /** Historische Fundorte */
+  pois: { kind: 'tomb' | 'memorial' | 'lair'; tx: number; ty: number; site: number }[];
+  /** Reich je Zelle der Vorgeschichte (Index in `realms`), `cell` Kacheln je Zelle */
+  realmGrid: { grid: Int8Array; size: number; cell: number };
 }
 
 export const OBELISKS = 8;
@@ -107,9 +130,21 @@ export class WorldMeta {
   private readonly buildingIndex = new Map<string, Building>();
   private readonly obeliskIndex = new Map<string, Poi>();
 
-  constructor(private readonly t: Terrain) {
+  /** Vorgeschichte, aus der diese Welt entstand (nur mit `?vorgeschichte=1`). */
+  readonly source?: MetaSource;
+  /** Historische Fundorte (Grabmal, Gedenkstein, Hort) */
+  readonly historic: Poi[] = [];
+  private readonly historicIndex = new Map<string, Poi>();
+
+  constructor(private readonly t: Terrain, source?: MetaSource) {
     const rnd = mulberry32(t.seed ^ 0x3e7a);
     this.warp = new Simplex2(t.seed ^ 0x51a7);
+    if (source) {
+      this.source = source;
+      this.lore = source.lore;
+      this.fromSource(source, rnd);
+      return;
+    }
     this.placeRealms(rnd);
     this.pairRivals();
     this.placeSettlements(rnd);
@@ -118,6 +153,56 @@ export class WorldMeta {
     this.lore = generateLore(t.seed, this);
     this.buildRivers();
     this.buildRoads();
+  }
+
+  /** Welt aus der Vorgeschichte: Reiche, Orte, Ruinen und Fundorte stehen fest (Phase 3 des Prototyps). */
+  private fromSource(src: MetaSource, rnd: () => number): void {
+    for (const r of src.realms) this.realms.push({ ...r, capital: -1 });
+    this.rivals.push(...src.rivals);
+    for (const st of src.settlements) {
+      const realm = this.realms[st.realm];
+      const s: Settlement = { id: this.settlements.length, name: st.name, realm: st.realm, capital: st.capital, tx: st.tx, ty: st.ty, radius: st.capital ? 10 : 7, buildings: [] };
+      this.layout(s, realm, rnd);
+      this.settlements.push(s);
+      if (st.capital) realm.capital = s.id;
+    }
+    for (const r of this.realms) if (r.capital < 0) r.capital = this.settlements.find((s) => s.realm === r.id)?.id ?? 0;
+    for (const r of src.ruins) {
+      const ruin: Ruin = { id: this.ruins.length, tx: r.tx, ty: r.ty, realm: r.realm, site: r.site };
+      this.ruins.push(ruin);
+      this.ruinIndex.set(`${r.tx},${r.ty}`, ruin);
+    }
+    for (const p of src.pois) {
+      const poi: Poi = { id: `${p.kind}:${p.site}`, kind: p.kind, tx: p.tx, ty: p.ty, site: p.site };
+      this.historic.push(poi);
+      this.historicIndex.set(`${p.tx},${p.ty}`, poi);
+    }
+    src.obelisks.forEach((a, i) => {
+      for (let k = 0; k < 60; k++) {
+        const p = this.landPoint(rnd, a.tx, a.ty, 18 + k);
+        if (!p || this.settlementNear(p.tx, p.ty, 12) || this.ruinNear(p.tx, p.ty, 6) || this.historicNear(p.tx, p.ty, 5)) continue;
+        if (src.rivers.has(p.tx * 65536 + p.ty)) continue;
+        const o: Poi = { id: `ob${i}`, kind: 'obelisk', tx: p.tx, ty: p.ty, fragment: i };
+        this.obelisks.push(o);
+        this.obeliskIndex.set(`${p.tx},${p.ty}`, o);
+        return;
+      }
+    });
+    // Flüsse der Vorgeschichte; Orte und Fundorte bleiben trocken
+    for (const k of src.rivers) {
+      const tx = Math.floor(k / 65536);
+      const ty = k % 65536;
+      if (this.settlementNear(tx, ty, 3) || this.ruinNear(tx, ty, 5) || this.historicNear(tx, ty, 3)) continue;
+      if (this.obelisks.some((o) => Math.abs(o.tx - tx) <= 3 && Math.abs(o.ty - ty) <= 3)) continue;
+      this.rivers.add(k);
+    }
+    this.buildRoads();
+  }
+
+  /** Historischer Fundort in der Nähe (Grabmal, Gedenkstein, Hort). */
+  historicNear(tx: number, ty: number, radius: number): Poi | null {
+    for (const p of this.historic) if (Math.abs(p.tx - tx) <= radius && Math.abs(p.ty - ty) <= radius) return p;
+    return null;
   }
 
   /** Flusskacheln (Schlüssel tx * 65536 + ty) und Brücken (Pfad über Fluss). */
@@ -254,6 +339,13 @@ export class WorldMeta {
   realmAt(tx: number, ty: number): Realm {
     const wx = tx + this.warp.noise(tx / (180 * SCALE), ty / (180 * SCALE)) * 70 * SCALE;
     const wy = ty + this.warp.noise(tx / (180 * SCALE) + 40, ty / (180 * SCALE) - 40) * 70 * SCALE;
+    if (this.source) {
+      // Grenzen aus der Vorgeschichte (verwirbelt, damit sie nicht dem Zellraster folgen)
+      const g = this.source.realmGrid;
+      const cx = Math.max(0, Math.min(g.size - 1, Math.floor(wx / g.cell)));
+      const cy = Math.max(0, Math.min(g.size - 1, Math.floor(wy / g.cell)));
+      return this.realms[g.grid[cy * g.size + cx]] ?? this.realms[0];
+    }
     let best = this.realms[0];
     let bd = Infinity;
     for (const r of this.realms) {
@@ -389,7 +481,7 @@ export class WorldMeta {
 
   /** Truhe, Schrein oder Obelisk auf einer Kachel. */
   poiAt(tx: number, ty: number): Poi | null {
-    const o = this.obeliskIndex.get(`${tx},${ty}`);
+    const o = this.obeliskIndex.get(`${tx},${ty}`) ?? this.historicIndex.get(`${tx},${ty}`);
     if (o) return o;
     const r = this.ruinIndex.get(`${tx - 2},${ty - 1}`);
     if (r) return { id: `ruinchest:${tx},${ty}`, kind: 'ruinchest', tx, ty };
@@ -401,6 +493,7 @@ export class WorldMeta {
 
   /** Höchstens ein zufälliges Geheimnis pro Chunk (Truhe 5 %, Schrein 2 %). */
   chunkPoi(cx: number, cy: number): Poi | null {
+    if (this.source && this.historicNear(cx * CHUNK_TILES + 8, cy * CHUNK_TILES + 8, 12)) return null;
     const rnd = mulberry32(hash2(this.t.seed, cx, cy, 1313));
     const roll = rnd();
     const kind: PoiKind | null = roll < 0.05 ? 'chest' : roll < 0.07 ? 'shrine' : null;

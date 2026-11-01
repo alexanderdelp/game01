@@ -1,7 +1,7 @@
-import type { Decoration } from '../world/WorldGen';
+import type { Decoration, WorldOptions } from '../world/WorldGen';
 
 export type ChunkRequest =
-  | { type: 'init'; seed: string }
+  | { type: 'init'; seed: string; opts?: WorldOptions }
   | { type: 'chunk'; cx: number; cy: number }
   | { type: 'overview'; step: number }
   /** Ausschnitt der Karte in feinerer Auflösung (zoombare Weltkarte) */

@@ -5,6 +5,7 @@ import { historyOf } from '../../src/history';
 import { INHABITED, type History } from '../../src/history/types';
 import { eventText, plainLinker } from '../../src/history/narrate';
 import { territory } from '../../src/history/query';
+import { rumorAt } from '../../src/history/rumors';
 
 const SEED = 'nebel-kristall-427';
 const world = new WorldGen(SEED);
@@ -92,5 +93,49 @@ describe('Vorgeschichte – Simulation', () => {
     const short = historyOf(world, { years: 300 });
     expect(short.years).toBe(300);
     expect(short.events[short.events.length - 1].y).toBeLessThanOrEqual(300);
+  });
+});
+
+describe('Vorgeschichte – Spielwelt daraus (?vorgeschichte=1)', () => {
+  const hw = new WorldGen(SEED, { history: {} });
+  const m = hw.meta;
+  const hh = hw.history!;
+
+  it('ohne Schalter bleibt die Welt unverändert', () => {
+    expect(world.history).toBeUndefined();
+    expect(world.meta.source).toBeUndefined();
+    expect(world.meta.settlements.length).toBe(new WorldGen(SEED).meta.settlements.length);
+  });
+
+  it('sechs Reiche aus den größten Reichen der Geschichte, Rivalen paarweise', () => {
+    expect(m.realms.length).toBe(6);
+    for (const r of m.realms) expect(hh.civs.some((c) => c.name === r.name && c.fell === undefined)).toBe(true);
+    for (let i = 0; i < 6; i++) expect(m.rivals[m.rivals[i]]).toBe(i);
+    for (const r of m.realms) expect(m.settlements[r.capital].realm).toBe(r.id);
+  });
+
+  it('Orte, Ruinen und Fundorte stammen aus der Geschichte und liegen begehbar', () => {
+    expect(m.settlements.length).toBe(hh.sites.filter((s) => INHABITED.has(s.kind) && s.destroyed === undefined).length);
+    for (const r of m.ruins) {
+      const s = hh.sites[r.site!];
+      expect(s.destroyed !== undefined || s.kind === 'crater').toBe(true);
+      expect(hw.isWalkable(r.tx, r.ty + 3)).toBe(true);
+    }
+    expect(m.historic.length).toBeGreaterThan(10);
+    for (const p of m.historic) expect(hw.decorationAt(p.tx, p.ty)?.kind).toBe(p.kind);
+    expect(m.obelisks.length).toBe(8);
+    expect(m.lore.fragments.length).toBe(8);
+    for (const f of m.lore.fragments) expect(f.text).not.toMatch(/undefined|NaN/);
+  });
+
+  it('Grenzen: jede Siedlung liegt meist im eigenen Reich', () => {
+    const own = m.settlements.filter((s) => m.realmAt(s.tx, s.ty).id === s.realm).length;
+    expect(own / m.settlements.length).toBeGreaterThan(0.7);
+  });
+
+  it('NPCs erzählen Gerüchte über nahe Orte', () => {
+    const s = m.settlements[0];
+    const r = rumorAt(hh, s.tx, s.ty, 1);
+    expect(r).toMatch(/im (Norden|Süden|Osten|Westen|Nordosten|Nordwesten|Südosten|Südwesten)/);
   });
 });

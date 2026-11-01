@@ -12,7 +12,7 @@ export const TILE_PX = 32;
 export const DECOR_SHADOW: Partial<Record<DecorKind, [number, number]>> = {
   oak: [36, 10], youngoak: [24, 8], pine: [26, 8], youngpine: [18, 6], snowpine: [26, 8], palm: [26, 8], cactus: [16, 6], deadtree: [16, 6], boulder: [36, 10], crystal: [26, 8],
   pylon: [16, 6], scrap: [36, 10], bush: [26, 8], rock: [16, 6], chest: [16, 6], shrine: [26, 8], obelisk: [26, 8], well: [26, 8],
-  ruin: [70, 16], ruinchest: [20, 7],
+  ruin: [70, 16], ruinchest: [20, 7], tomb: [52, 12], memorial: [28, 8], lair: [58, 14],
 };
 /** Flache Dekorationen, die komplett ins Bodenbild gebacken werden (keine eigenen Objekte). */
 export const FLAT_DECOR = new Set<DecorKind>(['tuft', 'flowers']);

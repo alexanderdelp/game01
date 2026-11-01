@@ -122,6 +122,10 @@ export const debugState = {
   gmSet: (_on: boolean): void => {},
   gmTeleport: (_tx: number, _ty: number): boolean => false,
   walkable: (_tx: number, _ty: number): boolean => true,
+  /** Prototyp Vorgeschichte: zuletzt gezeigte Ortsgeschichte im Spielleiter-Modus */
+  historyPanel: '',
+  /** Prototyp Vorgeschichte: Anzahl Orte, Reiche, Fundorte */
+  history: null as null | { sites: number; realms: string[]; historic: { kind: string; tx: number; ty: number; site: number }[]; settlements: number; ruins: number },
   markers: {} as Record<string, string>,
   choose: (_i: number): void => {},
   dialog: null as { name: string; role: string; text: string; choices?: string[] } | null,

@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BIOMES, BIOME_SPEED, BUILT, DECOR_BLOCK } from '../world/biomes';
 import { overlaps, type Box } from '../world/collision';
-import { CHUNK_TILES, WORLD_CHUNKS, type Decoration } from '../world/WorldGen';
+import { CHUNK_TILES, WORLD_CHUNKS, type Decoration, type WorldOptions } from '../world/WorldGen';
 import { CELL, cellsBlock, slopeSpeed } from '../world/terrain';
 import { CHUNK_PX, FLAT_DECOR, TILE_PX, decorPos } from './chunkPixels';
 import type { ChunkRequest, ChunkResult } from './chunkProtocol';
@@ -43,12 +43,12 @@ export class ChunkManager {
   readonly builtImages = new Map<string, Phaser.GameObjects.Image>();
   readonly onUnload: ((cx: number, cy: number) => void)[] = [];
 
-  constructor(private readonly scene: Phaser.Scene, seed: string) {
+  constructor(private readonly scene: Phaser.Scene, seed: string, opts?: WorldOptions) {
     const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
     for (let i = 0; i < n; i++) {
       const w = new Worker(new URL('./chunkWorker.ts', import.meta.url), { type: 'module' });
       w.onmessage = (ev: MessageEvent<ChunkResult>) => this.onResult(i, ev.data);
-      w.postMessage({ type: 'init', seed } satisfies ChunkRequest);
+      w.postMessage({ type: 'init', seed, opts } satisfies ChunkRequest);
       this.workers.push(w);
       this.busy.push(0);
     }

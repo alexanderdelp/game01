@@ -16,6 +16,7 @@ import type { Item, Slot } from '../rpg/items';
 import { dress } from '../character/outfit';
 import { isReady, onPosition, progressText } from '../quests/quests';
 import { FACTIONS } from '../world/meta';
+import { eventText, plainLinker } from '../history/narrate';
 import { LocalWorldStore, WorldState, isDefeated } from '../state/worldState';
 import { TownDecor } from '../render/TownDecor';
 import { LiveWorld, worldNow } from '../sim/LiveWorld';
@@ -81,7 +82,10 @@ export class WorldScene extends Phaser.Scene {
   }
 
   init(data: { seed: string }): void {
-    this.world = new WorldGen(data.seed);
+    // Prototyp Vorgeschichte: `?vorgeschichte=1&jahre=600` erzeugt die Welt aus einer simulierten Geschichte
+    const params = new URLSearchParams(location.search);
+    const history = params.get('vorgeschichte') === '1' ? { years: Number(params.get('jahre')) || undefined } : undefined;
+    this.world = new WorldGen(data.seed, history ? { history } : {});
   }
 
   preload(): void {
@@ -98,7 +102,7 @@ export class WorldScene extends Phaser.Scene {
     save('recent', [this.world.seedName, ...recent].slice(0, 6));
     createDecorAtlas(this);
     createCreatureAtlas(this);
-    this.chunks = new ChunkManager(this, this.world.seedName);
+    this.chunks = new ChunkManager(this, this.world.seedName, this.world.opts);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
     this.state = new WorldState(this.world.seedName, new LocalWorldStore(), Date.now(), playerId());
@@ -253,6 +257,14 @@ export class WorldScene extends Phaser.Scene {
     }
     save(`seen:${this.world.seedName}`, now);
     installDebugHooks(this, spawn);
+    // Aus dem Legenden-Modus: `?gm=1&at=tx,ty` öffnet den Spielleiter-Modus an einem Ort
+    const at = new URLSearchParams(location.search).get('at')?.split(',').map(Number);
+    if (this.gmAllowed && at?.length === 2 && at.every(Number.isFinite)) {
+      this.time.delayedCall(400, () => {
+        this.setGm(true);
+        this.gmTeleport(at[0], at[1] + 4);
+      });
+    }
   }
 
   /** Zurück zum Titelbildschirm (alles wird gespeichert). */
@@ -360,7 +372,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   get saveKey(): string {
-    return `player:${this.world.seedName}`;
+    // Welten mit Vorgeschichte haben andere Orte: eigene Position speichern
+    return `player:${this.world.seedName}${this.world.history ? ':vorgeschichte' : ''}`;
   }
 
   /** Spielleiter-Modus an/aus (M29): fliegen, unverwundbar, keine Spuren in Fog/Weltzustand. */
@@ -468,7 +481,16 @@ export class WorldScene extends Phaser.Scene {
       const ruin = this.world.meta.ruinNear(t.tx, t.ty, 10);
       if (ruin && !this.state.d.discovered.has(`ruin:${ruin.id}`)) {
         this.state.record({ t: Date.now(), by: this.heroName, type: 'discover', id: `ruin:${ruin.id}` });
-        this.events.emit('banner', { title: 'Eine alte Ruine', sub: 'Ein Wächter hütet hier einen Schatz …' });
+        const h = this.world.history;
+        const site = h && ruin.site !== undefined ? h.sites[ruin.site] : undefined;
+        if (h && site) this.events.emit('banner', { title: site.kind === 'crater' ? site.name : `Ruinen von ${site.name}`, sub: site.fall !== undefined ? eventText(h, h.events[site.fall], plainLinker(h)) : 'Ein Wächter hütet hier einen Schatz …' });
+        else this.events.emit('banner', { title: 'Eine alte Ruine', sub: 'Ein Wächter hütet hier einen Schatz …' });
+      }
+      // Fundorte der Vorgeschichte ankündigen (Grabmal, Schlachtfeld, Hort)
+      const hist = this.world.history && this.world.meta.historicNear(t.tx, t.ty, 8);
+      if (hist && hist.site !== undefined && !this.state.d.discovered.has(`hist:${hist.site}`)) {
+        this.state.record({ t: Date.now(), by: this.heroName, type: 'discover', id: `hist:${hist.site}` });
+        this.events.emit('banner', { title: this.world.history!.sites[hist.site].name, sub: hist.kind === 'lair' ? 'Knochen ringsum … hier haust etwas.' : 'Eine Inschrift erzählt von alten Zeiten (E: lesen)' });
       }
       debugState.realm = realm.name;
       debugState.town = town?.name ?? '';

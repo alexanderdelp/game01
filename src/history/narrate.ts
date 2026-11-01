@@ -218,7 +218,9 @@ export function artifactText(_h: History, a: Artifact, L: Linker): string {
 
 /** Kurzfassung eines Ortes für das Spiel (Inschrift, Spielleiter-Karte). */
 export function siteStory(h: History, s: Site): string {
-  return siteText(h, s, plainLinker(h));
+  const L = plainLinker(h);
+  const evs = siteEvents(h, s, 3).filter((e) => e.id !== s.fall).map((e) => `${yearText(e.y)}: ${eventText(h, e, L)}`);
+  return [siteText(h, s, L), ...evs].join(' ');
 }
 
 /** Die wichtigsten Ereignisse eines Ortes (für Inschriften). */

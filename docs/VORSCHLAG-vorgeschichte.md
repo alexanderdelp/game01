@@ -73,3 +73,55 @@ Zeitverlauf** (Jahr-Regler). Die Simulation läuft dort in einem Web Worker.
 - Grobe Auflösung (64 Kacheln je Zelle) für Ausbreitung und Grenzen; Orte selbst liegen kachelgenau.
 - Höchstens sechs Reiche im Spiel (das übrige Spiel nimmt sechs an); kleinere Reiche gehen in den Grenzen auf.
 - Artefakte geben vorerst Splitter + seltenen Gegenstand und einen Eintrag in der Chronik des Helden, keine eigenen Werte.
+
+## Ergebnis des Prototyps (2026-11-02)
+
+### Starten
+
+```bash
+npm ci
+npm run legenden                     # Legenden-Modus im Browser (Seed nebel-kristall-427)
+npx vite                             # dann die URLs unten
+```
+
+- Legenden: `http://localhost:5173/?legends=1&seed=nebel-kristall-427` (optional `&jahre=300…1000`)
+- Spiel mit Vorgeschichte und Spielleiter: `http://localhost:5173/?seed=nebel-kristall-427&vorgeschichte=1&gm=1`
+  (F2 schaltet den Spielleiter-Modus ein, M öffnet die Karte; Klick auf einen Ort → Teleport und Ortsgeschichte)
+- Aus einer Ortsseite der Legenden: „Im Spiel ansehen“ öffnet `…&gm=1&at=tx,ty` direkt am Ort.
+
+### Erreicht
+
+- **Simulation** (`src/history/`, ~0,5–1,6 s für 600 Jahre): Geologie (fruchtbares Land, Holz, Erz, Splitter-Adern,
+  Schrott), vier Völker, Reiche mit Fraktionen, Ausbreitung an Flüssen und Küsten, Türme/Labore/Tempel/Festungen/Minen,
+  Handel, Bündnisse, Kriege mit Schlachten, Eroberung und Zerstörung, Verrat, Spaltungen, Seuchen und Hungersnöte,
+  Erbfolge mit Nachkommen, Helden, Erzmagier, Ingenieure, Großbestien mit Horten, Artefakte mit Besitzerkette und
+  Verlust, die **Zersplitterung** mit dem großen Artefakt. Je Welt ~130 bewohnte Orte, 20–30 Ruinen, 60–70 Artefakte
+  (davon ~50 verschollen und auffindbar), ~1500 Ereignisse.
+- **Legenden-Modus**: Übersicht, Karte mit Reichsgrenzen, Orten, Ruinen und Handelswegen im Zeitverlauf (Regler und
+  Abspielen), Zeitleiste der Reiche, Listen mit Filter und Sortierung, verlinkte Detailseiten, Suche.
+- **Spielwelt aus der Geschichte** (`?vorgeschichte=1`, Adapter `src/history/toWorld.ts` → `WorldMeta`): die sechs größten
+  Reiche, alle bewohnten Orte als Siedlungen, Ruinen mit Wächter (Banner nennt ihren Untergang), Grabmäler,
+  Gedenksteine auf Schlachtfeldern und Horte als neue Fundorte (Inschrift lesen, Artefakt bergen; lebende Bestien
+  bewachen ihren Hort), Obelisken-Chronik aus echten Ereignissen nahe den Schauplätzen, NPC-Gerüchte mit Richtung.
+- **Spielleiter-Karte**: alle historischen Orte; Klick teleportiert und zeigt die Ortsgeschichte mit Link in die Legenden.
+- Tests: `tests/unit/vorgeschichte.test.ts` (Determinismus, Laufzeit, Plausibilität, Adapter, Gerüchte),
+  `tests/e2e/vorgeschichte.spec.ts` (Legenden und Spiel mit Spielleiter-Karte). Ohne Schalter ist das Spiel unverändert.
+
+### Offen
+
+- Spielstände: Welt mit Vorgeschichte teilt den Weltzustand (Entdeckungen nach Ort-ID) mit der Welt ohne; nur die
+  Position wird getrennt gespeichert. Für eine Übernahme eigene Weltversion bzw. eigener Speicherschlüssel.
+- Die Live-Simulation (`src/sim`, Macht der Reiche) verschiebt die Grenzen mit Vorgeschichte nicht; Nachrichten und
+  Karawanen laufen aber über die neuen Orte. Gut wäre: Live-Welt setzt die Geschichte fort (neue Ereignisse ins Protokoll).
+- Artefakte sind im Spiel noch normale Beute + Banner; eigene Gegenstände mit Werten und Geschichte fehlen.
+- ~130 Siedlungen statt ~55: Wildnis bleibt groß, aber Orte sind dichter; Obergrenze `MAX_SITES` ist ein Regler.
+- Figuren tauchen im Spiel nur in Texten auf (keine Nachfahren als NPCs, keine Gräber mit Namen in Quests).
+- Die Laufzeit kommt im Spiel mehrfach vor (Haupt-Thread + Chunk-Worker + Karten-Worker), dadurch ~1 s längerer Start.
+
+### Empfehlung für eine Übernahme
+
+1. Erst die **Daten- und Textschicht** übernehmen (`src/history/` + Legenden-Modus) – sie ist rein, getestet und stört nichts.
+2. Dann die Welt mit Vorgeschichte als **neue Weltversion** (statt Schalter), mit eigenem Speicherschlüssel; die
+   bisherige Platzierung in `meta.ts` entfällt dann.
+3. Danach Quests auf die Geschichte stützen (Artefakt bergen, Bestie erschlagen, Grab besuchen) und die Live-Welt
+   Ereignisse in dasselbe Protokoll schreiben lassen – so wird die Geschichte nahtlos zur Gegenwart.

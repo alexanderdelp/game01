@@ -483,12 +483,15 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
     case 'obelisk': return obelisk(rnd);
     case 'ruin': return ruin(rnd, variant);
     case 'ruinchest': return ruinchest(rnd, variant % 2 === 1);
+    case 'tomb': return tomb(rnd);
+    case 'memorial': return memorial(rnd);
+    case 'lair': return lair(rnd);
   }
 }
 
 export const DECOR_KINDS: DecorKind[] = [
   'oak', 'youngoak', 'pine', 'youngpine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
-  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest',
+  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest', 'tomb', 'memorial', 'lair',
 ];
 
 /** Kleine Symbole (16×16) für Beute und Inventar. */
@@ -813,6 +816,59 @@ export function grave(): Pixels {
   img.rect(6, 11, 8, 2, STONE[1]);
   img.rect(1, 23, 18, 3, 0x4a6a3a);
   img.outline();
+  return img.result();
+}
+
+// ---------------------------------------------------------------- Fundorte der Vorgeschichte (Prototyp)
+
+/** Grabmal: kleine Gruft mit Giebel, dunkler Tür und leuchtender Rune. */
+function tomb(rnd: () => number): Pixels {
+  const img = new Img(56, 60);
+  for (let y = 50; y < 58; y++) for (let x = 2; x < 54; x++) img.shade(x, y, 0.75 - (x - 2) / 52 * 0.45 + (y === 50 ? 0.15 : 0), STONE);
+  for (let y = 22; y < 50; y++) for (let x = 8; x < 48; x++) img.shade(x, y, 0.8 - (x - 8) / 40 * 0.5 + ((x + (y >> 2) * 5) % 11 === 0 ? -0.18 : 0) + ((y - 22) % 7 === 0 ? -0.12 : 0), STONE);
+  img.polygon([[4, 23], [28, 4], [52, 23]], (x, y) => STONE[Math.max(0, Math.min(5, Math.round((0.9 - (x - 4) / 48 * 0.5 - (y < 8 ? 0 : 0.05)) * 5)))]);
+  for (const x of [10, 44]) img.rect(x, 22, 4, 28, STONE[4]);
+  img.polygon([[22, 50], [22, 34], [28, 29], [34, 34], [34, 50]], () => 0x14121c);
+  img.rect(27, 12, 2, 7, 0x9b6af0);
+  img.rect(25, 14, 6, 2, 0x9b6af0);
+  for (let i = 0; i < 6; i++) img.set(6 + Math.floor(rnd() * 44), 51 + Math.floor(rnd() * 6), 0x4a6a3a);
+  img.outline();
+  for (let y = 8; y < 22; y++) for (let x = 20; x < 36; x++) if (!img.opaque(x, y) || Math.hypot(x - 28, y - 15) < 7) img.glow(x, y, 0x9b6af0, Math.max(0, 50 - Math.hypot(x - 28, y - 15) * 6));
+  return img.result();
+}
+
+/** Gedenkstein eines Schlachtfelds: Steinplatte mit Inschrift, daneben ein Schwert im Boden. */
+function memorial(rnd: () => number): Pixels {
+  const img = new Img(34, 48);
+  img.polygon([[6, 46], [7, 12], [11, 6], [21, 6], [25, 12], [26, 46]], (x, y) => STONE[Math.max(0, Math.min(5, Math.round((0.85 - (x - 6) / 20 * 0.5 - y / 48 * 0.1 + (rnd() - 0.5) * 0.06) * 5)))]);
+  for (let y = 16; y < 38; y += 4) img.rect(10, y, 8 + Math.floor(rnd() * 5), 1, STONE[1]);
+  // Schwert
+  img.line(29, 20, 29, 44, METAL[3], 2);
+  img.rect(26, 24, 8, 2, 0xd0a048);
+  img.rect(28, 18, 3, 6, 0x5a3a24);
+  img.rect(3, 44, 28, 3, 0x4a6a3a);
+  img.outline();
+  return img.result();
+}
+
+/** Hort einer Großbestie: Felsen um ein dunkles Loch, Knochen, glühende Augen. */
+function lair(rnd: () => number): Pixels {
+  const img = new Img(64, 44);
+  img.ball(14, 28, 12, STONE, rnd, 0.15, 0.8);
+  img.ball(50, 28, 12, STONE, rnd, 0.15, 0.8);
+  img.ball(32, 16, 14, STONE.slice(1), rnd, 0.12, 0.8);
+  img.polygon([[20, 42], [22, 28], [32, 22], [42, 28], [44, 42]], () => 0x0c0a10);
+  img.set(28, 32, 0xff6030);
+  img.set(36, 32, 0xff6030);
+  for (let i = 0; i < 7; i++) {
+    const x = 6 + Math.floor(rnd() * 52);
+    const y = 38 + Math.floor(rnd() * 5);
+    img.rect(x, y, 4, 1, 0xe8e0d0);
+    img.set(x, y - 1, 0xe8e0d0);
+    img.set(x + 3, y + 1, 0xe8e0d0);
+  }
+  img.outline();
+  for (const x of [28, 36]) img.glow(x, 32, 0xff6030, 90);
   return img.result();
 }
 
