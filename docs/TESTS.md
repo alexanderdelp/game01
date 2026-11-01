@@ -35,7 +35,7 @@
 |---|---|---|---|
 | vorher (main 52cccf7, 1 Worker) | 39 | 536 s | 139 Tests, ~8 s |
 | nachher, 4 Worker, 1280 × 720 | 31 | 303 / 295 / 287 s | |
-| nachher, 4 Worker, 960 × 540 | 31 | **230 / 226 / 227 s** (3 Läufe ohne Fehlschlag, ohne Retries, Load ~25) | 139 Tests, ~7 s |
+| nachher, 4 Worker, 960 × 540 | 31 | **E2E ~3,7 min**: 3 Abschlussläufe ohne Fehlschlag, ohne Retries (Load ~25), ganzes `npm run check` 236 s | 139 Tests, ~7 s |
 
 ## Befehle
 
