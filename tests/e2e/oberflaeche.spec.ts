@@ -39,6 +39,7 @@ test('Titel, neue Welt, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13
 });
 
 test('M22: Weltkarte zoomen und verschieben, feiner Ausschnitt ab 4× (R1, R2)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 }); // Detailstufe hängt an der Kartengröße
   const errors = await open(page, 'karte-test');
   const s = await G<{ tx: number; ty: number }>(page, '({ ...g.spawn })');
   await G(page, `g.fogReveal(${s.tx}, ${s.ty}, 700)`);

@@ -16,14 +16,26 @@
 4. **Unabhängige Tests, parallel.** Jeder Test hat einen eigenen Browser-Kontext (eigener `localStorage`), Netz-Tests
    starten den Referenz-Server auf einem freien Port (`syncServer()`). Playwright: `fullyParallel`, 4 Worker lokal,
    2 in CI, `retries: 1` nur in CI.
-5. **Testmodus `?test=1`** (feste Weltzeit Mittag, keine Invasionen) für alles, was nicht gerade die echte Uhr prüft.
-6. **Bildschirmfotos nur auf Wunsch:** `shot(page, name)` macht nur mit `SHOTS=1` ein Bild (`npm run shots`), im
+5. **Kleines Testfenster 960 × 540** (Standard in `playwright.config.ts`): seit M27 derselbe Weltausschnitt wie im
+   Laptop-Fenster (Zoom 1 statt 2), aber halb so viele Pixel – das Software-Zeichnen im Testbrowser ist der größte
+   Rechenposten. Wo Fenstergröße die Aussage ist, setzt der Test sie selbst: M27-Zoom und Weltkarte 1280 × 720,
+   Arena 1280 × 720 (Bedienfeld/Klicks), niedriges Laptop-Fenster 1280 × 560, Handy 390 × 844.
+6. **Testmodus `?test=1`** (feste Weltzeit Mittag, keine Invasionen) für alles, was nicht gerade die echte Uhr prüft.
+7. **Bildschirmfotos nur auf Wunsch:** `shot(page, name)` macht nur mit `SHOTS=1` ein Bild (`npm run shots`), im
    normalen Lauf kostet es nichts. Optik prüft man per Screenshot, nicht per Test.
-7. **Keine Pixelpositionen oder Texte ohne Bedeutung prüfen.** Texte nur, wo sie die Aussage sind („Feinde“,
+8. **Keine Pixelpositionen oder Texte ohne Bedeutung prüfen.** Texte nur, wo sie die Aussage sind („Feinde“,
    „Gefolgsmann“).
-8. **Neue Funktion:** Logik → Unit-Test in `tests/unit/mXX.test.ts`; sichtbarer Ablauf → ein Schritt im
+9. **Neue Funktion:** Logik → Unit-Test in `tests/unit/mXX.test.ts`; sichtbarer Ablauf → ein Schritt im
    E2E-Ablauf des Moduls (`tests/e2e/<modul>.spec.ts`), möglichst in einen bestehenden Test einfügen statt die Welt
    neu zu laden.
+
+## Laufzeit (lokal, 8 Kerne, Rechner durch andere Sessions belastet)
+
+| | E2E-Tests | Laufzeit | Unit |
+|---|---|---|---|
+| vorher (main 52cccf7, 1 Worker) | 39 | 536 s | 139 Tests, ~8 s |
+| nachher, 4 Worker, 1280 × 720 | 31 | 303 / 295 / 287 s | |
+| nachher, 4 Worker, 960 × 540 | 31 | **230 / 226 / 227 s** (3 Läufe ohne Fehlschlag, ohne Retries, Load ~25) | 139 Tests, ~7 s |
 
 ## Befehle
 

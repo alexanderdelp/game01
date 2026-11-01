@@ -132,7 +132,7 @@ export async function shot(page: Page, name: string) {
 
 /** Ein weiterer Spieler in eigenem Browser-Kontext (eigener Speicher), Held wird erschaffen. */
 export async function player(browser: Browser, url: string, name: string) {
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const ctx = await browser.newContext({ viewport: { width: 960, height: 540 } });
   const page = await ctx.newPage();
   const errors = watchErrors(page);
   await page.goto(url);

@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { G, frames, shot, watchErrors } from './helpers';
 
+// Arena-Bedienfeld und Klick-Platzierung brauchen das Laptop-Format (übrige E2E-Tests: 960 × 540, spart Rechenzeit)
+test.use({ viewport: { width: 1280, height: 720 } });
+
 // Kampf-Arena (Modul Kampf). Aufbauten, Wegfindung, Waffenwerte und Diagonal-Treffer selbst prüfen m25/m28.test.ts.
 
 test('Kampf-Arena: startet ohne Welt, Gegner per Knopf, Werte live einstellbar', async ({ page }) => {

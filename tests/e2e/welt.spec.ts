@@ -5,6 +5,7 @@ import { G, hold, open, saveAndReload, shot, state, tp, walk } from './helpers';
 // Generierung, Kollision, Höhen und Sicht selbst prüfen die Unit-Tests (world, m2, m19, m20, m24, m26).
 
 test('M1/M2: Welt aus Seed, Zoom, Karte, Laufen in alle Richtungen (M1 R7–R10, M2 R1/R2)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
   const errors = await open(page, 'test');
   const s0 = await state(page);
   expect(s0.seed).toBe('test');
