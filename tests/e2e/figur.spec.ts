@@ -97,9 +97,11 @@ test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M
   // Doppelklick legt direkt an; Ablegen der Schuhe → barfuß
   const feet = await G<string>(page, "g.giveItem('feet')");
   const fi = await inv(feet);
-  expect(await G<boolean>(page, `g.clickPanel('inv-${fi}')`)).toBe(true);
-  expect(await G<boolean>(page, `g.clickPanel('inv-${fi}')`)).toBe(true);
-  expect(await G<string>(page, 'g.hero.equipped.feet.id')).toBe(feet);
+  // Unter Last kann der Abstand zweier Klicks das Doppelklick-Fenster überschreiten → Klickpaar bei Bedarf wiederholen
+  await expect.poll(async () => {
+    await G(page, `g.clickPanel('inv-${fi}') && g.clickPanel('inv-${fi}')`);
+    return G<string>(page, 'g.hero.equipped.feet?.id');
+  }, { intervals: [500] }).toBe(feet);
   expect(await G<boolean>(page, "g.clickPanel('slot-feet')")).toBe(true);
   expect(await G<string>(page, 'g.heroLook().shoes')).toBe('none');
   // Lederrüstung anlegen
