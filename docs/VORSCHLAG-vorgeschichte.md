@@ -4,124 +4,167 @@ Branch `prototyp/vorgeschichte` (nicht auf `main`). Eigene Systeme für Splitter
 
 ## Ziel
 
-Die Welt soll sich anfühlen, als hätte sie schon vor dem Spieler gelebt. Aus dem Seed läuft eine Geschichte über
-Jahrhunderte. Aus ihrem Endzustand entsteht die spielbare Welt mit Reichen, Städten, Ruinen, Gräbern, Schlachtfeldern
-und Horten. **Jede Geschichte hinterlässt eine Spur, die man finden kann.**
+Die Welt soll sich anfühlen, als hätte sie schon lange vor dem Spieler gelebt. Aus dem Seed läuft eine Geschichte über
+**mehrere tausend Jahre**, gegliedert in Zeitalter und geprägt von **weltweiten Einschnitten**. Aus ihrem Endzustand
+entsteht die spielbare Welt mit Reichen, **großen, gewachsenen Städten**, Ruinen, Gräbern, Schlachtfeldern und Horten.
+Altes Wissen ist **bruchstückhaft**: manches ist nur Sage, manches **verschollen**. **Jede Geschichte hinterlässt eine
+Spur, die man finden kann.**
 
 Bezug zu den Wünschen (`CLAUDE.md`):
-- **Immersiv / Geschichten erleben:** Jeder Ort hat eine Geschichte, die man im Spiel liest (Inschriften, Gerüchte, Chronik).
-- **Erkundung:** Verlorene Artefakte liegen an konkreten Orten (Grab, Hort, Schlachtfeld, Ruine). Gerüchte von NPCs führen hin.
-- **Große, prozedurale Welt aus dem Seed:** Die Geschichte ist eine reine Funktion des Seeds (Elite-Prinzip), wie die Landschaft.
-- **Lebendige Welt / relevante Entscheidungen:** Die Simulation liefert die Ausgangslage (Rivalitäten, Bündnisse), auf der
-  `src/sim` (Live-Welt) und spätere Spielerhandlungen aufbauen.
+- **Immersiv / Geschichten erleben:** Jeder Ort hat eine Geschichte (Inschriften, Gerüchte, Chronik), Städte zeigen sie
+  (Mauerring aus der Blütezeit, verfallene Viertel, Stadt auf den Resten einer älteren).
+- **Erkundung:** Verschollene Orte und Artefakte; Sagen sagen nur „irgendwo im Osten“.
+- **Große, prozedurale Welt aus dem Seed:** Die Geschichte ist eine reine Funktion von Seed + Einstellungen (Elite-Prinzip).
+- **Lebendige Welt / relevante Entscheidungen:** Die Simulation liefert die Ausgangslage, auf der `src/sim` (Live-Welt)
+  und spätere Spielerhandlungen aufbauen.
 
-## Ablauf (`generateHistory(seed, { years })`)
+## Version 2 (2026-11-02, Nutzerfeedback)
 
-Rein, ohne Phaser, in `src/history/`. Läuft im Haupt-Thread, im Chunk-Worker und im Legenden-Worker gleich.
+Feedback: 600 Jahre zu kurz, keine weltweiten Ereignisse, Städte mit 5 Häusern lächerlich, alles gleich genau bekannt.
+Wunsch: gut **nachvollziehbar**, **erweiterbar** (neue Ereignisarten) und **konfigurierbar** (wie viel, was nicht, wie
+lang) – im Quelltext und in einer Oberfläche.
 
-1. **Geografie** (grobes Raster 128 × 128, eine Zelle = 64 Kacheln) aus `WorldGen`: Biom, Höhe, Küste, Seen, Flüsse.
-   Die Flüsse stammen aus demselben Flusslauf wie im Spiel (`traceRivers`, aus `meta.ts` herausgelöst).
-2. **Geologie / Ressourcen** je Zelle: fruchtbares Land, Holz, Erz, **Splitter-Adern** (an Kristallhainen und als
-   seed-basierte Adern) und **Schrott** (Relikte der „Ersten Maschinen“ aus der Vorzeit, Schrottödnis).
-3. **Völker** erscheinen in passenden Herkunftsgebieten: Mensch (Grasland/Wald), Elf (Wald/Dschungel/Kristall),
-   Ork (Hügel/Savanne/Steppe), Synth (erwachen in Schrottfeldern, erst nach einigen Jahrzehnten).
-4. **Jahresschleife** (Standard 600 Jahre, Regler 300–1000):
-   - Wachstum der Orte nach Fruchtbarkeit; Gründung neuer Dörfer bevorzugt an Flüssen, Küsten und Ressourcen;
-     Türme (Magier), Labore (Technokratie), Tempel (Orden), Festungen (Klan, Grenzen), Minen.
-   - Beziehungen benachbarter Reiche: Handel (+), Streit um Splitter-Adern und Grenzen (−) → **Bündnisse, Kriege**.
-     Krieg: **Belagerung** eines Grenzortes, Schlacht → **Schlachtfeld** mit Gedenkstein; Ort erobert oder **zerstört (Ruine)**.
-   - **Spaltung** großer Reiche bei Erbfolgestreit; **Seuchen und Hungersnöte** (Orte verlassen → Ruine).
-   - **Die Zersplitterung** (einmalig, ca. 55–70 % der Zeit): Ein Erzmagier und ein Ingenieur versuchen, den größten
-     Splitter zu bändigen. Der Versuch zerreißt die Gegend: Orte werden Ruinen, Ungeheuer erwachen. Hier treffen
-     Fantasy und Cyberpunk zusammen; die Chronik der Obelisken erzählt dieses Ereignis.
-5. **Einzelwesen:** Herrscher (Erbfolge), Helden, Erzmagier, Ingenieure, Verräter, **Großbestien mit Hort**.
-   Lebenslauf: Geburt, Ämter, Taten, Kämpfe, Tod (wer, wo, wie), Kinder.
-6. **Artefakte:** benannte Gegenstände mit Schöpfer, Besitzerkette (Erbe, Beute, Raub) und Verlust (mit dem Herrscher
-   **begraben**, auf dem **Schlachtfeld** liegen geblieben, im **Hort** einer Bestie, in einer **Ruine** verschüttet).
-7. **Ereignisprotokoll:** Jahr, Art, Beteiligte (Reiche, Figuren, Orte, Artefakte). Texte entstehen erst bei der
-   Anzeige aus Satzvorlagen (Daten bleiben klein, Texte sind übersetzbar).
+### Architektur (`src/history/`)
 
-## Datenmodell (`src/history/types.ts`)
+| Datei | Aufgabe | Erweitern |
+|---|---|---|
+| `config.ts` | `HistoryConfig` mit allen Stellschrauben, `DEFAULT_CONFIG`, Voreinstellungen, `resolveConfig` (Teil-Konfiguration → vollständig, begrenzt), Kodierung für URLs (`?hc=…`) | neues Feld + Standardwert + Eintrag im Schema |
+| `schema.ts` | Beschreibung der Felder für die Oberfläche (Bezeichnung, Hilfe, Bereich) | ein Eintrag je Feld; die Oberfläche baut sich daraus |
+| `timeline.ts` | Zeitalter → absolute Jahre, Schritte mit variabler Länge (`dt`), `epochAt(y)` | – |
+| `simulate.ts` | **Kern** `Sim`: Zustand (Zellen, Reiche, Orte, Figuren, Artefakte, Ereignisse) und gemeinsame Hilfen (`chance`, `place`, `destroy`, `die` …) und die Schrittschleife | – |
+| `systems/*.ts` | **Systeme**, die in jedem Schritt laufen (Figuren, Wachstum, Handel, Beziehungen, Kriege, Bestien, Katastrophen, Aufstieg neuer Reiche, Verfall alter Reiche) | neue Datei mit `HistorySystem` + Eintrag in `systems/index.ts` |
+| `worldEvents/*.ts` | **Weltereignisse** (Splitterfall, Maschinenkrieg, Große Flut, Eiszeit, Seuchenzeit, Dunkles Zeitalter, Völkerwanderung, Goldenes Zeitalter, Zersplitterung) mit Zeitfenster, Dauer, Modifikatoren und Wirkung | neue Datei mit `WorldEventDef` + Eintrag in `worldEvents/index.ts` |
+| `events.ts` | Ereignisarten: Bezeichnung, Kategorie, **Bedeutung** (0–5) | Eintrag; der Text steht in `narrate.ts` (Pflicht durch den Typ) |
+| `knowledge.ts` | **Überlieferung**: aus der wahren Geschichte wird, was man heute weiß (gewiss / vage / Sage / verschollen) | Regler in `config.knowledge` |
+| `towns.ts` | Größenstufen der Orte (Weiler … Großstadt) und Stadtplan-Vorgaben (Gebäudezahl, Mauerring, Verfall) | Stufen in `config.towns` |
+| `narrate.ts` | Texte (Deutsch, Satzvorlagen), wahr oder überliefert | – |
+| `toWorld.ts` | Adapter Geschichte → Spielwelt (`MetaSource`) | – |
 
-`History { seed, years, worldName, cells, civs, sites, figures, artifacts, events }`. Alles über Zahl-IDs verknüpft.
-- `Site`: Art, Name, Kachelposition, Gründung, Besitzer im Zeitverlauf, Zerstörung (Ereignis-ID), Ereignisse.
-- `Civ`: Volk, Fraktion, Farbe, Gründung/Untergang, Hauptstadt, Herrscherliste, Herkunft (Spaltung von …).
-- `Figure`: Volk, Rolle, Reich, Geburt/Tod, Todesursache, Mörder, Sterbeort, Eltern/Kinder, Ämter.
-- `Artifact`: Art, Schöpfer, Besitzerkette, Verbleib (Ort oder Figur).
-- `HEvent`: Jahr, Art, Bezüge. Reichsgrenzen in einem Jahr folgen aus den Orten und ihren Besitzern zu dem Jahr.
+Die Simulation ist eine **Schleife über Schritte**. In jedem Schritt laufen alle Systeme mit der Schrittlänge `dt`
+(Jahre). Wahrscheinlichkeiten sind **je Jahr** angegeben und werden über `sim.chance(p)` = 1 − (1 − p)^dt auf den
+Schritt umgerechnet. So bleibt ein grob simuliertes Zeitalter im Mittel gleich ereignisreich, erzeugt aber weniger
+Einzelereignisse (weniger Detail = weniger Protokoll). Jedes System liest seine Stärke aus der Konfiguration
+(`systems.<id>.on/rate`) und aus den Modifikatoren aktiver Weltereignisse (`sim.mod('war')`).
 
-## Sichtbar im Spiel (hinter `?vorgeschichte=1`)
+### Zeitalter (Standard ~7.900 Jahre)
+
+| Zeitalter | Länge | Schritt | Detail | Was | Überlieferung |
+|---|---|---|---|---|---|
+| Mythenzeit | 4.000 | 100 | 0 | Urreiche, Hochkulturen, Weltereignisse, wenige Gestalten | Sage, viel verschollen |
+| Altzeit | 2.500 | 10 | 1 | Reiche, Kriege, Herrscher, Helden | bruchstückhaft, Jahre „um“ |
+| Neuzeit | 1.250 | 2 | 2 | alles | weitgehend bekannt |
+| Jüngste Zeit | 150 | 1 | 3 | alles, lebende Figuren | gewiss |
+
+Je Zeitalter einstellbar: Länge, Schritt, Detailstufe (welche Systeme laufen: z. B. keine Geburten in der Mythenzeit),
+**Mindestbedeutung** fürs Protokoll (in der Mythenzeit nur große Ereignisse) und **Klarheit** der Überlieferung.
+
+### Weltereignisse
+
+Je Welt standardmäßig 6 aus dem Katalog (Gewichte, an/aus, Anzahl, Mindestabstand einstellbar), dazu fest die
+Zersplitterung kurz vor der Gegenwart. Jedes hat erlaubte Zeitalter, eine Dauer und **Modifikatoren** (Wachstum,
+Krieg, Seuchen, Bestien, Handel, Gründungen), solange es andauert, plus eigene Wirkung zu Beginn, je Schritt und am Ende:
+
+- **Splitterfall** (Mythenzeit): Kristalle stürzen vom Himmel, Krater, Splitter-Adern, Bestien erwachen.
+- **Krieg der Ersten Maschinen** (Mythenzeit): Relikte in der Schrottödnis, nahe Orte vernichtet; danach erwachen die Synths.
+- **Große Flut** (Alt-/Neuzeit): Küstenorte versinken, Flüchtlinge gründen im Landesinneren neu.
+- **Eiszeit** (Alt-/Neuzeit, Jahrhunderte): Der Norden verödet, Reiche ziehen nach Süden.
+- **Seuchenzeit**: Seuchen ×8 über Jahrzehnte.
+- **Dunkles Zeitalter**: weniger Wachstum, mehr Krieg, **Wissen geht verloren** (Überlieferung davor wird schlechter).
+- **Völkerwanderung**: Ein Reich verlässt seine Heimat und siedelt weit entfernt neu.
+- **Goldenes Zeitalter**: mehr Wachstum und Handel, weniger Krieg.
+- **Die Zersplitterung** (fest, 250–400 Jahre vor heute): wie bisher; das letzte große Ereignis.
+
+### Überlieferung (`knowledge.ts`)
+
+Die Simulation erzeugt die **wahre** Geschichte. Daraus wird je Ereignis eine Klarheit 0–1:
+Klarheit des Zeitalters + Bedeutung × Bonus + Gedächtnis des Volks (Elfen, Synths +; Orks −) − Verlust je späterem
+dunklen Zeitalter − Verlust, wenn das berichtende Reich untergegangen ist + Rauschen (aus dem Seed).
+Stufen: **gewiss** (≥ 0,7), **vage** (≥ 0,45: Jahr „um 3450“), **Sage** (≥ 0,25: „in der Mythenzeit“, Zahlen übertrieben),
+**verschollen** (Rest: steht in keiner Chronik). Orte, Figuren und Artefakte erben die beste Stufe ihrer Ereignisse;
+ein verlorenes Artefakt ist verschollen, wenn sein Verlust nicht überliefert ist.
+
+Sichtbar: Legenden-Modus zeigt standardmäßig die **Überlieferung**, mit Schalter die **Wahrheit** (Spielleiter).
+Im Spiel stützen sich Gerüchte und Obelisken nur auf Überliefertes; verschollene Ruinen heißen „Namenlose Ruine“.
+Später (nicht in diesem Prototyp): Funde (Inschriften, Bibliotheken) heben die Stufe – „Verschollene Stadt finden“ als Quest.
+
+### Städte (`towns.ts`, `src/world/townLayout.ts`)
+
+Bevölkerung in realistischen Größen (Weiler < 150, Dorf < 800, Marktflecken < 3.000, Stadt < 12.000, Großstadt
+darüber; Hauptstädte bis ~40.000). Wachstum nach Fruchtbarkeit, Fluss, Küste, Handelswegen, Hauptstadt; begrenzt durch
+den Platz zum Nachbarort. Je Ort merkt sich die Simulation **Höchststand** (Jahr, Bevölkerung), **Mauerbau** und
+**ältere Orte darunter** (Neugründung auf alten Ruinen).
+
+Stadtplan im Spiel (rein, aus Seed + Ort): Gebäudezahl = Bevölkerung / Menschen je Haus (Standard 40, höchstens 600).
+- Platz mit Brunnen, Marktständen und Wahrzeichen, gepflasterte Hauptstraßen in vier Richtungen.
+- Häuserzeilen mit Gasse davor, gefüllt von innen nach außen (Ort wächst von der Mitte), ausgefranster Rand.
+- Mauerring (ab Stadt) im Radius des **Höchststands** mit Toren an den Hauptstraßen; ist der Ort seitdem geschrumpft,
+  liegen zwischen Häusern und Mauer **verfallene Häuser**.
+- Felder rund um Dörfer und Städte.
+
+### Oberfläche (Legenden-Modus, Seite „Werkstatt“)
+
+Formular aus dem Schema: Zeitalter (Tabelle), Weltereignisse (an/aus, Gewicht, Anzahl), Systeme (an/aus, Stärke),
+Völker, Städte, Überlieferung; Voreinstellungen; JSON-Ansicht zum direkten Bearbeiten; „Erzeugen“, „Zurücksetzen“,
+„Link teilen“ und „Im Spiel öffnen“ (Konfiguration als `?hc=` in der URL). Die Übersicht zeigt die Zeitalter als Band
+mit den Weltereignissen.
+
+## Sichtbar im Spiel (hinter `?vorgeschichte=1`, optional `&hc=…`)
 
 Adapter `WorldMeta` ← History (gleiche Schnittstelle, bisheriges Spiel unverändert):
-- **Reiche** = die sechs größten Reiche am Ende (Fraktion, Farbe, Hauptstadt); Rivalen = verfeindetste Paare.
-- **Siedlungen** = bewohnte Städte und Dörfer am Ende; **Ruinen** (Wächter + Schatz) = zerstörte Orte.
-- Neue Fundorte: **Grabmal** (Inschrift, ggf. Grabbeigabe = Artefakt), **Gedenkstein** auf Schlachtfeldern,
-  **Hort** einer Bestie (Artefakt; lebt die Bestie noch, wacht sie dort).
-- **Obelisken** stehen an den Orten der acht wichtigsten Ereignisse, die **Chronik** erzählt echte Ereignisse.
-- **NPC-Gerüchte** über nahe historische Orte und verlorene Artefakte (mit Himmelsrichtung).
-- **Spielleiter-Modus** (`?gm=1`): Karte zeigt alle historischen Orte; Klick auf einen Ort teleportiert hin und zeigt
-  dessen Geschichte mit Link in den Legenden-Modus.
+- **Reiche** = die sechs größten Reiche am Ende; Rivalen = verfeindetste Paare.
+- **Siedlungen** = bewohnte Orte am Ende, mit Stadtplan nach Größe; **Ruinen** (Wächter + Schatz) = zerstörte Orte
+  (die bedeutendsten, Anzahl einstellbar).
+- **Grabmal**, **Gedenkstein**, **Hort** als Fundorte; **Obelisken** an den Schauplätzen überlieferter Ereignisse.
+- **NPC-Gerüchte** über nahe, überlieferte Orte und Artefakte (mit Himmelsrichtung).
+- **Spielleiter-Modus** (`?gm=1`): Karte zeigt alle historischen Orte; Klick teleportiert hin.
 
 ## Legenden-Modus (`?legends=1&seed=…`, `npm run legenden`)
 
-Eigene HTML-Seite ohne Phaser (Lesbarkeit): Übersicht, Listen und Detailseiten für Reiche, Figuren, Orte, Artefakte
-und Ereignisse, überall verlinkt (`#site/12`), Zeitleiste, Suche/Filter, **Karte mit Orten und Reichsgrenzen im
-Zeitverlauf** (Jahr-Regler). Die Simulation läuft dort in einem Web Worker.
+Eigene HTML-Seite ohne Phaser: Übersicht mit Zeitalter-Band, Werkstatt, Listen und Detailseiten für Reiche, Figuren,
+Orte, Artefakte und Ereignisse (verlinkt), Zeitleiste, Suche, Karte mit Reichsgrenzen im Zeitverlauf.
 
 ## Grenzen des Prototyps
 
 - Grobe Auflösung (64 Kacheln je Zelle) für Ausbreitung und Grenzen; Orte selbst liegen kachelgenau.
-- Höchstens sechs Reiche im Spiel (das übrige Spiel nimmt sechs an); kleinere Reiche gehen in den Grenzen auf.
-- Artefakte geben vorerst Splitter + seltenen Gegenstand und einen Eintrag in der Chronik des Helden, keine eigenen Werte.
+- Höchstens sechs Reiche im Spiel; kleinere Reiche gehen in den Grenzen auf.
+- Die Landschaft selbst ändert sich durch die Geschichte nicht (Flut und Eiszeit wirken auf Orte, nicht auf Biome).
+- Artefakte geben vorerst Splitter + seltenen Gegenstand, keine eigenen Werte.
+- Die Geschichte wird im Spiel in Haupt-Thread und Workern parallel erzeugt (~1–2 s längerer Start).
 
-## Ergebnis des Prototyps (2026-11-02)
+## Ergebnis Version 2 (2026-11-02)
 
 ### Starten
 
 ```bash
-npm ci
-npm run legenden                     # Legenden-Modus im Browser (Seed nebel-kristall-427)
-npx vite                             # dann die URLs unten
+npm run legenden                     # Legenden-Modus (Seed nebel-kristall-427), Seite „Werkstatt“ für die Einstellungen
 ```
 
-- Legenden: `http://localhost:5173/?legends=1&seed=nebel-kristall-427` (optional `&jahre=300…1000`)
-- Spiel mit Vorgeschichte und Spielleiter: `http://localhost:5173/?seed=nebel-kristall-427&vorgeschichte=1&gm=1`
-  (F2 schaltet den Spielleiter-Modus ein, M öffnet die Karte; Klick auf einen Ort → Teleport und Ortsgeschichte)
-- Aus einer Ortsseite der Legenden: „Im Spiel ansehen“ öffnet `…&gm=1&at=tx,ty` direkt am Ort.
+- Legenden: `/?legends=1&seed=nebel-kristall-427` (Einstellungen als `&hc=…`, die Werkstatt erzeugt den Link)
+- Spiel: `/?seed=nebel-kristall-427&vorgeschichte=1&gm=1` (optional `&hc=…`; F2 Spielleiter, M Karte)
 
 ### Erreicht
 
-- **Simulation** (`src/history/`, ~0,5–1,6 s für 600 Jahre): Geologie (fruchtbares Land, Holz, Erz, Splitter-Adern,
-  Schrott), vier Völker, Reiche mit Fraktionen, Ausbreitung an Flüssen und Küsten, Türme/Labore/Tempel/Festungen/Minen,
-  Handel, Bündnisse, Kriege mit Schlachten, Eroberung und Zerstörung, Verrat, Spaltungen, Seuchen und Hungersnöte,
-  Erbfolge mit Nachkommen, Helden, Erzmagier, Ingenieure, Großbestien mit Horten, Artefakte mit Besitzerkette und
-  Verlust, die **Zersplitterung** mit dem großen Artefakt. Je Welt ~130 bewohnte Orte, 20–30 Ruinen, 60–70 Artefakte
-  (davon ~50 verschollen und auffindbar), ~1500 Ereignisse.
-- **Legenden-Modus**: Übersicht, Karte mit Reichsgrenzen, Orten, Ruinen und Handelswegen im Zeitverlauf (Regler und
-  Abspielen), Zeitleiste der Reiche, Listen mit Filter und Sortierung, verlinkte Detailseiten, Suche.
-- **Spielwelt aus der Geschichte** (`?vorgeschichte=1`, Adapter `src/history/toWorld.ts` → `WorldMeta`): die sechs größten
-  Reiche, alle bewohnten Orte als Siedlungen, Ruinen mit Wächter (Banner nennt ihren Untergang), Grabmäler,
-  Gedenksteine auf Schlachtfeldern und Horte als neue Fundorte (Inschrift lesen, Artefakt bergen; lebende Bestien
-  bewachen ihren Hort), Obelisken-Chronik aus echten Ereignissen nahe den Schauplätzen, NPC-Gerüchte mit Richtung.
-- **Spielleiter-Karte**: alle historischen Orte; Klick teleportiert und zeigt die Ortsgeschichte mit Link in die Legenden.
-- Tests: `tests/unit/vorgeschichte.test.ts` (Determinismus, Laufzeit, Plausibilität, Adapter, Gerüchte),
-  `tests/e2e/vorgeschichte.spec.ts` (Legenden und Spiel mit Spielleiter-Karte). Ohne Schalter ist das Spiel unverändert.
+- **~7.900 Jahre** in vier Zeitaltern (Schritte 100 / 10 / 2 / 1 Jahre), ~2 s Rechenzeit. Urreiche erscheinen über das
+  erste Zehntel verteilt, neue Reiche entstehen in leerem Land, alte zerfallen in Bürgerkriegen; je Welt ~30 Reiche.
+- **Weltereignisse** (je Welt ~6 + Zersplitterung): Splitterfall, Krieg der Ersten Maschinen (danach erwachen die
+  Synths), Große Flut (Orte versinken), Eiszeit (der Norden verödet), Seuchenzeit, Dunkles Zeitalter, Goldenes
+  Zeitalter, Völkerwanderung.
+- **Überlieferung**: Mythenzeit fast nur Sage oder verschollen, Jüngste Zeit gewiss; Legenden zeigen die Überlieferung
+  (Jahre „um …“, „Der Sage nach: …“, Verschollenes ohne Namen), der Schalter „Wahrheit“ alles. Gerüchte und Chronik der
+  Obelisken nutzen die Überlieferung; die Chronik erzählt die Weltereignisse als Zeitalter.
+- **Städte**: Großstädte bis ~25.000–35.000 Einwohner, viele Dörfer und Weiler; ~130 Orte mit zusammen ~8.000 Häusern.
+  Stadtplan mit Platz, Hauptstraßen zu den Nachbarorten, Häuserzeilen, Mauerring mit Tortürmen (aus der Blütezeit),
+  verfallenen Häusern, Vierteln je Baustil und Feldern. Orte entstehen auch auf alten Ruinen („Neu-…“).
+- **Konfiguration** (`config.ts`) über Werkstatt, JSON und URL; Systeme (`systems/`) und Weltereignisse (`worldEvents/`)
+  als einzelne Dateien mit Register – neue erscheinen automatisch in der Werkstatt.
+- Tests: `tests/unit/vorgeschichte-konfig.test.ts` (Konfiguration, Zeitalter, Weltereignisse, Überlieferung, Städte,
+  Stadtplan), `tests/unit/vorgeschichte.test.ts`, `tests/e2e/vorgeschichte.spec.ts` (Legenden, Werkstatt, Großstadt im Spiel).
 
 ### Offen
 
-- Spielstände: Welt mit Vorgeschichte teilt den Weltzustand (Entdeckungen nach Ort-ID) mit der Welt ohne; nur die
-  Position wird getrennt gespeichert. Für eine Übernahme eigene Weltversion bzw. eigener Speicherschlüssel.
-- Die Live-Simulation (`src/sim`, Macht der Reiche) verschiebt die Grenzen mit Vorgeschichte nicht; Nachrichten und
-  Karawanen laufen aber über die neuen Orte. Gut wäre: Live-Welt setzt die Geschichte fort (neue Ereignisse ins Protokoll).
-- Artefakte sind im Spiel noch normale Beute + Banner; eigene Gegenstände mit Werten und Geschichte fehlen.
-- ~130 Siedlungen statt ~55: Wildnis bleibt groß, aber Orte sind dichter; Obergrenze `MAX_SITES` ist ein Regler.
-- Figuren tauchen im Spiel nur in Texten auf (keine Nachfahren als NPCs, keine Gräber mit Namen in Quests).
-- Die Laufzeit kommt im Spiel mehrfach vor (Haupt-Thread + Chunk-Worker + Karten-Worker), dadurch ~1 s längerer Start.
-
-### Empfehlung für eine Übernahme
-
-1. Erst die **Daten- und Textschicht** übernehmen (`src/history/` + Legenden-Modus) – sie ist rein, getestet und stört nichts.
-2. Dann die Welt mit Vorgeschichte als **neue Weltversion** (statt Schalter), mit eigenem Speicherschlüssel; die
-   bisherige Platzierung in `meta.ts` entfällt dann.
-3. Danach Quests auf die Geschichte stützen (Artefakt bergen, Bestie erschlagen, Grab besuchen) und die Live-Welt
-   Ereignisse in dasselbe Protokoll schreiben lassen – so wird die Geschichte nahtlos zur Gegenwart.
+- Start mit Vorgeschichte dauert länger (Geschichte ~2 s + Stadtpläne ~1,5 s, in Haupt-Thread und Workern parallel).
+  Nächster Schritt: Ergebnis einmal berechnen und an die Worker geben oder zwischenspeichern.
+- Wissen im Spiel freischalten (Inschrift lesen → Ereignis wird „gewiss“), widersprüchliche Sagen-Fassungen.
+- Nachfahren historischer Figuren als NPCs; Rivalitäten im Spiel mit historischem Grund; Katakomben unter Städten,
+  die auf Ruinen stehen; Artefakte als eigene Gegenstände.
+- Die Landschaft selbst bleibt unverändert (Flut/Eiszeit wirken nur auf Orte).

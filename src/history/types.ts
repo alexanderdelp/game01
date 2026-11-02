@@ -1,5 +1,8 @@
 /** Datenmodell der Vorgeschichte. Alles über Zahl-IDs verknüpft (Index im jeweiligen Feld). Rein, ohne Phaser. */
 import type { Faction } from '../world/meta';
+import type { HistoryConfig } from './config';
+import type { Knowledge } from './knowledge';
+import type { Epoch } from './timeline';
 
 export type Race = 'human' | 'elf' | 'orc' | 'synth';
 
@@ -57,6 +60,16 @@ export interface Site {
   buried: number[];
   /** Bestie eines Horts */
   beast?: number;
+  /** Höchststand der Bevölkerung (Blütezeit) */
+  peak: { pop: number; y: number };
+  /** Jahr des Mauerbaus */
+  walls?: number;
+  /** Auf den Resten dieses älteren Ortes erbaut */
+  on?: number;
+  /** Jüngere Orte, die auf diesem stehen */
+  under?: number[];
+  /** Im Meer versunken (Große Flut) */
+  sunk?: boolean;
 }
 
 export interface Civ {
@@ -79,7 +92,7 @@ export interface Civ {
 
 export type Role = 'ruler' | 'hero' | 'mage' | 'engineer' | 'traitor' | 'beast' | 'priest';
 
-export type DeathCause = 'age' | 'battle' | 'beast' | 'plague' | 'shattering' | 'slain' | 'murder';
+export type DeathCause = 'age' | 'battle' | 'beast' | 'plague' | 'shattering' | 'slain' | 'murder' | 'cataclysm';
 
 export interface Figure {
   id: number;
@@ -118,7 +131,7 @@ export interface Artifact {
   /** Verbleib am Ende: Figur oder Ort */
   heldBy?: number;
   site?: number;
-  lost?: { y: number; how: 'buried' | 'battle' | 'hoard' | 'ruin' | 'shattering' };
+  lost?: { y: number; how: 'buried' | 'battle' | 'hoard' | 'ruin' | 'shattering' | 'sunk' };
   /** Das große Artefakt der Zersplitterung */
   great?: boolean;
 }
@@ -127,7 +140,9 @@ export type EventKind =
   | 'prehistory' | 'awaken' | 'civ_found' | 'site_found' | 'ruler' | 'death' | 'birth'
   | 'war' | 'peace' | 'alliance' | 'battle' | 'conquest' | 'raze' | 'betrayal' | 'split' | 'civ_fall'
   | 'plague' | 'famine' | 'abandon' | 'beast_arrive' | 'beast_raid' | 'beast_slain' | 'hero_falls'
-  | 'artifact_made' | 'artifact_lost' | 'artifact_loot' | 'burial' | 'trade' | 'shattering' | 'hero_rise';
+  | 'artifact_made' | 'artifact_lost' | 'artifact_loot' | 'burial' | 'trade' | 'shattering' | 'hero_rise'
+  /** Weltereignis: `cause` = ID der Definition, `n` = 0 Beginn, 1 Ende */
+  | 'world' | 'migrate' | 'sunk' | 'walls';
 
 export interface HEvent {
   id: number;
@@ -143,9 +158,27 @@ export interface HEvent {
   cause?: string;
 }
 
+/** Ein Weltereignis, wie es in dieser Geschichte stattfand. */
+export interface WorldRun {
+  def: string;
+  from: number;
+  /** Ende (ausschließlich); gleich `from` bei einem Augenblicksereignis */
+  to: number;
+  /** Ereignis-IDs von Beginn und Ende */
+  events: number[];
+  /** Hauptschauplatz (Ort) */
+  site?: number;
+}
+
 export interface History {
   seed: number;
+  /** Gesamtlänge in Jahren (= Jahr der Gegenwart) */
   years: number;
+  config: HistoryConfig;
+  epochs: Epoch[];
+  worldRuns: WorldRun[];
+  /** Was heute überliefert ist (aus `knowledge.ts`) */
+  knowledge: Knowledge;
   worldName: string;
   /** Jahr der Zersplitterung */
   shattering: number;

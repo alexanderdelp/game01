@@ -3,8 +3,11 @@
  * Ruinen, Grabmäler, Schlachtfelder, Horte, Obelisken und die Chronik. Rein.
  */
 import type { Lore, MetaSource } from '../world/meta';
-import { eventText, figureText, plainLinker } from './narrate';
+import { EVENT_KINDS } from './events';
+import { eventYear, figureText, loreText, plainLinker } from './narrate';
+import { worldEventDef } from './worldEvents';
 import { territory } from './query';
+import { townPlan } from './towns';
 import { HISTORY_CELL, HISTORY_GRID, INHABITED, type HEvent, type History, type Site } from './types';
 
 /** So viele Reiche kennt das Spiel. */
@@ -63,53 +66,86 @@ export function metaSourceFrom(h: History): MetaSource {
   const settlements = h.sites.filter(living).map((s) => {
     const civ = ownerOf(s);
     const realm = realmOf.get(civ) ?? realmAtTile(s.tx, s.ty);
-    return { name: s.name, realm, capital: realmOf.has(civ) && h.civs[civ].capital === s.id, tx: s.tx, ty: s.ty, site: s.id };
+    const plan = townPlan(h, s);
+    return {
+      name: s.name, realm, capital: realmOf.has(civ) && h.civs[civ].capital === s.id, tx: s.tx, ty: s.ty, site: s.id,
+      town: { tier: plan.tier, buildings: plan.buildings, radius: plan.radius, wall: plan.wall, decay: plan.decay },
+    };
   });
-  // Ruinen (mit Wächter und Schatz): zerstörte Orte, Relikte der Vorzeit, der Splitterkrater
-  const ruins = h.sites.filter((s) => s.destroyed !== undefined || s.kind === 'crater').map((s) => ({ tx: s.tx, ty: s.ty, realm: realmAtTile(s.tx, s.ty), site: s.id }));
+  // Ruinen (mit Wächter und Schatz): die bedeutendsten zerstörten Orte, Relikte und Krater – nicht unter heutigen Städten
+  const alive = h.sites.filter(living);
+  const score = (s: Site) => h.knowledge.site[s.id] * 2 + s.arts.length * 4 + Math.log10(s.peak.pop + 10) + (s.kind === 'crater' || s.kind === 'relic' ? 6 : 0) + (s.events.length > 3 ? 1 : 0);
+  const ruins: MetaSource['ruins'] = [];
+  for (const s of h.sites.filter((x) => x.destroyed !== undefined || x.kind === 'crater').sort((a, b) => score(b) - score(a) || a.id - b.id)) {
+    if (ruins.length >= h.config.game.ruins) break;
+    if (alive.some((o) => Math.hypot(o.tx - s.tx, o.ty - s.ty) < 70)) continue;
+    if (ruins.some((r) => Math.hypot(r.tx - s.tx, r.ty - s.ty) < 40)) continue;
+    ruins.push({ tx: s.tx, ty: s.ty, realm: realmAtTile(s.tx, s.ty), site: s.id });
+  }
   const kinds = { tomb: 'tomb', battlefield: 'memorial', lair: 'lair' } as const;
-  const pois = h.sites.filter((s) => s.kind in kinds).map((s) => ({ kind: kinds[s.kind as keyof typeof kinds], tx: s.tx, ty: s.ty, site: s.id }));
+  // Fundorte: was überliefert ist, Artefakte birgt oder eine lebende Bestie beherbergt (über Jahrtausende sind es sonst Hunderte)
+  const worth = (s: Site) => s.arts.length * 5 + (s.beast !== undefined && h.figures[s.beast].died === undefined ? 4 : 0) + h.knowledge.site[s.id] + s.buried.length * 0.3;
+  const pois: MetaSource['pois'] = [];
+  for (const s of h.sites.filter((x) => x.kind in kinds && worth(x) >= 2).sort((a, b) => worth(b) - worth(a) || a.id - b.id)) {
+    if (pois.length >= 140) break;
+    if (pois.some((p) => Math.hypot(p.tx - s.tx, p.ty - s.ty) < 24) || alive.some((o) => Math.hypot(o.tx - s.tx, o.ty - s.ty) < 50)) continue;
+    pois.push({ kind: kinds[s.kind as keyof typeof kinds], tx: s.tx, ty: s.ty, site: s.id });
+  }
   const { lore, anchors: obelisks } = chronicle(h, top.map((c) => c.id), rivals.map((r) => top[r]?.id ?? -1));
   return { realms, rivals, settlements, ruins, obelisks, lore, rivers: h.rivers, pois, realmGrid: { grid, size: N, cell: HISTORY_CELL } };
 }
 
-/** Die Chronik der Obelisken aus echten Ereignissen – mit Ankern in der Nähe der Schauplätze. */
+/** Die Chronik der Obelisken aus überlieferten Ereignissen – mit Ankern in der Nähe der Schauplätze. */
 function chronicle(h: History, realms: number[], rivalOf: number[]): { lore: Lore; anchors: { tx: number; ty: number }[] } {
   const L = plainLinker(h);
-  const t = (e?: HEvent) => (e ? eventText(h, e, L) : '');
-  const pos = (id?: number) => (id !== undefined && h.sites[id] ? { tx: h.sites[id].tx, ty: h.sites[id].ty } : { tx: h.sites[0].tx, ty: h.sites[0].ty });
+  const t = (e?: HEvent) => (e ? loreText(h, e, L) ?? '' : '');
+  const year = (e: HEvent) => eventYear(h, e, true);
+  const pos = (id?: number) => (id !== undefined && h.sites[id] ? { tx: h.sites[id].tx, ty: h.sites[id].ty } : { tx: h.sites[h.civs[realms[0]].capital].tx, ty: h.sites[h.civs[realms[0]].capital].ty });
+  const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
   const frags: { title: string; text: string; at: { tx: number; ty: number } }[] = [];
   const pre = h.events.find((e) => e.k === 'prehistory');
-  const founds = h.events.filter((e) => e.k === 'civ_found');
-  frags.push({ title: 'I. Die Zeit davor', text: `${t(pre)} Dann erwachten die Völker: ${founds.map((e) => h.civs[e.civs[0]].name).join(', ')}.`, at: pos(pre?.sites[0] ?? founds[0]?.sites[0]) });
-  const oldest = founds.find((e) => h.civs[e.civs[0]].fell === undefined) ?? founds[0];
-  frags.push({ title: 'II. Die Ersten Reiche', text: t(oldest), at: pos(oldest?.sites[0]) });
-  // Der größte Krieg: das Paar mit den meisten Schlachten
+  const founds = h.events.filter((e) => e.k === 'civ_found' && h.knowledge.ev[e.id] > 0).slice(0, 4);
+  frags.push({ title: 'Die Zeit davor', text: `${t(pre)} Dann erwachten die Völker: ${founds.map((e) => L.civ(e.civs[0])).join(', ') || 'Namen, die niemand mehr kennt'}.`, at: pos(pre?.sites[0] ?? founds[0]?.sites[0]) });
+  // Die überlieferten Weltereignisse als Zeitalter der Chronik
+  for (const r of h.worldRuns) {
+    if (frags.length >= 5 || r.def === 'shattering') continue;
+    const e = h.events[r.events[0]];
+    if (!e || h.knowledge.ev[e.id] === 0) continue;
+    const end = r.events[1] !== undefined ? ` ${t(h.events[r.events[1]])}` : '';
+    frags.push({ title: `${eventKindTitle(e)} (${year(e)})`, text: `${t(e)}${end}`, at: pos(r.site ?? e.sites[0]) });
+  }
+  // Der größte Krieg der Neuzeit: das Paar mit den meisten Schlachten
   const count = new Map<string, HEvent[]>();
-  for (const e of h.events) if (e.k === 'battle') {
+  for (const e of h.events) if (e.k === 'battle' && h.knowledge.ev[e.id] >= 2) {
     const key = [...e.civs].sort((a, b) => a - b).join(',');
     count.set(key, [...(count.get(key) ?? []), e]);
   }
   const war = [...count.values()].sort((a, b) => b.length - a.length)[0];
   if (war) {
     const big = [...war].sort((a, b) => (b.n ?? 0) - (a.n ?? 0))[0];
-    frags.push({ title: 'III. Der Lange Krieg', text: `${h.civs[war[0].civs[0]].name} und ${h.civs[war[0].civs[1]].name} schlugen ${war.length} Schlachten zwischen den Jahren ${war[0].y} und ${war[war.length - 1].y}. Die blutigste: ${t(big)}`, at: pos(big.sites[0]) });
-  } else frags.push({ title: 'III. Der Frieden', text: 'Lange Zeit herrschte Frieden zwischen den Reichen.', at: pos(founds[1]?.sites[0]) });
-  const made = h.events.find((e) => e.k === 'artifact_made' && h.artifacts[e.arts[0]]?.great);
-  frags.push({ title: `IV. ${h.artifacts.find((a) => a.great)?.name ?? 'Das Herz'}`, text: t(made) || 'Die Gelehrten suchten den größten Splitter.', at: pos(made?.sites[0]) });
+    frags.push({ title: 'Der Lange Krieg', text: `${L.civ(war[0].civs[0])} und ${L.civ(war[0].civs[1])} schlugen ${war.length} Schlachten zwischen ${year(war[0])} und ${year(war[war.length - 1])}. Die blutigste: ${t(big)}`, at: pos(big.sites[0]) });
+  }
   const sh = h.events.find((e) => e.k === 'shattering');
-  frags.push({ title: `V. Die Zersplitterung (Jahr ${h.shattering})`, text: t(sh), at: pos(sh?.sites[0]) });
-  const beast = h.figures.filter((f) => f.race === 'beast').sort((a, b) => b.kills - a.kills || b.events.length - a.events.length)[0];
-  frags.push({ title: `VI. ${beast?.name ?? 'Die Bestien'}`, text: beast ? `${t(h.events[beast.events[0]])} ${figureText(h, beast, L)}` : 'Ungeheuer erwachten in der Wildnis.', at: pos(beast?.lair) });
-  const hero = h.figures.filter((f) => f.role === 'hero').sort((a, b) => b.kills - a.kills || b.events.length - a.events.length)[0];
-  frags.push({ title: `VII. ${hero?.name ?? 'Die Helden'}`, text: hero ? figureText(h, hero, L) : 'Helden standen auf.', at: pos(hero?.deathSite ?? h.civs[hero?.civ ?? 0]?.capital) });
+  const made = h.events.find((e) => e.k === 'artifact_made' && h.artifacts[e.arts[0]]?.great);
+  if (sh) frags.push({ title: `Die Zersplitterung (Jahr ${h.shattering})`, text: `${t(made)} ${t(sh)}`, at: pos(sh.sites[0]) });
+  // Auffüllen mit Bestie und Held, falls wenige Weltereignisse überliefert sind
+  const beast = h.figures.filter((f) => f.race === 'beast' && h.knowledge.fig[f.id] > 0).sort((a, b) => b.kills - a.kills || b.events.length - a.events.length)[0];
+  if (frags.length < 7 && beast) frags.push({ title: beast.name, text: `${t(h.events[beast.events[0]])} ${figureText(h, beast, L)}`, at: pos(beast.lair) });
+  const hero = h.figures.filter((f) => f.role === 'hero' && h.knowledge.fig[f.id] >= 2).sort((a, b) => b.kills - a.kills || b.events.length - a.events.length)[0];
+  if (frags.length < 7 && hero) frags.push({ title: hero.name, text: figureText(h, hero, L), at: pos(hero.deathSite ?? h.civs[hero.civ]?.capital) });
+  while (frags.length < 7) frags.push({ title: 'Verlorene Zeiten', text: 'Von diesen Jahrhunderten blieb nichts als Staub und Gerüchte.', at: pos(founds[frags.length % Math.max(1, founds.length)]?.sites[0]) });
   const great = h.artifacts.find((a) => a.great);
   const r1 = realms[0];
   const r2 = rivalOf[0];
+  frags.length = 7;
   frags.push({
-    title: 'VIII. Heute',
+    title: 'Heute',
     text: `Heute herrschen ${realms.map((r) => h.civs[r].name).join(', ')}.${r2 >= 0 ? ` ${h.civs[r1].name} und ${h.civs[r2].name} bleiben erbitterte Rivalen.` : ''} ${great?.site !== undefined ? `Es heißt, ${great.name} liege noch im ${h.sites[great.site].name}.` : ''}`,
     at: pos(h.civs[r1].capital),
   });
-  return { lore: { worldName: h.worldName, fragments: frags.map(({ title, text }) => ({ title, text })) }, anchors: frags.map((f) => f.at) };
+  return { lore: { worldName: h.worldName, fragments: frags.map(({ title, text }, i) => ({ title: `${roman[i]}. ${title}`, text })) }, anchors: frags.map((f) => f.at) };
+}
+
+function eventKindTitle(e: HEvent): string {
+  return (e.cause && worldEventDef(e.cause)?.label) || EVENT_KINDS[e.k].label;
 }

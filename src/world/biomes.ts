@@ -31,10 +31,12 @@ export type DecorKind =
   | 'rock' | 'boulder' | 'reeds' | 'crystal' | 'scrap' | 'pylon' | 'tuft'
   | 'house' | 'tower' | 'neonhouse' | 'stall' | 'well' | 'chest' | 'shrine' | 'obelisk' | 'ruin' | 'ruinchest'
   /** Fundorte der Vorgeschichte (Prototyp) */
-  | 'tomb' | 'memorial' | 'lair';
+  | 'tomb' | 'memorial' | 'lair'
+  /** Stadtpläne der Vorgeschichte: Mauerstück, verfallenes Haus, Feld */
+  | 'wall' | 'rubble' | 'field';
 
 /** Von Menschen gebaute Dekorationen (werden nicht gespiegelt). */
-export const BUILT = new Set<DecorKind>(['house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest', 'tomb', 'memorial', 'lair']);
+export const BUILT = new Set<DecorKind>(['house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest', 'tomb', 'memorial', 'lair', 'wall', 'rubble', 'field']);
 
 export interface DecorRule {
   kind: DecorKind;
@@ -126,4 +128,5 @@ export const DECOR_BLOCK: Partial<Record<DecorKind, { w: number; h: number }>> =
   house: { w: 60, h: 22 }, tower: { w: 40, h: 22 }, neonhouse: { w: 60, h: 22 }, stall: { w: 44, h: 12 }, well: { w: 28, h: 14 },
   chest: { w: 20, h: 8 }, shrine: { w: 28, h: 12 }, obelisk: { w: 20, h: 10 }, ruin: { w: 64, h: 22 }, ruinchest: { w: 22, h: 8 },
   tomb: { w: 44, h: 16 }, memorial: { w: 22, h: 10 }, lair: { w: 48, h: 14 },
+  wall: { w: 32, h: 14 }, rubble: { w: 56, h: 14 },
 };

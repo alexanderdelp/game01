@@ -8,7 +8,6 @@ import { WorldScene } from './scenes/WorldScene';
 import { ArenaScene } from './arena/ArenaScene';
 import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
-import { DEFAULT_YEARS } from './history/simulate';
 
 const params = new URLSearchParams(location.search);
 // Ohne Seed in der Adresse startet der Titelbildschirm (Weltauswahl)
@@ -21,7 +20,7 @@ if (params.get('test') === '1') {
 
 // Legenden-Modus (Vorgeschichte): eigene HTML-Seite ohne Phaser
 if (params.get('legends') === '1') {
-  void import('./legends/legends').then((m) => m.startLegends(seed || 'nebel-kristall-427', Number(params.get('jahre')) || DEFAULT_YEARS));
+  void import('./legends/legends').then((m) => m.startLegends(seed || 'nebel-kristall-427', params.get('hc') ?? ''));
 } else startGame();
 
 function startGame(): void {

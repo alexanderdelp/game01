@@ -16,7 +16,7 @@ const CLEAR: Partial<Record<DecorKind, [number, number, number]>> = {
 const CLEAR_DEFAULT: [number, number, number] = [24, 32, 24];
 import { Simplex2 } from './noise';
 import { WorldMeta } from './meta';
-import { generateHistory } from '../history/simulate';
+import { generateHistory, type HistoryOptions } from '../history/simulate';
 import { metaSourceFrom } from '../history/toWorld';
 import type { History } from '../history/types';
 import { hashString, rand2 } from './rng';
@@ -90,8 +90,8 @@ const smoothstep = (a: number, b: number, x: number) => {
 
 /** Optionen der Weltgenerierung. */
 export interface WorldOptions {
-  /** Prototyp Vorgeschichte (`?vorgeschichte=1`): Welt aus einer simulierten Geschichte (Jahre). */
-  history?: { years?: number };
+  /** Prototyp Vorgeschichte (`?vorgeschichte=1&hc=…`): Welt aus einer simulierten Geschichte (Teil-Konfiguration). */
+  history?: HistoryOptions;
 }
 
 /**

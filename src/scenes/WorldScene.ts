@@ -16,6 +16,7 @@ import type { Item, Slot } from '../rpg/items';
 import { dress } from '../character/outfit';
 import { isReady, onPosition, progressText } from '../quests/quests';
 import { FACTIONS } from '../world/meta';
+import { decodeConfig } from '../history/config';
 import { eventText, plainLinker } from '../history/narrate';
 import { LocalWorldStore, WorldState, isDefeated } from '../state/worldState';
 import { TownDecor } from '../render/TownDecor';
@@ -82,9 +83,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   init(data: { seed: string }): void {
-    // Prototyp Vorgeschichte: `?vorgeschichte=1&jahre=600` erzeugt die Welt aus einer simulierten Geschichte
+    // Prototyp Vorgeschichte: `?vorgeschichte=1&hc=…` erzeugt die Welt aus einer simulierten Geschichte (Konfiguration)
     const params = new URLSearchParams(location.search);
-    const history = params.get('vorgeschichte') === '1' ? { years: Number(params.get('jahre')) || undefined } : undefined;
+    const history = params.get('vorgeschichte') === '1' ? { config: decodeConfig(params.get('hc')) } : undefined;
     this.world = new WorldGen(data.seed, history ? { history } : {});
   }
 

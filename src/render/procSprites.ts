@@ -486,12 +486,15 @@ export function generateDecor(kind: DecorKind, variant: number): Pixels {
     case 'tomb': return tomb(rnd);
     case 'memorial': return memorial(rnd);
     case 'lair': return lair(rnd);
+    case 'wall': return townWall(rnd, variant);
+    case 'rubble': return rubble(rnd, variant);
+    case 'field': return field(rnd, variant);
   }
 }
 
 export const DECOR_KINDS: DecorKind[] = [
   'oak', 'youngoak', 'pine', 'youngpine', 'snowpine', 'palm', 'cactus', 'deadtree', 'bush', 'flowers', 'rock', 'boulder', 'reeds', 'crystal', 'scrap', 'pylon', 'tuft',
-  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest', 'tomb', 'memorial', 'lair',
+  'house', 'tower', 'neonhouse', 'stall', 'well', 'chest', 'shrine', 'obelisk', 'ruin', 'ruinchest', 'tomb', 'memorial', 'lair', 'wall', 'rubble', 'field',
 ];
 
 /** Kleine Symbole (16×16) für Beute und Inventar. */
@@ -930,5 +933,49 @@ function ruinchest(rnd: () => number, open: boolean): Pixels {
   img.rect(12, top + 6, 4, 4, 0x2fe0d8);
   void rnd;
   img.outline();
+  return img.result();
+}
+
+/** Mauerstück einer Stadt (eine Kachel breit): Stein mit Zinnen, im Neon-Stil ein Metallzaun. */
+function townWall(rnd: () => number, v: number): Pixels {
+  const img = new Img(34, 52);
+  if (v % 2 === 0) {
+    for (let y = 12; y < 50; y++) for (let x = 0; x < 34; x++) {
+      const brick = ((y >> 2) % 2 === 0 ? x : x + 4) % 8 === 0 || y % 4 === 0;
+      img.shade(x, y, 0.8 - (y - 12) / 38 * 0.35 + (brick ? -0.18 : 0) + (rnd() - 0.5) * 0.05, STONE);
+    }
+    for (const x of [0, 12, 24]) for (let y = 4; y < 12; y++) for (let k = 0; k < 9; k++) img.shade(x + k, y, 0.9 - k / 9 * 0.3, STONE);
+    img.rect(0, 12, 34, 2, STONE[1]);
+  } else {
+    for (let y = 8; y < 50; y++) for (let x = 0; x < 34; x++) if (x % 8 < 2 || y % 10 < 2) img.shade(x, y, 0.75 - y / 50 * 0.3, METAL);
+    img.rect(0, 8, 34, 3, METAL[3]);
+    img.rect(0, 11, 34, 1, NEONS[0]);
+  }
+  img.outline();
+  return img.result();
+}
+
+/** Verfallenes Haus: eingestürzte Mauern, verkohlte Balken, Schutt. */
+function rubble(rnd: () => number, v: number): Pixels {
+  const img = new Img(72, 50);
+  for (let y = 36; y < 48; y++) for (let x = 6; x < 66; x++) if (rnd() < 0.9) img.shade(x, y, 0.55 + rnd() * 0.25, v % 2 ? METAL : STONE);
+  // Mauerreste unterschiedlicher Höhe
+  for (const [x0, top] of [[8, 14 + Math.floor(rnd() * 8)], [30, 24 + Math.floor(rnd() * 8)], [52, 10 + Math.floor(rnd() * 10)]]) {
+    for (let y = top; y < 40; y++) for (let x = x0; x < x0 + 12; x++) if (y > top + 2 || rnd() < 0.6) img.shade(x, y, 0.7 - (x - x0) / 12 * 0.3, v % 2 ? METAL : PLASTER);
+  }
+  img.line(14, 22, 48, 38, WOOD[0], 3);
+  img.line(40, 16, 60, 40, WOOD[0], 2);
+  img.outline();
+  return img.result();
+}
+
+/** Feld (flach): Furchen mit Getreide, Kohl, Grünzeug oder Brache. */
+function field(rnd: () => number, v: number): Pixels {
+  const img = new Img(36, 36);
+  const pal = [[0x8a6a2a, 0xc8a040, 0xe8cc68], [0x3a6a2a, 0x5a9a3a, 0x8fd161], [0x4a5a2a, 0x6a8a4a, 0xa0c070], [0x5a4028, 0x6e4e30, 0x8a6440]][v % 4];
+  for (let y = 0; y < 36; y++) for (let x = 0; x < 36; x++) {
+    const furrow = y % 6 < 2;
+    img.set(x, y, furrow ? pal[0] : rnd() < 0.3 ? pal[2] : pal[1]);
+  }
   return img.result();
 }

@@ -161,7 +161,7 @@ export function npcsForChunk(world: WorldGen, cx: number, cy: number): NpcSpawn[
     const brnd = mulberry32(hash2(world.seed, s.tx, s.ty, 4444));
     out.push({ id: `b${s.id}`, tx: s.tx + 2, ty: s.ty + 2, role: 'barber', name: npcName(brnd), archetype: Math.floor(brnd() * ARCHETYPES) });
     if (s.capital) out.push({ id: `r${s.id}`, tx: s.tx + 2, ty: s.ty - 2, role: 'ruler', name: npcName(srnd), archetype: Math.floor(srnd() * ARCHETYPES) });
-    const n = s.capital ? 7 : 4;
+    const n = s.tier !== undefined ? 3 + s.tier * 4 : s.capital ? 7 : 4;
     for (let i = 0; i < n; i++) {
       const a = srnd() * Math.PI * 2;
       const d = 2 + srnd() * (s.radius - 3);

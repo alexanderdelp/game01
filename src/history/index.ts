@@ -4,7 +4,8 @@ import { generateHistory, type HistoryOptions } from './simulate';
 import type { History } from './types';
 
 export * from './types';
-export { DEFAULT_YEARS, generateHistory } from './simulate';
+export { generateHistory } from './simulate';
+export { DEFAULT_CONFIG, PRESETS, decodeConfig, encodeConfig, resolveConfig, totalYears, type HistoryConfig, type PartialConfig } from './config';
 
 /** Vorgeschichte über der Landschaft einer Welt (Biome ohne Flüsse, wie die Metadaten sie sehen). */
 export function historyOf(world: WorldGen, opts: HistoryOptions = {}): History {

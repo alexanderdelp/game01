@@ -93,7 +93,7 @@ export function installDebugHooks(ws: WorldScene, spawn: { tx: number; ty: numbe
       return c ? caravanPos(c, worldNow()) : null;
     };
     const hist = ws.world.history;
-    debugState.history = hist ? { sites: hist.sites.length, realms: ws.world.meta.realms.map((r) => r.name), historic: ws.world.meta.historic.map((p) => ({ kind: p.kind, tx: p.tx, ty: p.ty, site: p.site ?? -1 })), settlements: ws.world.meta.settlements.length, ruins: ws.world.meta.ruins.length } : null;
+    debugState.history = hist ? { sites: hist.sites.length, realms: ws.world.meta.realms.map((r) => r.name), historic: ws.world.meta.historic.map((p) => ({ kind: p.kind, tx: p.tx, ty: p.ty, site: p.site ?? -1 })), settlements: ws.world.meta.settlements.length, ruins: ws.world.meta.ruins.length, bigTown: bigTown(ws) } : null;
     debugState.meta = {
       settlements: ws.world.meta.settlements.map((s) => ({ id: s.id, name: s.name, tx: s.tx, ty: s.ty, capital: s.capital, realm: s.realm })),
       rivals: [...ws.world.meta.rivals],
@@ -115,4 +115,10 @@ export function installDebugHooks(ws: WorldScene, spawn: { tx: number; ty: numbe
       }
       return null;
     };
+}
+
+/** Größte Stadt der Welt mit Vorgeschichte (Tests): Lage, Gebäude, Mauerstücke. */
+function bigTown(ws: WorldScene): { tx: number; ty: number; buildings: number; walls: number } {
+  const s = [...ws.world.meta.settlements].sort((a, b) => b.buildings.length - a.buildings.length)[0];
+  return { tx: s.tx, ty: s.ty, buildings: s.buildings.length, walls: s.buildings.filter((b) => b.kind === 'wall').length };
 }

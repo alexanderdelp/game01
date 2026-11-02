@@ -125,7 +125,7 @@ export const debugState = {
   /** Prototyp Vorgeschichte: zuletzt gezeigte Ortsgeschichte im Spielleiter-Modus */
   historyPanel: '',
   /** Prototyp Vorgeschichte: Anzahl Orte, Reiche, Fundorte */
-  history: null as null | { sites: number; realms: string[]; historic: { kind: string; tx: number; ty: number; site: number }[]; settlements: number; ruins: number },
+  history: null as null | { sites: number; realms: string[]; historic: { kind: string; tx: number; ty: number; site: number }[]; settlements: number; ruins: number; bigTown: { tx: number; ty: number; buildings: number; walls: number } },
   markers: {} as Record<string, string>,
   choose: (_i: number): void => {},
   dialog: null as { name: string; role: string; text: string; choices?: string[] } | null,

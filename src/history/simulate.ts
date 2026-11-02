@@ -1,54 +1,54 @@
 /**
- * Vorgeschichte: Aus dem Seed läuft eine Weltgeschichte über Jahrhunderte (Jahresschritte) auf einem groben Raster
- * der echten Landschaft. Deterministisch, rein (ohne Phaser), auch im Web Worker lauffähig.
+ * Vorgeschichte – Kern der Simulation. Aus Seed + Konfiguration läuft eine Weltgeschichte über Jahrtausende auf einem
+ * groben Raster der echten Landschaft. Deterministisch, rein (ohne Phaser), auch im Web Worker lauffähig.
+ *
+ * Aufbau: `Sim` hält den Zustand und gemeinsame Hilfen. Die Schleife geht über Schritte variabler Länge (`timeline.ts`).
+ * In jedem Schritt laufen die Weltereignisse (`worldEvents/`) und danach alle Systeme (`systems/`). Wahrscheinlichkeiten
+ * sind je Jahr angegeben; `chance(p)` rechnet sie auf die Schrittlänge `dt` um.
  */
 import { B, BIOMES } from '../world/biomes';
-import { FACTIONS, traceRivers, type Faction, type Terrain } from '../world/meta';
+import { traceRivers, type Faction, type Terrain } from '../world/meta';
 import { Simplex2 } from '../world/noise';
 import { mulberry32 } from '../world/rng';
 import { RUGGED_H, SEA_LEVEL, WORLD_TILES } from '../world/WorldGen';
-import { reach } from './query';
+import { resolveConfig, type HistoryConfig, type PartialConfig } from './config';
+import { importanceOf } from './events';
+import { assessKnowledge } from './knowledge';
 import { ARTIFACT_KINDS, BEASTS, artifactName, beastName, personName, placeName, realmName, specialName, worldName } from './names';
+import { reach } from './query';
+import { CIV_COLORS, FERT, LIFESPAN, ORE, PREF, RACE_FACTIONS, WOOD } from './rules';
+import { SYSTEMS } from './systems';
+import { epochAt, steps, timelineOf, type Epoch, type Timeline } from './timeline';
+import { townRoom } from './towns';
 import {
   HISTORY_CELL, HISTORY_GRID, INHABITED,
-  type Artifact, type Cell, type Civ, type DeathCause, type EventKind, type Figure, type HEvent, type History, type Race, type Role, type Site, type SiteKind,
+  type Artifact, type Cell, type Civ, type DeathCause, type EventKind, type Figure, type HEvent, type History, type Race, type Role, type Site, type SiteKind, type WorldRun,
 } from './types';
+import { WORLD_EVENTS, scheduleWorldEvents, type ModKey, type WorldEventDef } from './worldEvents';
 
 export interface HistoryOptions {
-  /** Länge der Vorgeschichte in Jahren (300–1000). */
-  years?: number;
+  /** Teil-Konfiguration über dem Standard (`config.ts`) */
+  config?: PartialConfig;
 }
 
-export const DEFAULT_YEARS = 600;
-/** Mindestens so viele Reiche überleben (das Spiel braucht sechs). */
-const MIN_CIVS = 6;
-/** Weiche Obergrenze bewohnter Orte in der ganzen Welt (das Spiel hat ohne Vorgeschichte ~55 Siedlungen). */
-const MAX_SITES = 120;
 const N = HISTORY_GRID;
 const C = HISTORY_CELL;
 
-const CIV_COLORS = [0xe0b030, 0x2fe0d8, 0xe04a5a, 0x9b6af0, 0x4cb53e, 0xf08a3a, 0x5a8ae0, 0xe070c0, 0xa0d040, 0xc0c0c0, 0x40a0a0, 0xd06040];
-
-/** Wie gut ein Volk in einem Biom lebt (0–1). */
-const PREF: Record<Race, Partial<Record<B, number>>> = {
-  human: { [B.Grassland]: 1, [B.Forest]: 0.8, [B.Savanna]: 0.7, [B.Hills]: 0.6, [B.Beach]: 0.5, [B.Tundra]: 0.3 },
-  elf: { [B.Forest]: 1, [B.Jungle]: 0.9, [B.CrystalGrove]: 1, [B.Grassland]: 0.4, [B.Swamp]: 0.3 },
-  orc: { [B.Hills]: 1, [B.Savanna]: 0.9, [B.Desert]: 0.6, [B.Tundra]: 0.6, [B.Grassland]: 0.4, [B.Mountain]: 0.3 },
-  synth: { [B.ScrapWastes]: 1, [B.Desert]: 0.4, [B.Grassland]: 0.3 },
-};
-const LIFESPAN: Record<Race, [number, number]> = { human: [50, 85], elf: [160, 320], orc: [40, 70], synth: [120, 260] };
-const FERT: Partial<Record<B, number>> = {
-  [B.Grassland]: 0.8, [B.Forest]: 0.6, [B.Savanna]: 0.6, [B.Jungle]: 0.5, [B.Hills]: 0.5, [B.Swamp]: 0.3, [B.Beach]: 0.4,
-  [B.Tundra]: 0.2, [B.Desert]: 0.1, [B.Snow]: 0.05, [B.CrystalGrove]: 0.5, [B.ScrapWastes]: 0.15, [B.Mountain]: 0.1,
-};
-const WOOD: Partial<Record<B, number>> = { [B.Forest]: 0.9, [B.Jungle]: 1, [B.Swamp]: 0.5, [B.Tundra]: 0.4, [B.Grassland]: 0.2, [B.Savanna]: 0.2, [B.Hills]: 0.3 };
-const ORE: Partial<Record<B, number>> = { [B.Mountain]: 0.9, [B.Snow]: 0.5, [B.Hills]: 0.6, [B.Desert]: 0.3, [B.Tundra]: 0.2 };
 /** Wie in meta.ts: Boden, auf dem Orte entstehen dürfen. */
 const GOOD = new Set<B>([B.Hills, B.Grassland, B.Forest, B.Savanna, B.Beach, B.Tundra, B.Desert, B.CrystalGrove, B.ScrapWastes, B.Jungle, B.Snow]);
+/** Ruinen, die älter sind, blockieren keine Neugründung mehr (man baut auf ihnen). */
+const RUIN_SETTLE_AGE = 120;
 
-interface War { a: number; b: number; start: number; battles: number; ev: number; wins: [number, number] }
+export interface War { a: number; b: number; start: number; battles: number; ev: number; wins: [number, number] }
 
-class Sim {
+/** Ein Weltereignis während der Simulation. */
+export interface ActiveRun { run: WorldRun; def: WorldEventDef; state: Record<string, unknown> }
+
+type Refs = { civs?: number[]; figs?: number[]; sites?: number[]; arts?: number[]; n?: number; win?: number; cause?: string };
+
+export class Sim {
+  readonly cfg: HistoryConfig;
+  readonly tl: Timeline;
   readonly rnd: () => number;
   readonly cells: Cell[] = [];
   readonly civs: Civ[] = [];
@@ -58,20 +58,44 @@ class Sim {
   readonly events: HEvent[] = [];
   readonly rivers: Set<number>;
   readonly worldName: string;
-  /** Reich je Zelle im aktuellen Jahr (−1 = niemand) */
+  /** Reich je Zelle im aktuellen Schritt (−1 = niemand) */
   owner = new Int16Array(N * N).fill(-1);
   wars: War[] = [];
   alliances = new Set<string>();
-  shattering = 0;
+  /** Bewohnte Orte, die bestehen */
+  living = new Set<Site>();
+  /** Orte je Zelle (für schnelle Abstandsprüfungen) */
+  private readonly grid = new Map<number, Site[]>();
+  /** Handelswege je Ort */
+  readonly tradeRoutes = new Map<number, number>();
+  /** Platz bis zum Nachbarort (Radius in Kacheln), alle paar Jahrzehnte neu */
+  readonly room = new Map<number, number>();
+  /** Lagegunst je Ort (0–1, aus dem Seed) */
+  readonly favor = new Map<number, number>();
+  /** Merker für Systeme und Weltereignisse (z. B. `synths` = Jahr des Erwachens) */
+  readonly flags: Record<string, number> = {};
+  /** Geplante Weltereignisse (sortiert) und gerade aktive */
+  runs: { run: WorldRun; def: WorldEventDef }[] = [];
+  active: ActiveRun[] = [];
   y = 0;
+  /** Länge des aktuellen Schritts in Jahren */
+  dt = 1;
+  epoch!: Epoch;
   private readonly elev: (x: number, y: number) => number;
 
-  constructor(private readonly t: Terrain, readonly years: number) {
+  constructor(private readonly t: Terrain, cfg: HistoryConfig) {
+    this.cfg = cfg;
+    this.tl = timelineOf(cfg);
+    this.epoch = this.tl.epochs[0];
     this.rnd = mulberry32(t.seed ^ 0x4157);
     this.elev = t.elevationAt ? t.elevationAt.bind(t) : () => 0.5;
     this.worldName = worldName(mulberry32(t.seed ^ 0x10de));
     this.rivers = traceRivers(t, new Simplex2(t.seed ^ 0x51a7));
     this.buildCells();
+  }
+
+  get years(): number {
+    return this.tl.end;
   }
 
   // ------------------------------------------------------------ Geografie und Geologie
@@ -125,34 +149,95 @@ class Sim {
     return this.cells[cy * N + cx];
   }
 
-  // ------------------------------------------------------------ Hilfen
+  cellOfSite(s: Site): Cell {
+    const [cx, cy] = this.cellOf(s);
+    return this.cells[cy * N + cx];
+  }
+
+  /** Fruchtbarkeit einer Zelle heute (Weltereignisse wie die Eiszeit verändern sie). */
+  fert(cx: number, cy: number): number {
+    let f = this.cells[cy * N + cx]?.fert ?? 0;
+    for (const a of this.active) if (a.def.fertility) f *= a.def.fertility(this, cx, cy);
+    return f;
+  }
+
+  // ------------------------------------------------------------ Zeit, Zufall, Stärke
+
+  /** Wahrscheinlichkeit je Jahr → für den aktuellen Schritt. */
+  chance(perYear: number): boolean {
+    if (perYear <= 0) return false;
+    const p = this.dt === 1 ? perYear : 1 - Math.pow(1 - Math.min(1, perYear), this.dt);
+    return this.rnd() < p;
+  }
+
+  /** Erwartete Anzahl in diesem Schritt bei einer Rate je Jahr (ganzzahlig gezogen, höchstens `max`). */
+  count(perYear: number, max = Infinity): number {
+    const x = perYear * this.dt;
+    const n = Math.floor(x) + (this.rnd() < x - Math.floor(x) ? 1 : 0);
+    return Math.min(max, n);
+  }
+
+  /** Stärke eines Systems laut Konfiguration (0 = aus). */
+  rate(system: string): number {
+    const s = this.cfg.systems[system];
+    return !s ? 1 : s.on ? s.rate : 0;
+  }
+
+  /** Produkt der Modifikatoren aktiver Weltereignisse. */
+  mod(key: ModKey): number {
+    let m = 1;
+    for (const a of this.active) m *= a.def.mods?.[key] ?? 1;
+    return m;
+  }
+
+  get detail(): number {
+    return this.epoch.detail;
+  }
 
   pick<T>(a: readonly T[]): T {
     return a[Math.floor(this.rnd() * a.length)];
   }
 
-  ev(k: EventKind, refs: { civs?: number[]; figs?: number[]; sites?: number[]; arts?: number[]; n?: number; win?: number; cause?: string } = {}): HEvent {
-    const e: HEvent = { id: this.events.length, y: this.y, k, civs: refs.civs ?? [], figs: refs.figs ?? [], sites: refs.sites ?? [], arts: refs.arts ?? [] };
+  // ------------------------------------------------------------ Ereignisse
+
+  /**
+   * Ein Ereignis. Unter der Mindestbedeutung des Zeitalters wird es nicht protokolliert (`id` −1), wirkt aber.
+   * Wer die ID speichern will (z. B. als Untergang eines Ortes), ruft `keep(e)`.
+   */
+  ev(k: EventKind, refs: Refs = {}, force = false): HEvent {
+    const e: HEvent = { id: -1, y: this.y, k, civs: refs.civs ?? [], figs: refs.figs ?? [], sites: refs.sites ?? [], arts: refs.arts ?? [] };
     if (refs.n !== undefined) e.n = refs.n;
     if (refs.win !== undefined) e.win = refs.win;
     if (refs.cause !== undefined) e.cause = refs.cause;
+    if (force || importanceOf(k) >= this.epoch.minImportance) this.keep(e);
+    return e;
+  }
+
+  /** Ereignis ins Protokoll aufnehmen (falls noch nicht geschehen) und seine ID liefern. */
+  keep(e: HEvent): number {
+    if (e.id >= 0) return e.id;
+    e.id = this.events.length;
     this.events.push(e);
     for (const c of e.civs) this.civs[c]?.events.push(e.id);
     for (const f of e.figs) this.figures[f]?.events.push(e.id);
     for (const s of e.sites) this.sites[s]?.events.push(e.id);
-    return e;
+    return e.id;
   }
+
+  // ------------------------------------------------------------ Abfragen
 
   ownerOf(s: Site): number {
     return s.owners[s.owners.length - 1].civ;
   }
 
   alive(s: Site): boolean {
-    return s.destroyed === undefined && INHABITED.has(s.kind);
+    return this.living.has(s);
   }
 
   sitesOf(civ: number): Site[] {
-    return this.sites.filter((s) => this.alive(s) && this.ownerOf(s) === civ);
+    const out: Site[] = [];
+    for (const s of this.living) if (this.ownerOf(s) === civ) out.push(s);
+    return out;
   }
 
   aliveCivs(): Civ[] {
@@ -168,6 +253,30 @@ class Sim {
     return r && this.isAlive(r) ? r : undefined;
   }
 
+  cellOf(s: { tx: number; ty: number }): [number, number] {
+    return [Math.floor(s.tx / C), Math.floor(s.ty / C)];
+  }
+
+  /** Einflussgebiet eines Ortes (Radius in Zellen nach Größe). */
+  reach(s: Site): number {
+    return reach(s);
+  }
+
+  /** Orte im Umkreis (Kacheln) einer Position, über das Zellraster. */
+  near(tx: number, ty: number, r: number, filter: (s: Site) => boolean = () => true): Site[] {
+    const out: Site[] = [];
+    const c0x = Math.floor((tx - r) / C);
+    const c1x = Math.floor((tx + r) / C);
+    const c0y = Math.floor((ty - r) / C);
+    const c1y = Math.floor((ty + r) / C);
+    for (let cy = c0y; cy <= c1y; cy++) for (let cx = c0x; cx <= c1x; cx++) {
+      for (const s of this.grid.get(cy * N + cx) ?? []) if (Math.hypot(s.tx - tx, s.ty - ty) < r && filter(s)) out.push(s);
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------ Orte
+
   /** Begehbarer, ebener Baugrund wie `WorldMeta.isGood`. */
   private good(tx: number, ty: number, r = 1): boolean {
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (!GOOD.has(this.t.biomeAt(tx + dx * 2, ty + dy * 2))) return false;
@@ -180,35 +289,60 @@ class Sim {
   }
 
   /**
-   * Kachelgenauer Platz in der Nähe eines Punktes. Bewohnte Orte halten 44 Kacheln Abstand untereinander
-   * (wie die Siedlungen im Spiel), alle anderen Orte mindestens 34 zu bewohnten und 16 zu sonstigen.
+   * Kachelgenauer Platz in der Nähe eines Punktes. Bewohnte Orte halten `settlements.spacing` Abstand untereinander,
+   * alle anderen Orte mindestens 34 zu bewohnten und 16 zu sonstigen. Alte Ruinen blockieren nicht: auf ihnen darf man
+   * neu bauen (`onRuin` liefert dann die Ruine darunter).
    */
-  place(cx: number, cy: number, kind: SiteKind, spread = C * 0.45): { tx: number; ty: number } | null {
+  place(cx: number, cy: number, kind: SiteKind, spread = C * 0.45): { tx: number; ty: number; onRuin?: Site } | null {
     const settle = INHABITED.has(kind) || kind === 'relic';
+    const spacing = this.cfg.settlements.spacing;
     for (let i = 0; i < 30; i++) {
       const tx = Math.round(cx + (this.rnd() * 2 - 1) * spread);
       const ty = Math.round(cy + (this.rnd() * 2 - 1) * spread);
       if (tx < 60 || ty < 60 || tx >= WORLD_TILES - 60 || ty >= WORLD_TILES - 60) continue;
       let ok = true;
-      for (const s of this.sites) {
+      let onRuin: Site | undefined;
+      for (const s of this.near(tx, ty, spacing)) {
         const d = Math.hypot(s.tx - tx, s.ty - ty);
         const sSettle = INHABITED.has(s.kind) || s.kind === 'relic';
-        if (d < (settle && sSettle ? 44 : settle || sSettle ? 34 : 16)) {
+        const oldRuin = s.destroyed !== undefined && INHABITED.has(s.kind) && this.y - s.destroyed > RUIN_SETTLE_AGE && !s.sunk;
+        if (oldRuin) {
+          if (settle && d < 24 && s.on === undefined && !onRuin) onRuin = s;
+          if (d < 8) ok = false;
+          continue;
+        }
+        if (d < (settle && sSettle ? spacing : settle || sSettle ? 34 : 16)) {
           ok = false;
           break;
         }
       }
       if (!ok || !this.good(tx, ty, 1) || !this.good(tx + 2, ty + 1, 0)) continue;
       if (this.riverNear(tx, ty, settle ? 13 : 4)) continue;
-      return { tx, ty };
+      return onRuin ? { tx, ty, onRuin } : { tx, ty };
     }
     return null;
   }
 
-  addSite(kind: SiteKind, p: { tx: number; ty: number }, civ: number, name: string, pop: number): Site {
-    const s: Site = { id: this.sites.length, kind, name, tx: p.tx, ty: p.ty, founded: this.y, owners: [{ y: this.y, civ }], pop, events: [], arts: [], buried: [] };
+  addSite(kind: SiteKind, p: { tx: number; ty: number; onRuin?: Site }, civ: number, name: string, pop: number): Site {
+    const s: Site = { id: this.sites.length, kind, name, tx: p.tx, ty: p.ty, founded: this.y, owners: [{ y: this.y, civ }], pop, events: [], arts: [], buried: [], peak: { pop, y: this.y } };
+    if (p.onRuin && INHABITED.has(kind)) {
+      s.on = p.onRuin.id;
+      (p.onRuin.under ??= []).push(s.id);
+    }
     this.sites.push(s);
-    if (INHABITED.has(kind)) this.paintOwner(s);
+    const [cx, cy] = this.cellOf(s);
+    const k = cy * N + cx;
+    const list = this.grid.get(k);
+    if (list) list.push(s);
+    else this.grid.set(k, [s]);
+    // Lagegunst: wenige Orte werden groß, viele bleiben klein
+    const u = ((Math.imul(s.id + 1, 2654435761) ^ this.t.seed) >>> 0) / 4294967296;
+    this.favor.set(s.id, 0.04 + 0.96 * u * u * u);
+    if (INHABITED.has(kind)) {
+      this.living.add(s);
+      this.room.set(s.id, townRoom(this, s));
+      this.paintOwner(s);
+    }
     return s;
   }
 
@@ -218,34 +352,40 @@ class Sim {
     return n;
   }
 
-  addFigure(role: Role, race: Race | 'beast', civ: number, age: number, parent?: number): Figure {
-    const female = race !== 'beast' && race !== 'synth' && this.rnd() < 0.5;
-    // Keine zwei Lebenden gleichen Namens
-    const taken = (n: string) => this.figures.some((f) => f.name === n && f.died === undefined);
-    let name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
-    for (let k = 0; k < 6 && taken(name); k++) name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
-    const f: Figure = { id: this.figures.length, name, race, female, role, civ, born: this.y - age, children: [], offices: [], events: [], holds: [], kills: 0 };
-    if (parent !== undefined) {
-      f.parent = parent;
-      this.figures[parent].children.push(f.id);
+  /** Ort wird zerstört oder verlassen → Ruine. Wer dort Artefakte trug, verliert sie nicht (die Figuren fliehen). */
+  destroy(s: Site, e: HEvent): void {
+    if (s.destroyed !== undefined) return;
+    s.destroyed = this.y;
+    s.fall = this.keep(e);
+    s.pop = 0;
+    this.living.delete(s);
+    const civ = this.civs[this.ownerOf(s)];
+    if (civ && civ.capital === s.id) this.moveCapital(civ);
+  }
+
+  moveCapital(civ: Civ): void {
+    const own = this.sitesOf(civ.id).filter((s) => s.kind === 'city' || s.kind === 'village');
+    if (!own.length) {
+      const any = this.sitesOf(civ.id);
+      if (any.length) {
+        civ.capital = any[0].id;
+        return;
+      }
+      this.fallCiv(civ);
+      return;
     }
-    this.figures.push(f);
-    return f;
+    const cap = own.reduce((a, b) => (b.pop > a.pop ? b : a));
+    civ.capital = cap.id;
+    cap.kind = 'city';
   }
 
-  lifespan(f: Figure): number {
-    if (f.race === 'beast') return 250 + ((f.id * 7919) % 300);
-    const [a, b] = LIFESPAN[f.race];
-    return a + ((f.id * 2654435761) >>> 0) % (b - a);
-  }
-
-  cellOf(s: { tx: number; ty: number }): [number, number] {
-    return [Math.floor(s.tx / C), Math.floor(s.ty / C)];
-  }
-
-  /** Einflussgebiet eines Ortes (Radius in Zellen nach Größe). */
-  reach(s: Site): number {
-    return reach(s);
+  fallCiv(civ: Civ): void {
+    if (civ.fell !== undefined) return;
+    civ.fell = this.y;
+    for (const f of this.figures) if (f.civ === civ.id && this.isAlive(f) && f.role === 'ruler') for (const o of f.offices) if (o.to === undefined) o.to = this.y;
+    for (const s of this.sitesOf(civ.id)) s.owners.push({ y: this.y, civ: -1 });
+    this.wars = this.wars.filter((w) => w.a !== civ.id && w.b !== civ.id);
+    this.ev('civ_fall', { civs: [civ.id] });
   }
 
   private paintOwner(s: Site): void {
@@ -264,17 +404,11 @@ class Sim {
   recomputeOwner(): void {
     this.owner.fill(-1);
     const best = new Float32Array(N * N).fill(1e9);
-    const size = new Map<number, number>();
-    let total = 0;
-    for (const s of this.sites) if (this.alive(s)) {
-      size.set(this.ownerOf(s), (size.get(this.ownerOf(s)) ?? 0) + 1);
-      total++;
-    }
-    for (const s of this.sites) {
-      if (!this.alive(s)) continue;
+    for (const s of this.living) {
+      const civ = this.ownerOf(s);
+      if (civ < 0) continue;
       const [cx, cy] = this.cellOf(s);
       const r = this.reach(s);
-      const civ = this.ownerOf(s);
       for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
         const c = this.cell(cx + dx, cy + dy);
         const d = dx * dx + dy * dy;
@@ -289,27 +423,10 @@ class Sim {
     }
   }
 
-  // ------------------------------------------------------------ Anfang
+  // ------------------------------------------------------------ Reiche
 
-  /** Vorzeit: Relikte der Ersten Maschinen in der Schrottödnis. */
-  prehistory(): void {
-    const scrap = this.cells.map((c, i) => ({ c, i })).filter((x) => x.c.scrap === 1);
-    const relics: number[] = [];
-    for (let k = 0; k < 4 && scrap.length; k++) {
-      const { i } = scrap[Math.floor(this.rnd() * scrap.length)];
-      const p = this.place((i % N) * C + C / 2, Math.floor(i / N) * C + C / 2, 'relic');
-      if (!p) continue;
-      const s = this.addSite('relic', p, -1, specialName(this.rnd, 'relic', 'synth', ''), 0);
-      s.founded = -1000 - Math.floor(this.rnd() * 2000);
-      s.destroyed = -1;
-      relics.push(s.id);
-    }
-    const e = this.ev('prehistory', { sites: relics });
-    for (const id of relics) this.sites[id].fall = e.id;
-  }
-
-  /** Bester Ort für ein Volk, weit weg von anderen Ursprüngen. */
-  private origin(race: Race, taken: { cx: number; cy: number }[], minDist: number): { cx: number; cy: number } | null {
+  /** Bester Ort für ein Volk in freiem Land, weit weg von anderen (`taken`). */
+  origin(race: Race, taken: { cx: number; cy: number }[], minDist: number, freeLand = true): { cx: number; cy: number } | null {
     let best: { cx: number; cy: number; s: number } | null = null;
     for (let k = 0; k < 500; k++) {
       const cx = 8 + Math.floor(this.rnd() * (N - 16));
@@ -318,14 +435,15 @@ class Sim {
       if (!c.land) continue;
       const pref = PREF[race][c.biome as B] ?? 0;
       if (pref <= 0) continue;
+      if (freeLand && this.owner[cy * N + cx] !== -1) continue;
       if (taken.some((o) => Math.hypot(o.cx - cx, o.cy - cy) < minDist)) continue;
-      const s = pref + c.fert + (c.river ? 0.4 : 0) + (c.coast ? 0.3 : 0) + c.shard * 0.3 + this.rnd() * 0.3;
+      const s = pref + this.fert(cx, cy) + (c.river ? 0.4 : 0) + (c.coast ? 0.3 : 0) + c.shard * 0.3 + this.rnd() * 0.3;
       if (!best || s > best.s) best = { cx, cy, s };
     }
     return best;
   }
 
-  foundCiv(race: Race, faction: Faction, cx: number, cy: number, parent?: number, capital?: Site): Civ | null {
+  foundCiv(race: Race, faction: Faction, cx: number, cy: number, parent?: number, capital?: Site, kind: EventKind = 'civ_found'): Civ | null {
     const id = this.civs.length;
     let name = realmName(this.rnd, race);
     for (let k = 0; k < 12 && this.civs.some((c) => c.name === name); k++) name = realmName(this.rnd, race);
@@ -333,14 +451,14 @@ class Sim {
     if (!cap) {
       const p = this.place(cx * C + C / 2, cy * C + C / 2, 'city', C * 0.8);
       if (!p) return null;
-      cap = this.addSite('city', p, id, this.uniqueName(() => placeName(this.rnd, race)), 200 + Math.floor(this.rnd() * 100));
+      cap = this.addSite('city', p, id, this.uniqueName(() => placeName(this.rnd, race)), Math.round((400 + this.rnd() * 300) * this.cfg.settlements.popScale));
     }
     const civ: Civ = { id, name, race, faction, color: CIV_COLORS[id % CIV_COLORS.length], founded: this.y, capital: cap.id, rulers: [], events: [], opinion: {} };
     if (parent !== undefined) civ.parent = parent;
     this.civs.push(civ);
     const founder = this.addFigure('ruler', race, id, 25 + Math.floor(this.rnd() * 20));
     this.crown(civ, founder, false);
-    if (parent === undefined) this.ev(this.y === 0 ? 'civ_found' : 'awaken', { civs: [id], figs: [founder.id], sites: [cap.id] });
+    if (parent === undefined) this.ev(kind, { civs: [id], figs: [founder.id], sites: [cap.id] });
     return civ;
   }
 
@@ -356,98 +474,66 @@ class Sim {
     if (log) this.ev('ruler', { civs: [civ.id], figs: prev ? [f.id, prev.id] : [f.id] });
   }
 
-  start(): void {
-    this.prehistory();
-    const plan: [Race, Faction][] = [['human', 'order'], ['human', 'traders'], ['human', 'techno'], ['elf', 'mages'], ['elf', this.rnd() < 0.5 ? 'mages' : 'order'], ['orc', 'clan'], ['orc', 'clan']];
-    const taken: { cx: number; cy: number }[] = [];
-    for (const [race, faction] of plan) {
-      for (const dist of [22, 16, 10]) {
-        const o = this.origin(race, taken, dist);
-        if (o && this.foundCiv(race, faction, o.cx, o.cy)) {
-          taken.push(o);
-          break;
-        }
-      }
-    }
-    // Notfall: Fehlen Reiche (kleine Welt), mit Menschen auffüllen
-    for (let k = 0; this.civs.length < MIN_CIVS + 1 && k < 20; k++) {
-      const o = this.origin('human', taken, 8);
-      if (o && this.foundCiv('human', this.pick(['order', 'traders', 'techno', 'clan', 'mages'] as Faction[]), o.cx, o.cy)) taken.push(o);
-    }
-    this.shattering = Math.round(this.years * (0.55 + this.rnd() * 0.15));
+  /** Reich spaltet sich: der ferne Teil folgt einer neuen Hauptstadt. */
+  split(civ: Civ, own: Site[], cause?: string): Civ | null {
+    const cap = this.sites[civ.capital];
+    const far = own.reduce((a, b) => (Math.hypot(b.tx - cap.tx, b.ty - cap.ty) > Math.hypot(a.tx - cap.tx, a.ty - cap.ty) ? b : a));
+    const group = own.filter((s) => s !== cap && Math.hypot(s.tx - far.tx, s.ty - far.ty) < Math.hypot(s.tx - cap.tx, s.ty - cap.ty));
+    if (group.length < 2) return null;
+    const newCap = group.reduce((a, b) => (b.pop > a.pop ? b : a));
+    const faction = this.rnd() < 0.5 ? civ.faction : this.pick(RACE_FACTIONS[civ.race]);
+    const child = this.foundCiv(civ.race, faction, 0, 0, civ.id, newCap);
+    if (!child) return null;
+    for (const s of group) s.owners.push({ y: this.y, civ: child.id });
+    if (newCap.kind === 'village') newCap.kind = 'city';
+    civ.opinion[child.id] = child.opinion[civ.id] = -45;
+    const refs: Refs = { civs: [child.id, civ.id], sites: [newCap.id], figs: [child.rulers[0]], n: group.length };
+    if (cause) refs.cause = cause;
+    this.ev('split', refs);
+    return child;
   }
 
-  // ------------------------------------------------------------ Jahreslauf
-
-  run(): void {
-    this.start();
-    const synthYear = 40 + Math.floor(this.rnd() * 80);
-    for (this.y = 1; this.y <= this.years; this.y++) {
-      if (this.y === synthYear) this.awakenSynths();
-      if (this.y === this.shattering - 25) this.prepareShattering();
-      if (this.y === this.shattering - 12) this.forgeGreat();
-      if (this.y === this.shattering) this.shatter();
-      this.recomputeOwner();
-      this.figuresYear();
-      this.growth();
-      this.relations();
-      this.warsYear();
-      this.beastsYear();
-      this.disasters();
-    }
-    this.y = this.years;
+  strength(civ: number): number {
+    return Math.sqrt(this.sitesOf(civ).reduce((s, x) => s + x.pop, 0) / 10 + 1);
   }
 
-  private awakenSynths(): void {
-    const relic = this.sites.find((s) => s.kind === 'relic');
-    const scrap = this.cells.map((c, i) => ({ c, i })).filter((x) => x.c.scrap >= 0.3 && x.c.land && this.owner[x.i] === -1);
-    const at = relic ? this.cellOf(relic) : scrap.length ? [scrap[0].i % N, Math.floor(scrap[0].i / N)] : null;
-    if (!at) return;
-    for (let k = 0; k < 6; k++) {
-      const civ = this.foundCiv('synth', 'techno', at[0] + Math.floor(this.rnd() * 5) - 2, at[1] + Math.floor(this.rnd() * 5) - 2);
-      if (civ) {
-        if (relic) {
-          const e = this.events[this.events.length - 1];
-          e.sites.push(relic.id);
-          relic.events.push(e.id);
-        }
-        return;
-      }
-    }
+  declareWar(a: number, b: number, cause: string): void {
+    const [atk, def] = this.strength(a) >= this.strength(b) ? [a, b] : [b, a];
+    const e = this.ev('war', { civs: [atk, def], cause });
+    this.wars.push({ a: atk, b: def, start: this.y, battles: 0, ev: e.id, wins: [0, 0] });
   }
 
-  private figuresYear(): void {
-    for (const f of this.figures) {
-      if (!this.isAlive(f)) continue;
-      const age = this.y - f.born;
-      if (age > this.lifespan(f)) {
-        this.die(f, 'age');
-        continue;
-      }
-      // Herrscher bekommen Kinder (Erben)
-      if (f.role === 'ruler' && f.offices.some((o) => o.to === undefined) && f.race !== 'synth' && age > 20 && age < 50 && f.children.length < 4 && this.rnd() < 0.07) {
-        const child = this.addFigure('ruler', f.race, f.civ, 0, f.id);
-        this.ev('birth', { figs: [child.id, f.id], civs: [f.civ] });
-      }
-      // Erzmagier, Ingenieure und Priester schaffen Artefakte
-      if ((f.role === 'mage' || f.role === 'engineer' || f.role === 'priest') && age > 30 && this.rnd() < 0.035) {
-        const made = this.artifacts.filter((a) => a.maker === f.id).length;
-        if (made < 2) this.makeArtifact(f);
-      }
+  peace(w: War): void {
+    this.wars = this.wars.filter((x) => x !== w);
+    if (this.civs[w.a].fell !== undefined || this.civs[w.b].fell !== undefined) return;
+    this.civs[w.a].opinion[w.b] = this.civs[w.b].opinion[w.a] = -10;
+    this.ev('peace', { civs: [w.a, w.b], win: w.wins[0] > w.wins[1] ? w.a : w.wins[1] > w.wins[0] ? w.b : -1, n: this.y - w.start });
+  }
+
+  // ------------------------------------------------------------ Figuren und Artefakte
+
+  addFigure(role: Role, race: Race | 'beast', civ: number, age: number, parent?: number): Figure {
+    const female = race !== 'beast' && race !== 'synth' && this.rnd() < 0.5;
+    let name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
+    // Keine zwei Lebenden gleichen Namens (nur die letzten paar hundert Figuren können noch leben)
+    const taken = (n: string) => {
+      for (let i = this.figures.length - 1; i >= 0 && i > this.figures.length - 400; i--) if (this.figures[i].name === n && this.figures[i].died === undefined) return true;
+      return false;
+    };
+    for (let k = 0; k < 6 && taken(name); k++) name = race === 'beast' ? beastName(this.rnd) : personName(this.rnd, race, female);
+    const f: Figure = { id: this.figures.length, name, race, female, role, civ, born: this.y - age, children: [], offices: [], events: [], holds: [], kills: 0 };
+    if (parent !== undefined) {
+      f.parent = parent;
+      this.figures[parent].children.push(f.id);
     }
-    for (const civ of this.aliveCivs()) {
-      if (!this.ruler(civ)) this.succession(civ);
-      const race = civ.race;
-      if (this.rnd() < 0.007) {
-        const h = this.addFigure('hero', race, civ.id, 18 + Math.floor(this.rnd() * 6));
-        this.ev('hero_rise', { figs: [h.id], civs: [civ.id], sites: [civ.capital] });
-      }
-      const mageP = civ.faction === 'mages' ? 0.012 : race === 'elf' ? 0.005 : 0.002;
-      if (this.rnd() < mageP) this.addFigure('mage', race, civ.id, 35 + Math.floor(this.rnd() * 20));
-      const engP = civ.faction === 'techno' ? 0.012 : 0.002;
-      if (this.rnd() < engP) this.addFigure('engineer', race, civ.id, 30 + Math.floor(this.rnd() * 20));
-      if (civ.faction === 'order' && this.rnd() < 0.008) this.addFigure('priest', race, civ.id, 30 + Math.floor(this.rnd() * 20));
-    }
+    this.figures.push(f);
+    return f;
+  }
+
+  lifespan(f: Figure): number {
+    if (f.race === 'beast') return 250 + ((f.id * 7919) % 300);
+    const [a, b] = LIFESPAN[f.race];
+    return a + ((f.id * 2654435761) >>> 0) % (b - a);
   }
 
   makeArtifact(maker: Figure, great = false): Artifact {
@@ -461,8 +547,8 @@ class Sim {
     if (great) a.great = true;
     this.artifacts.push(a);
     maker.holds.push(a.id);
-    this.ev('artifact_made', { figs: [maker.id], arts: [a.id], civs: civ ? [civ.id] : [] });
-    // Oft ein Geschenk an den Herrscher
+    // Artefakte werden immer protokolliert: ihre Geschichte soll sich verfolgen lassen
+    this.ev('artifact_made', { figs: [maker.id], arts: [a.id], civs: civ ? [civ.id] : [] }, true);
     const r = civ && this.ruler(civ);
     if (!great && r && r !== maker && this.rnd() < 0.5) this.give(a, maker, r, 'gift');
     return a;
@@ -481,36 +567,35 @@ class Sim {
     a.holders.push({ fig: to.id, y: this.y, how });
   }
 
-  drop(a: Artifact, holder: Figure, site: Site, how: NonNullable<Artifact['lost']>['how']): void {
-    holder.holds = holder.holds.filter((x) => x !== a.id);
+  drop(a: Artifact, holder: Figure | null, site: Site, how: NonNullable<Artifact['lost']>['how']): void {
+    if (holder) holder.holds = holder.holds.filter((x) => x !== a.id);
     a.heldBy = undefined;
     a.site = site.id;
     a.lost = { y: this.y, how };
     site.arts.push(a.id);
-    if (how !== 'buried') this.ev('artifact_lost', { arts: [a.id], figs: [holder.id], sites: [site.id], cause: how });
+    if (how !== 'buried') this.ev('artifact_lost', { arts: [a.id], figs: holder ? [holder.id] : [], sites: [site.id], cause: how }, true);
   }
 
   /** Tod einer Figur; Ämter enden, Artefakte werden vererbt, begraben, erbeutet oder gehen verloren. */
   die(f: Figure, cause: DeathCause, killer?: Figure, site?: Site): void {
     if (!this.isAlive(f)) return;
-    // Die Hauptfiguren der Zersplitterung erleben sie
-    if ((f === this.greatMage || f === this.greatEngineer) && this.y < this.shattering) return;
-    f.died = this.y;
+    if (this.immortal.has(f.id)) return;
+    // In langen Schritten stirbt man am Alter zum richtigen Jahr, nicht erst am Schrittende
+    f.died = cause === 'age' ? Math.min(this.y, f.born + this.lifespan(f)) : this.y;
     f.cause = cause;
     if (killer) {
       f.killer = killer.id;
       killer.kills++;
     }
     if (site) f.deathSite = site.id;
-    for (const o of f.offices) if (o.to === undefined) o.to = this.y;
+    for (const o of f.offices) if (o.to === undefined) o.to = Math.max(o.from, f.died);
     const civ = this.civs[f.civ];
     // Bestattung: Herrscher und manche Helden bekommen ein Grabmal
     let tomb: Site | null = null;
-    if (f.race !== 'beast' && civ && (cause === 'age' || cause === 'plague' || cause === 'murder') && (f.role === 'ruler' && f.offices.length > 0 || (f.role === 'hero' && this.rnd() < 0.25) || f.role === 'mage')) {
+    if (f.race !== 'beast' && civ && (cause === 'age' || cause === 'plague' || cause === 'murder') && ((f.role === 'ruler' && f.offices.length > 0) || (f.role === 'hero' && this.rnd() < 0.25) || f.role === 'mage')) {
       tomb = this.tombFor(civ);
     }
-    const e = this.ev('death', { figs: killer ? [f.id, killer.id] : [f.id], civs: civ ? [civ.id] : [], sites: site ? [site.id] : tomb ? [tomb.id] : [], cause });
-    void e;
+    this.ev('death', { figs: killer ? [f.id, killer.id] : [f.id], civs: civ ? [civ.id] : [], sites: site ? [site.id] : tomb ? [tomb.id] : [], cause });
     if (tomb) {
       tomb.buried.push(f.id);
       f.deathSite ??= tomb.id;
@@ -522,13 +607,13 @@ class Sim {
       if (cause === 'battle' || cause === 'slain' || cause === 'murder') {
         if (killer && killer.race !== 'beast' && this.isAlive(killer) && this.rnd() < 0.5) {
           this.give(a, f, killer, 'loot');
-          this.ev('artifact_loot', { arts: [a.id], figs: [killer.id, f.id] });
+          this.ev('artifact_loot', { arts: [a.id], figs: [killer.id, f.id] }, true);
         } else if (site) this.drop(a, f, site, 'battle');
         else if (heir) this.give(a, f, heir, 'inherit');
       } else if (cause === 'beast') {
         if (killer?.lair !== undefined) this.drop(a, f, this.sites[killer.lair], 'hoard');
-      } else if (cause === 'shattering') {
-        if (site) this.drop(a, f, site, 'shattering');
+      } else if (cause === 'shattering' || cause === 'cataclysm') {
+        if (site) this.drop(a, f, site, cause === 'shattering' ? 'shattering' : 'ruin');
       } else if (tomb && (this.rnd() < 0.55 || !heir)) {
         this.drop(a, f, tomb, 'buried');
         buried.push(a.id);
@@ -542,295 +627,21 @@ class Sim {
         }
       }
     }
-    if (tomb) this.ev('burial', { figs: [f.id], sites: [tomb.id], arts: buried, civs: civ ? [civ.id] : [] });
+    if (tomb) this.ev('burial', { figs: [f.id], sites: [tomb.id], arts: buried, civs: civ ? [civ.id] : [] }, buried.length > 0);
   }
+
+  /** Figuren, die (noch) nicht sterben dürfen, z. B. die Hauptfiguren eines Weltereignisses. */
+  readonly immortal = new Set<number>();
 
   /** Grabmal eines Reiches nahe der Hauptstadt (wird wiederverwendet). */
   tombFor(civ: Civ): Site | null {
     const cap = this.sites[civ.capital];
     if (!cap) return null;
-    const near = this.sites.find((s) => s.kind === 'tomb' && this.ownerOf(s) === civ.id && Math.hypot(s.tx - cap.tx, s.ty - cap.ty) < 140 && s.buried.length < 12);
+    const near = this.near(cap.tx, cap.ty, 140, (s) => s.kind === 'tomb' && this.ownerOf(s) === civ.id && s.buried.length < 12)[0];
     if (near) return near;
     const p = this.place(cap.tx, cap.ty, 'tomb', 90);
     if (!p) return null;
     return this.addSite('tomb', p, civ.id, specialName(this.rnd, 'tomb', civ.race, cap.name), 0);
-  }
-
-  private succession(civ: Civ): void {
-    const last = this.figures[civ.rulers[civ.rulers.length - 1]];
-    const heir = last?.children.map((c) => this.figures[c]).find((c) => this.isAlive(c) && this.y - c.born >= 16);
-    const own = this.sitesOf(civ.id);
-    // Erbfolgestreit: großes Reich ohne Erben zerbricht
-    if (!heir && own.length >= 8 && this.aliveCivs().length < 14 && this.rnd() < 0.25) this.split(civ, own);
-    if (this.ruler(civ)) return;
-    const next = heir ?? this.addFigure('ruler', civ.race, civ.id, 25 + Math.floor(this.rnd() * 20));
-    this.crown(civ, next);
-  }
-
-  private split(civ: Civ, own: Site[]): void {
-    const cap = this.sites[civ.capital];
-    const far = own.reduce((a, b) => (Math.hypot(b.tx - cap.tx, b.ty - cap.ty) > Math.hypot(a.tx - cap.tx, a.ty - cap.ty) ? b : a));
-    const group = own.filter((s) => s !== cap && Math.hypot(s.tx - far.tx, s.ty - far.ty) < Math.hypot(s.tx - cap.tx, s.ty - cap.ty));
-    if (group.length < 2) return;
-    const newCap = group.reduce((a, b) => (b.pop > a.pop ? b : a));
-    const factions: Faction[] = ['mages', 'techno', 'clan', 'traders', 'order'];
-    const faction = this.rnd() < 0.5 ? civ.faction : this.pick(factions);
-    const child = this.foundCiv(civ.race, faction, 0, 0, civ.id, newCap);
-    if (!child) return;
-    for (const s of group) s.owners.push({ y: this.y, civ: child.id });
-    if (newCap.kind === 'village') newCap.kind = 'city';
-    civ.opinion[child.id] = child.opinion[civ.id] = -45;
-    this.ev('split', { civs: [child.id, civ.id], sites: [newCap.id], figs: [child.rulers[0]], n: group.length });
-  }
-
-  private growth(): void {
-    const size = new Map<number, number>();
-    let total = 0;
-    for (const s of this.sites) if (this.alive(s)) {
-      size.set(this.ownerOf(s), (size.get(this.ownerOf(s)) ?? 0) + 1);
-      total++;
-    }
-    for (const s of this.sites) {
-      if (!this.alive(s)) continue;
-      const [cx, cy] = this.cellOf(s);
-      const c = this.cells[cy * N + cx];
-      const civ = this.civs[this.ownerOf(s)];
-      const capital = civ?.capital === s.id;
-      const special = s.kind !== 'city' && s.kind !== 'village';
-      const cap = special ? 120 : 150 + 900 * c.fert + (capital ? 400 : 0);
-      s.pop += s.pop * 0.025 * (1 - s.pop / cap);
-      if (s.kind === 'village' && s.pop > 950) s.kind = 'city';
-      if (!civ || special) continue;
-      // Neue Dörfer bevorzugt an Flüssen, Küsten und Ressourcen
-      // Große Reiche wachsen langsamer (Verwaltung, Wege): weich begrenzt auf ~18 Orte
-      if (s.pop > 220 && this.rnd() < 0.045 * Math.max(0, 1 - (size.get(civ.id) ?? 0) / 18) * Math.max(0, 1 - total / MAX_SITES)) this.expand(civ, s);
-    }
-    for (const civ of this.aliveCivs()) {
-      const own = this.sitesOf(civ.id);
-      // Händler knüpfen Handelswege, alle anderen gelegentlich
-      if (own.length && this.rnd() < (civ.faction === 'traders' ? 0.04 : 0.006)) this.trade(civ, own);
-      if (own.length < 3 || this.rnd() > 0.008) continue;
-      const kind: SiteKind | null = civ.faction === 'mages' ? 'tower' : civ.faction === 'techno' ? 'lab' : civ.faction === 'order' ? 'temple' : civ.faction === 'clan' ? 'fortress' : null;
-      if (kind) this.special(civ, own, kind);
-      if (this.rnd() < 0.3) this.special(civ, own, 'mine');
-    }
-  }
-
-  private expand(civ: Civ, from: Site): void {
-    const [cx, cy] = this.cellOf(from);
-    let best: { cx: number; cy: number; s: number } | null = null;
-    for (let k = 0; k < 10; k++) {
-      const a = this.rnd() * Math.PI * 2;
-      const d = 3 + this.rnd() * 4;
-      const nx = Math.round(cx + Math.cos(a) * d);
-      const ny = Math.round(cy + Math.sin(a) * d);
-      const c = this.cell(nx, ny);
-      if (!c || !c.land) continue;
-      const o = this.owner[ny * N + nx];
-      if (o !== -1 && o !== civ.id) continue;
-      const pref = PREF[civ.race][c.biome as B] ?? 0.1;
-      const s = c.fert + pref * 0.5 + c.wood * 0.2 + c.ore * 0.2 + c.shard * 0.6 + (c.river ? 0.5 : 0) + (c.coast ? 0.3 : 0) + this.rnd() * 0.3;
-      if (!best || s > best.s) best = { cx: nx, cy: ny, s };
-    }
-    if (!best || best.s < 0.6) return;
-    const p = this.place(best.cx * C + C / 2, best.cy * C + C / 2, 'village');
-    if (!p) return;
-    const s = this.addSite('village', p, civ.id, this.uniqueName(() => placeName(this.rnd, civ.race)), 60);
-    from.pop -= 60;
-    this.ev('site_found', { civs: [civ.id], sites: [s.id, from.id] });
-  }
-
-  private special(civ: Civ, own: Site[], kind: SiteKind): void {
-    const base = this.pick(own);
-    const [cx, cy] = this.cellOf(base);
-    let best: { cx: number; cy: number; s: number } | null = null;
-    for (let k = 0; k < 10; k++) {
-      const nx = cx + Math.floor(this.rnd() * 7) - 3;
-      const ny = cy + Math.floor(this.rnd() * 7) - 3;
-      const c = this.cell(nx, ny);
-      if (!c || !c.land) continue;
-      const border = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const o = this.owner[(ny + dy) * N + nx + dx]; return o !== -1 && o !== civ.id; });
-      const s = kind === 'tower' ? c.shard * 2 + c.h : kind === 'lab' ? c.scrap + c.shard : kind === 'mine' ? c.ore * 2 : kind === 'fortress' ? (border ? 2 : 0) + c.h : c.fert + c.h;
-      if (!best || s + this.rnd() * 0.3 > best.s) best = { cx: nx, cy: ny, s };
-    }
-    if (!best || (kind === 'mine' && best.s < 0.8)) return;
-    const p = this.place(best.cx * C + C / 2, best.cy * C + C / 2, kind);
-    if (!p) return;
-    const s = this.addSite(kind, p, civ.id, this.uniqueName(() => specialName(this.rnd, kind, civ.race, base.name)), 40);
-    const builder = this.figures.find((f) => this.isAlive(f) && f.civ === civ.id && (kind === 'tower' ? f.role === 'mage' : kind === 'lab' ? f.role === 'engineer' : kind === 'temple' ? f.role === 'priest' : false));
-    this.ev('site_found', { civs: [civ.id], sites: [s.id, base.id], figs: builder ? [builder.id] : [] });
-  }
-
-  private trade(civ: Civ, own: Site[]): void {
-    const a = this.pick(own);
-    const partners = this.sites.filter((s) => this.alive(s) && s.kind === 'city' && this.ownerOf(s) !== civ.id && Math.hypot(s.tx - a.tx, s.ty - a.ty) < 25 * C && (civ.opinion[this.ownerOf(s)] ?? 0) > -20);
-    if (!partners.length) return;
-    const b = this.pick(partners);
-    const other = this.ownerOf(b);
-    civ.opinion[other] = Math.min(100, (civ.opinion[other] ?? 0) + 15);
-    this.civs[other].opinion[civ.id] = civ.opinion[other];
-    this.ev('trade', { civs: [civ.id, other], sites: [a.id, b.id] });
-  }
-
-  // ------------------------------------------------------------ Beziehungen und Kriege
-
-  private relations(): void {
-    const border = new Map<string, { n: number; shard: number }>();
-    for (let cy = 0; cy < N; cy++) for (let cx = 0; cx < N - 1; cx++) {
-      for (const [dx, dy] of [[1, 0], [0, 1]]) {
-        if (cy + dy >= N) continue;
-        const a = this.owner[cy * N + cx];
-        const b = this.owner[(cy + dy) * N + cx + dx];
-        if (a === -1 || b === -1 || a === b) continue;
-        const key = a < b ? `${a},${b}` : `${b},${a}`;
-        const v = border.get(key) ?? { n: 0, shard: 0 };
-        v.n++;
-        v.shard = Math.max(v.shard, this.cells[cy * N + cx].shard, this.cells[(cy + dy) * N + cx + dx].shard);
-        border.set(key, v);
-      }
-    }
-    for (const [key, v] of border) {
-      const [a, b] = key.split(',').map(Number);
-      const ca = this.civs[a];
-      const cb = this.civs[b];
-      let d = -0.35 - v.shard * 0.8 + (this.rnd() - 0.5) * 3;
-      if (ca.race !== cb.race) d -= 0.3;
-      if (ca.faction === 'traders' || cb.faction === 'traders') d += 0.5;
-      if (ca.faction === cb.faction) d += 0.2;
-      const o = Math.max(-100, Math.min(100, (ca.opinion[b] ?? 0) + d));
-      ca.opinion[b] = cb.opinion[a] = o;
-      const atWar = this.wars.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a));
-      if (!atWar && !this.alliances.has(key) && o < -40 && this.rnd() < 0.04) this.declareWar(a, b, v.shard > 0.4 ? 'shard' : 'border');
-      else if (!atWar && !this.alliances.has(key) && o > 30 && this.rnd() < 0.03) {
-        this.alliances.add(key);
-        this.ev('alliance', { civs: [a, b] });
-      } else if (this.alliances.has(key) && o < 0) this.alliances.delete(key);
-    }
-  }
-
-  private strength(civ: number): number {
-    return Math.sqrt(this.sitesOf(civ).reduce((s, x) => s + x.pop, 0) + 1);
-  }
-
-  declareWar(a: number, b: number, cause: string): void {
-    const [atk, def] = this.strength(a) >= this.strength(b) ? [a, b] : [b, a];
-    const e = this.ev('war', { civs: [atk, def], cause });
-    this.wars.push({ a: atk, b: def, start: this.y, battles: 0, ev: e.id, wins: [0, 0] });
-  }
-
-  private commander(civ: number): Figure | undefined {
-    const heroes = this.figures.filter((f) => this.isAlive(f) && f.civ === civ && f.role === 'hero' && this.y - f.born >= 18);
-    return heroes.length && this.rnd() < 0.7 ? this.pick(heroes) : this.ruler(this.civs[civ]);
-  }
-
-  private warsYear(): void {
-    for (const w of [...this.wars]) {
-      if (this.civs[w.a].fell !== undefined || this.civs[w.b].fell !== undefined) {
-        this.wars = this.wars.filter((x) => x !== w);
-        continue;
-      }
-      if (this.rnd() < 0.6) this.battle(w);
-      const len = this.y - w.start;
-      if (this.wars.includes(w) && (this.rnd() < 0.08 + 0.04 * len || Math.abs(w.wins[0] - w.wins[1]) >= 3)) this.peace(w);
-    }
-  }
-
-  private peace(w: War): void {
-    this.wars = this.wars.filter((x) => x !== w);
-    if (this.civs[w.a].fell !== undefined || this.civs[w.b].fell !== undefined) return;
-    this.civs[w.a].opinion[w.b] = this.civs[w.b].opinion[w.a] = -10;
-    this.ev('peace', { civs: [w.a, w.b], win: w.wins[0] > w.wins[1] ? w.a : w.wins[1] > w.wins[0] ? w.b : -1, n: this.y - w.start });
-  }
-
-  private battle(w: War): void {
-    const flip = this.rnd() < 0.35;
-    const atk = flip ? w.b : w.a;
-    const def = flip ? w.a : w.b;
-    const mine = this.sitesOf(atk);
-    const theirs = this.sitesOf(def);
-    if (!mine.length || !theirs.length) return this.peace(w);
-    // Ziel: der nächstgelegene Ort des Gegners
-    let target = theirs[0];
-    let from = mine[0];
-    let bd = Infinity;
-    for (const t of theirs) for (const m of mine) {
-      const d = Math.hypot(t.tx - m.tx, t.ty - m.ty);
-      if (d < bd) {
-        bd = d;
-        target = t;
-        from = m;
-      }
-    }
-    if (bd > 30 * C) return;
-    // Das Schlachtfeld liegt zwischen den Orten
-    const bx = target.tx + (from.tx - target.tx) * 0.35;
-    const by = target.ty + (from.ty - target.ty) * 0.35;
-    let field = this.sites.find((s) => s.kind === 'battlefield' && Math.hypot(s.tx - bx, s.ty - by) < C * 1.5);
-    if (!field) {
-      const p = this.place(bx, by, 'battlefield', C * 0.6);
-      if (p) field = this.addSite('battlefield', p, -1, specialName(this.rnd, 'battlefield', 'human', target.name), 0);
-    }
-    const ca = this.commander(atk);
-    const cd = this.commander(def);
-    const bonus = (f?: Figure) => (f ? 1 + f.holds.length * 0.15 + (f.role === 'hero' ? 0.2 : 0) : 1);
-    const sa = this.strength(atk) * bonus(ca);
-    const sd = this.strength(def) * bonus(cd) * (target.kind === 'fortress' || target.kind === 'city' ? 1.25 : 1);
-    let atkWins = this.rnd() < sa / (sa + sd);
-    const dead = Math.round(40 + this.rnd() * 500);
-    const e = this.ev('battle', { civs: [atk, def], sites: field ? [field.id, target.id] : [target.id], figs: [ca?.id, cd?.id].filter((x): x is number => x !== undefined), n: dead });
-    w.battles++;
-    // Verrat: Ein Verteidiger öffnet die Tore
-    let traitor: Figure | null = null;
-    if (!atkWins && this.rnd() < 0.08) {
-      traitor = this.addFigure('traitor', this.civs[def].race, def, 25 + Math.floor(this.rnd() * 30));
-      atkWins = true;
-      this.ev('betrayal', { figs: [traitor.id], civs: [def, atk], sites: [target.id] });
-    }
-    e.win = atkWins ? atk : def;
-    w.wins[atk === w.a ? (atkWins ? 0 : 1) : atkWins ? 1 : 0]++;
-    const loserCmd = atkWins ? cd : ca;
-    const winnerCmd = atkWins ? ca : cd;
-    if (loserCmd && this.rnd() < 0.35) this.die(loserCmd, 'battle', winnerCmd, field ?? target);
-    if (winnerCmd && this.rnd() < 0.08) this.die(winnerCmd, 'battle', loserCmd && this.isAlive(loserCmd) ? loserCmd : undefined, field ?? target);
-    if (!atkWins) return;
-    target.pop *= 0.6;
-    const defCiv = this.civs[def];
-    const last = theirs.length === 1;
-    if (last && this.aliveCivs().length <= MIN_CIVS + 1) return this.peace(w);
-    if (this.rnd() < 0.4 || target.kind === 'mine') {
-      this.destroy(target, this.ev('raze', { civs: [atk, def], sites: [target.id], figs: ca ? [ca.id] : [] }));
-    } else {
-      target.owners.push({ y: this.y, civ: atk });
-      this.ev('conquest', { civs: [atk, def], sites: [target.id], figs: ca ? [ca.id] : [] });
-    }
-    if (defCiv.capital === target.id) this.moveCapital(defCiv);
-  }
-
-  /** Ort wird zerstört oder verlassen → Ruine. Wer dort Artefakte trug, verliert sie nicht (die Figuren fliehen). */
-  destroy(s: Site, e: HEvent): void {
-    s.destroyed = this.y;
-    s.fall = e.id;
-    s.pop = 0;
-    const civ = this.civs[this.ownerOf(s)];
-    if (civ && civ.capital === s.id) this.moveCapital(civ);
-  }
-
-  private moveCapital(civ: Civ): void {
-    const own = this.sitesOf(civ.id).filter((s) => s.kind === 'city' || s.kind === 'village');
-    if (!own.length) {
-      const any = this.sitesOf(civ.id);
-      if (any.length) {
-        civ.capital = any[0].id;
-        return;
-      }
-      civ.fell = this.y;
-      for (const f of this.figures) if (f.civ === civ.id && this.isAlive(f) && f.role === 'ruler') for (const o of f.offices) if (o.to === undefined) o.to = this.y;
-      this.ev('civ_fall', { civs: [civ.id] });
-      return;
-    }
-    const cap = own.reduce((a, b) => (b.pop > a.pop ? b : a));
-    civ.capital = cap.id;
-    cap.kind = 'city';
   }
 
   // ------------------------------------------------------------ Bestien
@@ -847,169 +658,130 @@ class Sim {
       const own = this.owner[cy * N + cx];
       if (own !== -1 && !near) continue;
       // Nicht zu weit ab: die Bestie soll jemanden bedrohen
-      if (!near && !this.sites.some((s) => this.alive(s) && Math.hypot(s.tx / C - cx, s.ty / C - cy) < 10)) continue;
+      if (!near && !this.near(cx * C, cy * C, 10 * C, (s) => this.alive(s)).length) continue;
       const p = this.place(cx * C + C / 2, cy * C + C / 2, 'lair');
       if (!p) continue;
       const b = this.addFigure('beast', 'beast', -1, 50 + Math.floor(this.rnd() * 100));
       b.beastKind = k;
-      const nearest = this.sites.filter((s) => INHABITED.has(s.kind)).reduce<Site | null>((a, s) => (!a || Math.hypot(s.tx - p.tx, s.ty - p.ty) < Math.hypot(a.tx - p.tx, a.ty - p.ty) ? s : a), null);
+      const nearest = this.near(p.tx, p.ty, 12 * C, (s) => INHABITED.has(s.kind)).reduce<Site | null>((a, s) => (!a || Math.hypot(s.tx - p.tx, s.ty - p.ty) < Math.hypot(a.tx - p.tx, a.ty - p.ty) ? s : a), null);
       const lair = this.addSite('lair', p, -1, specialName(this.rnd, 'lair', 'human', nearest?.name ?? this.worldName), 0);
       lair.beast = b.id;
       b.lair = lair.id;
-      this.ev('beast_arrive', { figs: [b.id], sites: [lair.id] });
+      this.ev('beast_arrive', { figs: [b.id], sites: [lair.id] }, true);
       return b;
     }
     return null;
   }
 
-  private beastsYear(): void {
-    const afterShatter = this.y > this.shattering && this.y < this.shattering + 30;
-    if (this.rnd() < (afterShatter ? 0.04 : 0.01)) this.spawnBeast();
-    for (const b of this.figures) {
-      if (b.race !== 'beast' || !this.isAlive(b) || b.lair === undefined) continue;
-      const lair = this.sites[b.lair];
-      // Raubzüge
-      if (this.rnd() < 0.12) {
-        const prey = this.sites.filter((s) => this.alive(s) && Math.hypot(s.tx - lair.tx, s.ty - lair.ty) < 7 * C);
-        if (prey.length) {
-          const s = this.pick(prey);
-          s.pop *= 0.85;
-          const civ = this.ownerOf(s);
-          const victims = this.figures.filter((f) => this.isAlive(f) && f.civ === civ && f.race !== 'beast' && f.role !== 'ruler');
-          const victim = victims.length && this.rnd() < 0.2 ? this.pick(victims) : null;
-          const e = this.ev('beast_raid', { figs: victim ? [b.id, victim.id] : [b.id], sites: [s.id], civs: [civ] });
-          if (victim) this.die(victim, 'beast', b, lair);
-          if (s.kind === 'village' && s.pop < 90 && this.rnd() < 0.25) this.destroy(s, e);
-        }
-      }
-      // Helden ziehen gegen die Bestie
-      if (this.rnd() < 0.06) {
-        const heroes = this.figures.filter((f) => this.isAlive(f) && f.role === 'hero' && this.y - f.born >= 18 && this.sites.some((s) => this.alive(s) && this.ownerOf(s) === f.civ && Math.hypot(s.tx - lair.tx, s.ty - lair.ty) < 9 * C));
-        if (heroes.length) {
-          const h = this.pick(heroes);
-          if (this.rnd() < 0.4 + h.holds.length * 0.12) {
-            this.die(b, 'slain', h, lair);
-            this.ev('beast_slain', { figs: [h.id, b.id], sites: [lair.id], civs: [h.civ] });
-            const loot = lair.arts.length && this.rnd() < 0.5 ? this.artifacts[lair.arts[0]] : null;
-            if (loot) {
-              this.give(loot, null, h, 'found');
-              this.ev('artifact_loot', { arts: [loot.id], figs: [h.id], sites: [lair.id] });
-            }
-          } else {
-            this.ev('hero_falls', { figs: [h.id, b.id], sites: [lair.id], civs: [h.civ] });
-            this.die(h, 'beast', b, lair);
-          }
-        }
-      }
+  // ------------------------------------------------------------ Ablauf
+
+  /** Vorzeit: Relikte der Ersten Maschinen in der Schrottödnis. */
+  private prehistory(): void {
+    const scrap = this.cells.map((c, i) => ({ c, i })).filter((x) => x.c.scrap === 1);
+    const relics: number[] = [];
+    for (let k = 0; k < 4 && scrap.length; k++) {
+      const { i } = scrap[Math.floor(this.rnd() * scrap.length)];
+      const p = this.place((i % N) * C + C / 2, Math.floor(i / N) * C + C / 2, 'relic');
+      if (!p) continue;
+      const s = this.addSite('relic', p, -1, specialName(this.rnd, 'relic', 'synth', ''), 0);
+      s.founded = -1000 - Math.floor(this.rnd() * 2000);
+      s.destroyed = -1;
+      relics.push(s.id);
     }
+    const e = this.ev('prehistory', { sites: relics }, true);
+    for (const id of relics) this.sites[id].fall = e.id;
   }
 
-  // ------------------------------------------------------------ Seuchen, Hunger, Zersplitterung
-
-  private disasters(): void {
-    if (this.rnd() < 0.004) this.plague('plague');
-    if (this.rnd() < 0.003) this.plague('famine');
-  }
-
-  private plague(k: 'plague' | 'famine'): void {
-    const civs = this.aliveCivs().filter((c) => this.sitesOf(c.id).length > 1);
-    if (!civs.length) return;
-    const civ = this.pick(civs);
-    let own = this.sitesOf(civ.id);
-    if (k === 'famine') own = own.sort((a, b) => this.cells[this.cellOf(a)[1] * N + this.cellOf(a)[0]].fert - this.cells[this.cellOf(b)[1] * N + this.cellOf(b)[0]].fert);
-    const hit = own.slice(0, 2 + Math.floor(this.rnd() * 3));
-    const e = this.ev(k, { civs: [civ.id], sites: hit.map((s) => s.id), n: Math.round(hit.reduce((s, x) => s + x.pop * 0.45, 0)) });
-    for (const s of hit) s.pop *= 0.55;
-    if (k === 'plague') for (const f of this.figures) if (this.isAlive(f) && f.civ === civ.id && this.rnd() < 0.1) this.die(f, 'plague');
-    for (const s of hit) {
-      if (s.pop < 45 && s.id !== civ.capital) {
-        const a = this.ev('abandon', { civs: [civ.id], sites: [s.id], cause: k });
-        this.destroy(s, a);
-      }
+  /** Die Urreiche: über das erste Zehntel der Zeit verteilt (nicht alle im selben Jahr). */
+  private planOrigins(): void {
+    const races = (['human', 'elf', 'orc'] as Race[]).filter((r) => this.cfg.civs.races[r]);
+    if (!races.length) races.push('human');
+    const span = Math.max(1, Math.min(this.tl.end * 0.1, this.tl.epochs[0].years * 0.5));
+    for (let i = 0; i < this.cfg.civs.initial; i++) {
+      this.flags[`origin${i}`] = i === 0 ? 0 : Math.round(this.rnd() * span);
+      this.flags[`originRace${i}`] = races.indexOf(races[i % races.length]);
     }
-    void e;
+    this.flags.origins = this.cfg.civs.initial;
+    this.flags.originRaces = races.length;
+    this.originRaces = races;
   }
 
-  private greatSite?: Site;
-  private greatMage?: Figure;
-  private greatEngineer?: Figure;
+  originRaces: Race[] = [];
 
-  /** Vorbereitung der Zersplitterung: ein Turm auf der reichsten Splitter-Ader. */
-  private prepareShattering(): void {
-    const civs = this.aliveCivs();
-    const mages = civs.find((c) => c.faction === 'mages') ?? civs[0];
-    const techno = civs.find((c) => c.faction === 'techno') ?? mages;
-    if (!mages) return;
-    // Reichste Ader in der Nähe des Magierreichs
-    const own = this.sitesOf(mages.id);
-    let best: { cx: number; cy: number; s: number } | null = null;
-    for (const s of own.length ? own : [this.sites[mages.capital]]) {
-      const [cx, cy] = this.cellOf(s);
-      for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
-        const c = this.cell(cx + dx, cy + dy);
-        if (!c || !c.land) continue;
-        const v = c.shard + this.rnd() * 0.1;
-        if (!best || v > best.s) best = { cx: cx + dx, cy: cy + dy, s: v };
+  run(): void {
+    this.prehistory();
+    this.planOrigins();
+    this.runs = scheduleWorldEvents(this);
+    // Ohne Krieg der Maschinen erwachen die Synths nach gut einem Drittel der Zeit
+    if (!this.runs.some((r) => r.def.id === 'machinewar')) this.flags.synths = Math.round(this.tl.end * 0.35);
+    let prev = 0;
+    for (const st of steps(this.tl)) {
+      this.dt = st.dt;
+      this.epoch = st.epoch;
+      this.worldEventsStep(prev, st.y);
+      this.y = st.y;
+      this.recomputeOwner();
+      for (const sys of SYSTEMS) {
+        if (this.rate(sys.id) <= 0) continue;
+        if (sys.minDetail !== undefined && this.detail < sys.minDetail) continue;
+        sys.step(this);
+      }
+      for (const s of this.living) if (s.pop > s.peak.pop) s.peak = { pop: Math.round(s.pop), y: this.y };
+      prev = st.y;
+    }
+    this.y = this.tl.end;
+  }
+
+  /** Weltereignisse beginnen und enden im Schritt (prev, y] in zeitlicher Reihenfolge; aktive laufen danach je Schritt. */
+  private worldEventsStep(prev: number, y: number): void {
+    const acts: { t: number; start: boolean; run: WorldRun; def: WorldEventDef }[] = [];
+    for (const r of this.runs) {
+      if (r.run.from > prev && r.run.from <= y) acts.push({ t: r.run.from, start: true, ...r });
+      if (r.run.to > prev && r.run.to <= y && r.run.from <= y) acts.push({ t: Math.max(r.run.from, r.run.to), start: false, ...r });
+    }
+    acts.sort((a, b) => a.t - b.t || (a.start ? -1 : 1));
+    for (const act of acts) {
+      this.y = act.t;
+      this.epoch = epochAt(this.tl, this.y);
+      if (act.start) {
+        const a: ActiveRun = { run: act.run, def: act.def, state: {} };
+        this.active.push(a);
+        const refs = act.def.start?.(this, a) ?? {};
+        if (!act.def.silent) act.run.events.unshift(this.ev('world', { ...refs, cause: act.def.id, n: 0 }, true).id);
+      } else {
+        const a = this.active.find((x) => x.run === act.run);
+        if (!a) continue;
+        a.def.step?.(this, a);
+        a.def.end?.(this, a);
+        if (!a.def.silent && a.run.to > a.run.from) a.run.events.push(this.ev('world', { cause: a.def.id, n: 1 }, true).id);
+        this.active = this.active.filter((x) => x !== a);
       }
     }
-    if (!best) return;
-    const p = this.place(best.cx * C + C / 2, best.cy * C + C / 2, 'tower', C) ?? this.place(best.cx * C + C / 2, best.cy * C + C / 2, 'tower', C * 2);
-    if (!p) return;
-    this.greatMage = this.addFigure('mage', mages.race, mages.id, 60);
-    this.greatEngineer = this.addFigure('engineer', techno.race, techno.id, 45);
-    this.greatSite = this.addSite('tower', p, mages.id, this.uniqueName(() => specialName(this.rnd, 'tower', mages.race, '')), 60);
-    this.ev('site_found', { civs: [mages.id, techno.id], sites: [this.greatSite.id], figs: [this.greatMage.id, this.greatEngineer.id], cause: 'great' });
-  }
-
-  private forgeGreat(): void {
-    if (!this.greatMage || !this.greatEngineer || !this.greatSite) return;
-    const a = this.makeArtifact(this.greatMage, true);
-    this.events[this.events.length - 1].figs.push(this.greatEngineer.id);
-    this.events[this.events.length - 1].sites.push(this.greatSite.id);
-    this.greatSite.events.push(this.events.length - 1);
-    void a;
-  }
-
-  /** Die Zersplitterung: der Versuch, den größten Splitter zu bändigen, zerreißt das Land. */
-  private shatter(): void {
-    const site = this.greatSite;
-    if (!site || !this.greatMage || !this.greatEngineer) return;
-    const p = this.place(site.tx, site.ty, 'crater', 60) ?? { tx: site.tx + 6, ty: site.ty + 4 };
-    const crater = this.addSite('crater', p, -1, specialName(this.rnd, 'crater', 'human', site.name), 0);
-    const ruined = this.sites.filter((s) => this.alive(s) && Math.hypot(s.tx - site.tx, s.ty - site.ty) < 4.5 * C);
-    const e = this.ev('shattering', { figs: [this.greatMage.id, this.greatEngineer.id], sites: [crater.id, ...ruined.map((s) => s.id)], civs: [...new Set(ruined.map((s) => this.ownerOf(s)))], n: ruined.length });
-    for (const s of ruined) this.destroy(s, e);
-    for (const f of [this.greatMage, this.greatEngineer]) {
-      if (!this.isAlive(f)) continue;
-      // Das Herz bleibt im Krater
-      this.die(f, 'shattering', undefined, crater);
-    }
-    const great = this.artifacts.find((a) => a.great);
-    if (great && great.heldBy !== undefined) this.drop(great, this.figures[great.heldBy], crater, 'shattering');
-    // Splitterbrut erwacht
-    const [cx, cy] = this.cellOf(crater);
-    for (let k = 0; k < 2 + Math.floor(this.rnd() * 2); k++) this.spawnBeast({ cx, cy }, 1);
-    // Schuldzuweisung: alle gegen Magier und Technokraten
-    const blamed = new Set([this.greatMage.civ, this.greatEngineer.civ]);
-    for (const c of this.aliveCivs()) for (const b of blamed) if (c.id !== b) c.opinion[b] = this.civs[b].opinion[c.id] = Math.min(c.opinion[b] ?? 0, 0) - 30;
+    this.y = y;
+    this.epoch = epochAt(this.tl, Math.max(0, y - 1));
+    for (const a of this.active) a.def.step?.(this, a);
   }
 
   result(ms: number): History {
-    return {
-      seed: this.t.seed, years: this.years, worldName: this.worldName, shattering: this.shattering, cells: this.cells,
+    const shattering = this.runs.find((r) => r.def.id === 'shattering')?.run.to ?? 0;
+    const h: History = {
+      seed: this.t.seed, years: this.tl.end, config: this.cfg, epochs: this.tl.epochs, worldRuns: this.runs.map((r) => r.run),
+      knowledge: { ev: new Uint8Array(0), site: new Uint8Array(0), fig: new Uint8Array(0), art: new Uint8Array(0), civ: new Uint8Array(0) },
+      worldName: this.worldName, shattering, cells: this.cells,
       civs: this.civs, sites: this.sites, figures: this.figures, artifacts: this.artifacts, events: this.events, rivers: this.rivers, ms,
     };
+    h.knowledge = assessKnowledge(h);
+    return h;
   }
 }
 
-/** Erzeugt die Vorgeschichte einer Welt (deterministisch aus Seed und Landschaft). */
+/** Erzeugt die Vorgeschichte einer Welt (deterministisch aus Seed, Landschaft und Konfiguration). */
 export function generateHistory(t: Terrain, opts: HistoryOptions = {}): History {
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  const years = Math.max(100, Math.min(1000, Math.round(opts.years ?? DEFAULT_YEARS)));
-  const sim = new Sim(t, years);
+  const sim = new Sim(t, resolveConfig(opts.config));
   sim.run();
   const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now();
   return sim.result(t1 - t0);
 }
 
-export { ARTIFACT_KINDS, BEASTS, FACTIONS };
+export { ARTIFACT_KINDS, BEASTS, WORLD_EVENTS };

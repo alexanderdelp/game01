@@ -4,7 +4,7 @@
  */
 import { SITE_KIND, siteStory } from '../history/narrate';
 import type { History, Site } from '../history/types';
-import { DEFAULT_YEARS } from '../history/simulate';
+import { encodeConfig } from '../history/config';
 import { debugState } from '../debug';
 
 let panel: HTMLDivElement | null = null;
@@ -20,8 +20,9 @@ export function showHistoryPanel(h: History, s: Site, seed: string): void {
   panel.id = 'history-panel';
   panel.style.cssText = 'position:fixed;left:12px;bottom:12px;max-width:min(460px,calc(100vw - 24px));max-height:45vh;overflow:auto;'
     + 'background:#12111aee;color:#e6e1d4;border:1px solid #e0b030;border-radius:6px;padding:10px 14px;font:14px/1.5 Georgia,serif;z-index:20';
-  const years = h.years !== DEFAULT_YEARS ? `&jahre=${h.years}` : '';
-  const state = s.destroyed !== undefined ? 'Ruine' : SITE_KIND[s.kind];
+  const hc = encodeConfig(h.config);
+  const years = hc ? `&hc=${hc}` : '';
+  const state = s.destroyed !== undefined ? (s.sunk ? 'versunken' : 'Ruine') : SITE_KIND[s.kind];
   const title = document.createElement('div');
   title.style.cssText = 'color:#e0b030;font-size:17px;margin-bottom:4px;display:flex;justify-content:space-between;gap:12px';
   title.textContent = `${s.name} · ${state}`;

@@ -38,8 +38,16 @@ describe('Vorgeschichte – Simulation', () => {
       expect(BIOMES[world.baseBiomeAt(s.tx, s.ty)].walkable, s.name).toBe(true);
       expect(world.meta.waterAt(s.tx, s.ty) === null || !h.rivers.has(s.tx * 65536 + s.ty), s.name).toBe(true);
     }
+    // Gleichzeitig bewohnte Orte halten Abstand; auf alten Ruinen darf neu gebaut werden (aber nicht genau darauf)
     const inh = h.sites.filter((s) => INHABITED.has(s.kind));
-    for (const a of inh) for (const b of inh) if (a !== b) expect(Math.hypot(a.tx - b.tx, a.ty - b.ty)).toBeGreaterThanOrEqual(44);
+    const spacing = h.config.settlements.spacing;
+    const overlap = (a: (typeof inh)[0], b: (typeof inh)[0]) => a.founded < (b.destroyed ?? Infinity) && b.founded < (a.destroyed ?? Infinity);
+    for (const a of inh) for (const b of inh) {
+      if (a === b) continue;
+      const d = Math.hypot(a.tx - b.tx, a.ty - b.ty);
+      expect(d).toBeGreaterThanOrEqual(8);
+      if (overlap(a, b)) expect(d, `${a.name}/${b.name}`).toBeGreaterThanOrEqual(spacing);
+    }
   });
 
   it('Figuren sterben nicht vor der Geburt; Bezüge stimmen', () => {
@@ -90,7 +98,7 @@ describe('Vorgeschichte – Simulation', () => {
   });
 
   it('Länge ist einstellbar', () => {
-    const short = historyOf(world, { years: 300 });
+    const short = historyOf(world, { config: { epochs: [{ id: 'a', label: 'A', years: 300, step: 1, detail: 2, minImportance: 0, clarity: 0.8 }] } });
     expect(short.years).toBe(300);
     expect(short.events[short.events.length - 1].y).toBeLessThanOrEqual(300);
   });

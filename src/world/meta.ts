@@ -5,6 +5,7 @@
 import { B, BIOMES } from './biomes';
 import { Simplex2 } from './noise';
 import { hash2, mulberry32 } from './rng';
+import { layoutTown } from './townLayout';
 import { CHUNK_TILES, MOUNTAIN_H, PEAK_H, RUGGED_H, SCALE, SEA_LEVEL, WORLD_TILES } from './WorldGen';
 
 /** Was die Metadaten von der Landschaft brauchen (vermeidet zirkuläre Abhängigkeit zu WorldGen). */
@@ -36,7 +37,7 @@ export interface Realm {
   capital: number;
 }
 
-export type BuildingKind = 'house' | 'tower' | 'neonhouse' | 'stall' | 'well';
+export type BuildingKind = 'house' | 'tower' | 'neonhouse' | 'stall' | 'well' | 'wall' | 'rubble' | 'field';
 
 export interface Building {
   kind: BuildingKind;
@@ -54,6 +55,8 @@ export interface Settlement {
   ty: number;
   radius: number;
   buildings: Building[];
+  /** Größenstufe (nur mit Vorgeschichte: 0 Weiler … 4 Großstadt) */
+  tier?: number;
 }
 
 export type PoiKind = 'chest' | 'shrine' | 'obelisk' | 'ruinchest' | 'tomb' | 'memorial' | 'lair';
@@ -85,7 +88,11 @@ export interface Poi {
 export interface MetaSource {
   realms: Omit<Realm, 'capital'>[];
   rivals: number[];
-  settlements: { name: string; realm: number; capital: boolean; tx: number; ty: number; site: number }[];
+  settlements: {
+    name: string; realm: number; capital: boolean; tx: number; ty: number; site: number;
+    /** Stadtplan-Vorgaben (`src/history/towns.ts`) */
+    town: { tier: number; buildings: number; radius: number; wall: number; decay: number };
+  }[];
   ruins: { tx: number; ty: number; realm: number; site: number }[];
   /** Ankerpunkte der acht Obelisken (in der Nähe wird ein freier Platz gesucht) */
   obelisks: { tx: number; ty: number }[];
@@ -161,8 +168,8 @@ export class WorldMeta {
     this.rivals.push(...src.rivals);
     for (const st of src.settlements) {
       const realm = this.realms[st.realm];
-      const s: Settlement = { id: this.settlements.length, name: st.name, realm: st.realm, capital: st.capital, tx: st.tx, ty: st.ty, radius: st.capital ? 10 : 7, buildings: [] };
-      this.layout(s, realm, rnd);
+      const s: Settlement = { id: this.settlements.length, name: st.name, realm: st.realm, capital: st.capital, tx: st.tx, ty: st.ty, radius: st.town.radius, buildings: [], tier: st.town.tier };
+      this.townFromHistory(s, st, src);
       this.settlements.push(s);
       if (st.capital) realm.capital = s.id;
     }
@@ -188,11 +195,11 @@ export class WorldMeta {
         return;
       }
     });
-    // Flüsse der Vorgeschichte; Orte und Fundorte bleiben trocken
+    // Flüsse der Vorgeschichte; Stadtpläne weichen ihnen aus (Flüsse fließen durch Städte), Fundorte bleiben trocken
     for (const k of src.rivers) {
       const tx = Math.floor(k / 65536);
       const ty = k % 65536;
-      if (this.settlementNear(tx, ty, 3) || this.ruinNear(tx, ty, 5) || this.historicNear(tx, ty, 3)) continue;
+      if (this.buildingIndex.has(`${tx},${ty}`) || this.plazaTiles.has(k) || this.ruinNear(tx, ty, 5) || this.historicNear(tx, ty, 3)) continue;
       if (this.obelisks.some((o) => Math.abs(o.tx - tx) <= 3 && Math.abs(o.ty - ty) <= 3)) continue;
       this.rivers.add(k);
     }
@@ -389,6 +396,44 @@ export class WorldMeta {
     }
   }
 
+  /** Gepflasterte Kacheln der Stadtpläne aus der Vorgeschichte (Schlüssel tx * 65536 + ty). */
+  private readonly plazaTiles = new Set<number>();
+
+  private clearCache?: Set<number>;
+
+  /** Kacheln, die Stadtpläne freilassen: um Fundorte (Grabmal vor den Toren) und Ruinen. */
+  private keepClear(src: MetaSource): Set<number> {
+    if (this.clearCache) return this.clearCache;
+    const out = new Set<number>();
+    const mark = (tx: number, ty: number, r: number) => {
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) out.add((tx + dx) * 65536 + ty + dy);
+    };
+    for (const p of src.pois) mark(p.tx, p.ty, 3);
+    for (const r of src.ruins) mark(r.tx, r.ty, 6);
+    this.clearCache = out;
+    return out;
+  }
+
+  /** Stadtplan aus der Vorgeschichte (`townLayout.ts`): Größe, Mauer und Verfall stammen aus der Geschichte des Ortes. */
+  private townFromHistory(s: Settlement, st: MetaSource['settlements'][number], src: MetaSource): void {
+    const realm = this.realms[s.realm];
+    // Hauptstraßen und Tore zeigen zu den nächsten Nachbarorten
+    const others = src.settlements.filter((o) => o !== st).map((o) => ({ o, d: Math.hypot(o.tx - st.tx, o.ty - st.ty) })).sort((a, b) => a.d - b.d);
+    const dirs = others.slice(0, 3).filter((x) => x.d < 900).map((x) => Math.atan2(x.o.ty - st.ty, x.o.tx - st.tx));
+    const maxRadius = Math.max(8, (others[0]?.d ?? 400) / 2 - 3);
+    const out = layoutTown(
+      { tx: s.tx, ty: s.ty, ...st.town, style: FACTIONS[realm.faction].style, dirs, fields: st.town.tier <= 3, seed: hash2(this.t.seed, s.tx, s.ty, 7070), maxRadius },
+      (tx, ty) => this.isGood(tx, ty, 0) && !src.rivers.has(tx * 65536 + ty) && !this.keepClear(src).has(tx * 65536 + ty),
+    );
+    s.radius = out.radius;
+    for (const p of out.pieces) {
+      const b: Building = { kind: p.kind, tx: p.tx, ty: p.ty, variant: p.variant };
+      s.buildings.push(b);
+      this.buildingIndex.set(`${b.tx},${b.ty}`, b);
+    }
+    for (const k of out.streets) this.plazaTiles.add(k);
+  }
+
   /** Gebäude um den Platz verteilen (Ring-Raster), nur auf begehbarem Land. */
   private layout(s: Settlement, realm: Realm, rnd: () => number): void {
     const style = FACTIONS[realm.faction].style;
@@ -465,6 +510,7 @@ export class WorldMeta {
 
   /** Gepflasterter Platz (Ortsmitte und Wege). */
   isPlaza(tx: number, ty: number): boolean {
+    if (this.source) return this.plazaTiles.has(tx * 65536 + ty);
     for (const s of this.settlements) {
       const dx = tx - s.tx;
       const dy = ty - s.ty;

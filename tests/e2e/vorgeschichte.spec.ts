@@ -5,9 +5,9 @@ import { G, shot, skipCreation, waitReady, watchErrors } from './helpers';
 // Simulation, Plausibilität und Erzähltexte prüfen die Unit-Tests (vorgeschichte.test.ts).
 
 const SEED = 'nebel-kristall-427';
-type Hist = { sites: number; realms: string[]; historic: { kind: string; tx: number; ty: number; site: number }[]; settlements: number; ruins: number };
+type Hist = { sites: number; realms: string[]; historic: { kind: string; tx: number; ty: number; site: number }[]; settlements: number; ruins: number; bigTown: { tx: number; ty: number; buildings: number; walls: number } };
 
-test('Legenden-Modus: Übersicht, Karte im Zeitverlauf, Detailseiten', async ({ page }) => {
+test('Legenden-Modus: Übersicht mit Zeitaltern, Karte im Zeitverlauf, Detailseiten', async ({ page }) => {
   test.setTimeout(90_000);
   const errors = watchErrors(page);
   await page.setViewportSize({ width: 1366, height: 860 });
@@ -15,14 +15,17 @@ test('Legenden-Modus: Übersicht, Karte im Zeitverlauf, Detailseiten', async ({ 
   await expect.poll(() => page.evaluate(() => !!(window as unknown as { __legends?: { ready: boolean } }).__legends?.ready), { timeout: 60_000 }).toBe(true);
   await expect(page.locator('main h2')).toContainText(/\w+/);
   await expect(page.locator('main')).toContainText('Die Reiche von heute');
+  await expect(page.locator('main')).toContainText('Zeitalter und Weltereignisse');
+  await expect(page.locator('.band .run').first()).toBeVisible();
+  await expect(page.locator('main')).toContainText('Die größten Orte');
   await shot(page, 'vorgeschichte-legenden');
   // Karte: Jahr-Regler verändert Jahr und Reiche
   await page.goto(`/?legends=1&seed=${SEED}#map?y=120`);
   await expect(page.locator('#lg-yv')).toHaveText('Jahr 120', { timeout: 60_000 });
   await shot(page, 'vorgeschichte-karte-jahr120');
-  await page.locator('#lg-y').fill('600');
-  await expect(page.locator('#lg-yv')).toHaveText('Jahr 600');
-  await shot(page, 'vorgeschichte-karte-jahr600');
+  await page.locator('#lg-y').fill('7000');
+  await expect(page.locator('#lg-yv')).toHaveText('Jahr 7000');
+  await shot(page, 'vorgeschichte-karte-jahr7000');
   // Listen und verlinkte Detailseiten
   await page.locator('.lg-nav a[data-v=sites]').click();
   await page.locator('#lg-f').fill('Schlachtfeld');
@@ -34,6 +37,35 @@ test('Legenden-Modus: Übersicht, Karte im Zeitverlauf, Detailseiten', async ({ 
   await shot(page, 'vorgeschichte-reich');
   await page.locator('.lg-nav a[data-v=timeline]').click();
   await expect(page.locator('.gantt .bar').first()).toBeVisible();
+  // Wahrheit zeigt mehr als die Überlieferung
+  await page.locator('.lg-nav a[data-v=events]').click();
+  const lore = Number((await page.locator('#lg-n').textContent())!.split(' ')[0]);
+  await page.locator('#lg-truth').check();
+  await expect.poll(async () => Number((await page.locator('#lg-n').textContent())!.split(' ')[0])).toBeGreaterThan(lore);
+  await page.locator('#lg-truth').uncheck();
+  expect(errors).toEqual([]);
+});
+
+test('Werkstatt: Voreinstellung wählen, System abschalten, neu erzeugen (Konfiguration in der URL)', async ({ page }) => {
+  test.setTimeout(90_000);
+  const errors = watchErrors(page);
+  await page.goto(`/?legends=1&seed=${SEED}#workshop`);
+  await expect(page.locator('#ws-go')).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator('main')).toContainText('Weltereignisse');
+  await shot(page, 'vorgeschichte-werkstatt');
+  await page.locator('#ws-preset').selectOption('short');
+  await expect(page.locator('[data-p="epochs.0.years"]')).toHaveValue('600');
+  await page.locator('[data-p="systems.wars.on"]').uncheck();
+  await expect(page.locator('#ws-sum')).toContainText('Abweichungen');
+  await page.locator('#ws-go').click();
+  await expect(page).toHaveURL(/hc=/);
+  await expect.poll(() => page.evaluate(() => !!(window as unknown as { __legends?: { ready: boolean } }).__legends?.ready), { timeout: 60_000 }).toBe(true);
+  const r = await page.evaluate(() => {
+    const h = (window as unknown as { __legends: { history: { years: number; events: { k: string }[] } } }).__legends.history;
+    return { years: h.years, battles: h.events.filter((e) => e.k === 'battle').length };
+  });
+  expect(r).toEqual({ years: 1200, battles: 0 });
+  await expect(page.locator('#lg-play')).toHaveAttribute('href', /vorgeschichte=1&hc=/);
   expect(errors).toEqual([]);
 });
 
@@ -48,6 +80,14 @@ test('Spiel mit Vorgeschichte: Orte aus der Geschichte, Fundort lesen, Spielleit
   expect(h.settlements).toBeGreaterThan(40);
   expect(h.ruins).toBeGreaterThan(5);
   expect(h.historic.length).toBeGreaterThan(10);
+  // Große Stadt: viele Gebäude, Mauerring
+  const town = h.bigTown;
+  expect(town.buildings).toBeGreaterThan(300);
+  expect(town.walls).toBeGreaterThan(50);
+  await G(page, 'g.gmSet(true)');
+  await G(page, `g.gmTeleport(${town.tx}, ${town.ty + 6})`);
+  await waitReady(page);
+  await shot(page, 'vorgeschichte-grossstadt');
 
   // Grabmal: Inschrift lesen (E)
   await G(page, 'g.gmSet(true)');
