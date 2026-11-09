@@ -28,6 +28,20 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
+      # Prototyp Vorgeschichte (Branch, nicht auf main) zusätzlich unter /vorgeschichte/; ein Fehler dort hält das Spiel nicht auf
+      - id: proto
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: prototyp/vorgeschichte
+          path: proto
+      - id: proto-build
+        if: steps.proto.outcome == 'success'
+        continue-on-error: true
+        working-directory: proto
+        run: npm ci && npm test && npm run build
+      - if: steps.proto-build.outcome == 'success'
+        run: cp -r proto/dist dist/vorgeschichte
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

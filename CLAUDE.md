@@ -80,6 +80,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-11-01 – **Zusätzlicher Meilenstein 28 „Kampf in 8 Richtungen“** (Nutzerwunsch): Zielen und Schlagen diagonal.
 - 2026-11-01 – **Zusätzlicher Meilenstein 29 „Spielleiter-Modus“** (Nutzerwunsch): fliegen, Teleport über die Karte.
 - 2026-11-01 – **Zusätzliche Meilensteine 30 „Oberweite-Regler“ und 31 „Blocken & Ausweichen“** (Nutzerwünsche); dazu Prototyp „schräge Perspektive“ auf eigenem Branch `prototyp/perspektive` (nicht auf main).
+- 2026-11-09 – Prototyp **Vorgeschichte** (Branch `prototyp/vorgeschichte`, nicht auf main) wird auf GitHub Pages unter `/game01/vorgeschichte/` mitveröffentlicht (Nutzerwunsch); der Pages-Workflow auf main baut ihn zusätzlich, ein Fehler im Prototyp blockiert das Spiel nicht.
 
 ## Mehrere Agenten
 
