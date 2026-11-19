@@ -166,6 +166,7 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-11-01 – (M29) Spielleiter-Modus nur mit `?gm=1` (F2 / Menü): fliegen ohne Kollision, unverwundbar, Karte ohne Nebel mit Klick-Teleport; hinterlässt keine Spuren (kein Fog, keine Entdeckungen, Position nicht gespeichert).
 - 2026-11-01 – (M30) Oberweite als Regler (4 Stufen) nur für Mensch + weiblich, prozedurale Verformung von Körper und Oberteilen; nach der Erschaffung fest wie Volk/Körper.
 - 2026-11-01 – (M31) Blocken (L halten, Parieren kurz vor dem Treffer) und Ausweichen (Leertaste) vorerst nur in der Arena; ins Spiel nach Freigabe des Nutzers.
+- 2026-11-20 – **Öffentlicher Sync-Server auf Cloudflare** (Nutzerwunsch, Token vom Nutzer): Worker + Durable Object je Welt unter `https://game01-sync.alexanderdelp.workers.dev` (`server/cloudflare/`). Veröffentlichte Spiele gleichen standardmäßig damit ab (`?sync=off` schaltet ab; nicht im Testmodus und nicht auf localhost). Live per WebSocket statt SSE + POST, Präsenz nur bei Änderung und Abgleich nur neuer Ereignisse – sonst wäre der kostenlose Tarif (100 000 Anfragen/Tag) nach ~3 h Spielzeit erschöpft. Referenz-Server kann jetzt auch WebSocket.
 - 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
 
 ### Offene Aufgaben (mit dem Nutzer zu klären)
@@ -173,5 +174,5 @@ Format: Datum – Entscheidung (Begründung).
 - **Ideen für später** (vom Nutzer als Idee vorgemerkt): Spielweise je Volk, Reaktionen der Fraktionen auf Völker, Rüstungsgrenzen je Volk, Umfärben beim Schneider.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
-- Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.
+- ~~Öffentlicher Server für geteilte Welt und Live-Multiplayer~~ → seit 2026-11-20 auf Cloudflare (s. o.). Zugangsdaten: `~/.config/game01/cloudflare.env`.
 
