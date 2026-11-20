@@ -39,8 +39,11 @@ export async function decodeShare(code: string): Promise<SharePayload | null> {
 
 export async function shareLink(p: SharePayload): Promise<string> {
   const url = new URL(location.href);
+  // Eingeschaltete Systeme (M32) gelten auch für den Freund – gleiche Welt, gleiche Regeln
+  const systeme = url.searchParams.get('systeme');
   url.search = '';
   url.searchParams.set('seed', p.seed);
+  if (systeme) url.searchParams.set('systeme', systeme);
   url.hash = `w=${await encodeShare(p)}`;
   return url.toString();
 }

@@ -1,6 +1,4 @@
 import Phaser from 'phaser';
-import { load } from './game/save';
-import type { Hero } from './rpg/progression';
 import { CreateScene } from './scenes/CreateScene';
 import { GAME_TITLE, TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
@@ -11,6 +9,7 @@ import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
 import { mountBuildInfo } from './env';
 import { enabledFeatures } from './game/features';
+import { ensureHero } from './game/defaultHero';
 
 const params = new URLSearchParams(location.search);
 debugState.features = enabledFeatures();
@@ -36,7 +35,7 @@ const game = new Phaser.Game({
 // Bewegungslabor (M33): Ausschnitt der echten Welt ohne Weltsysteme
 const labor = params.get('labor') === '1';
 const arena = params.get('arena') === '1' || labor;
-const hasHero = !!seed && !!load<Hero>(`hero:${seed}`)?.appearance;
+const hasHero = !!seed && !arena && ensureHero(seed);
 game.scene.add('world', WorldScene, !arena && !!seed && hasHero, { seed });
 game.scene.add('ui', UIScene, false);
 game.scene.add('create', CreateScene, !arena && !!seed && !hasHero, { seed });

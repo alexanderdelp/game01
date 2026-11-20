@@ -10,14 +10,18 @@ export interface LabPlace {
   ty: number;
   /** Gipfel mit Altar und Schmugglerhöhle in der Nähe */
   summit?: { tx: number; ty: number };
+  /** Wegweiser zum Gipfel (Kacheln auf einem begehbaren Weg vom Fuß aus) */
+  trail?: [number, number][];
 }
 
 const BERG = { tx: 4713, ty: 1051 };
+/** Per Breitensuche vom Fuß zum Gipfel (ohne Stufenwechsel, mit Abstand zu Hindernissen), alle 16 Kacheln. */
+const BERG_TRAIL: [number, number][] = [[4817, 1017], [4801, 1017], [4785, 1017], [4769, 1017], [4753, 1017], [4737, 1018], [4721, 1034]];
 
 export const PLACES: LabPlace[] = [
-  { id: 'berg', name: 'Der Berg – Fuß', seed: 'gipfel', tx: 4825, ty: 1017, summit: BERG },
-  { id: 'berg-mitte', name: 'Der Berg – halbe Höhe', seed: 'gipfel', tx: 4770, ty: 1030, summit: BERG },
-  { id: 'berg-gipfel', name: 'Der Berg – Gipfel', seed: 'gipfel', tx: 4713, ty: 1054, summit: BERG },
+  { id: 'berg', name: 'Der Berg – Fuß', seed: 'gipfel', tx: 4825, ty: 1017, summit: BERG, trail: BERG_TRAIL },
+  { id: 'berg-mitte', name: 'Der Berg – halbe Höhe', seed: 'gipfel', tx: 4770, ty: 1030, summit: BERG, trail: BERG_TRAIL },
+  { id: 'berg-gipfel', name: 'Der Berg – Gipfel', seed: 'gipfel', tx: 4713, ty: 1054, summit: BERG, trail: BERG_TRAIL },
   { id: 'klippen', name: 'Klippen (Gebirge)', seed: 'test', tx: 4092, ty: 4014 },
   { id: 'start', name: 'Startgebiet (Wald, Hügel)', seed: 'test', tx: 4048, ty: 4090 },
 ];

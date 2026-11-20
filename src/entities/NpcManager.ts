@@ -1,3 +1,4 @@
+import { on } from '../game/features';
 import Phaser from 'phaser';
 import { buildCharacter } from '../character/CharacterFactory';
 import type { Appearance } from '../character/lpc';
@@ -133,7 +134,7 @@ export class NpcManager {
   private spawnChunk(cx: number, cy: number): void {
     const ids: string[] = [];
     for (const s of npcsForChunk(this.world, cx, cy)) {
-      if (this.npcs.has(s.id)) continue;
+      if (this.npcs.has(s.id) || (s.role === 'barber' && !on('barber'))) continue;
       let r = 0;
       for (let i = 0; i < s.id.length; i++) r = (r * 31 + s.id.charCodeAt(i)) | 0;
       const npc = new Npc(this.scene, s, this.prefix(s.archetype), mulberry32(hash2(this.world.seed, r, 0, 99)));

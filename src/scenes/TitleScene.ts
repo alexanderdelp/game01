@@ -1,3 +1,4 @@
+import { ensureHero } from '../game/defaultHero';
 import Phaser from 'phaser';
 import { audio } from '../audio/audio';
 import { debugState } from '../debug';
@@ -71,7 +72,7 @@ export class TitleScene extends Phaser.Scene {
     const url = new URL(location.href);
     url.searchParams.set('seed', seed);
     history.replaceState(null, '', url.toString());
-    const hasHero = !!load<Hero>(`hero:${seed}`)?.appearance;
+    const hasHero = ensureHero(seed);
     this.scene.start(hasHero ? 'world' : 'create', { seed });
   }
 }

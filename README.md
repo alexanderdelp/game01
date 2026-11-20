@@ -9,7 +9,8 @@ Umgebungen (Cloudflare Workers): `release` → https://welten.bytekaska.de · `m
 jeder andere Branch → `https://<branch>.welten.bytekaska.de` („/“ wird „-“), z. B. der
 **Prototyp Vorgeschichte**: https://prototyp-vorgeschichte.welten.bytekaska.de/?legends=1&seed=nebel-kristall-427
 
-Kernmodus: Aufträge, Treueschwur, Karawanen, Invasionen, Neuigkeiten und Ansehen sind vorerst abgeschaltet
+Kernmodus: Aufträge, Treueschwur, Karawanen, Invasionen, Neuigkeiten, Ansehen, Charakter-Erschaffung, Schilder,
+Obelisken (mit Chronik), Chat und Barbier sind vorerst abgeschaltet; man startet am Rand eines Orts
 (`docs/PLAN-kern.md`); `?systeme=alle` schaltet sie ein.
 
 Labore: `?arena=1` Kampf-Arena · `?labor=1` Bewegungslabor im echten Gelände mit der Testszene „Der Berg“

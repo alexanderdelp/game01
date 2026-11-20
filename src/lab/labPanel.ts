@@ -29,6 +29,11 @@ export function buildLabPanel(scene: LabScene): HTMLElement {
   const root = document.createElement('div');
   root.id = 'labor-panel';
   root.addEventListener('keydown', (e) => e.stopPropagation());
+  // Auch ein Klick ohne Verschieben soll den Regler nicht festhalten
+  root.addEventListener('pointerup', (e) => {
+    const t = e.target;
+    if (t instanceof HTMLInputElement && t.type === 'range') setTimeout(() => t.blur(), 0);
+  });
   const add = <T extends HTMLElement>(el: T, parent: HTMLElement = root) => (parent.appendChild(el), el);
   const h = (text: string) => add(Object.assign(document.createElement('h3'), { textContent: text }));
   const button = (text: string, fn: () => void, alt = false, parent: HTMLElement = root) => {
@@ -50,6 +55,8 @@ export function buildLabPanel(scene: LabScene): HTMLElement {
       val.textContent = input.value;
       scene.saveTuning();
     });
+    // Fokus nach dem Einstellen zurück ans Spiel, sonst schluckt der Regler die Lauftasten (Feedback M33)
+    input.addEventListener('change', () => input.blur());
     l.append(t.label, val, input);
     add(l, parent);
     sliders.push({ input, val, t });
@@ -63,7 +70,10 @@ export function buildLabPanel(scene: LabScene): HTMLElement {
   sel.setAttribute('aria-label', 'Ort');
   for (const p of PLACES) sel.appendChild(Object.assign(document.createElement('option'), { value: p.id, textContent: p.name, selected: p.id === scene.place.id }));
   if (scene.place.id === 'eigen') sel.appendChild(Object.assign(document.createElement('option'), { value: 'eigen', textContent: scene.place.name, selected: true }));
-  sel.addEventListener('change', () => scene.setPlace(sel.value));
+  sel.addEventListener('change', () => {
+    sel.blur();
+    scene.setPlace(sel.value);
+  });
   const own = add(Object.assign(document.createElement('input'), { type: 'text', placeholder: 'eigener Ort: seed,x,y', id: 'labor-own' }));
   own.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && /^[^,]+,\d+,\d+$/.test(own.value.trim())) scene.setPlace(own.value.trim());
@@ -85,6 +95,7 @@ export function buildLabPanel(scene: LabScene): HTMLElement {
     scene.level = Number(lvlIn.value);
     lvlVal.textContent = lvlIn.value;
   });
+  lvlIn.addEventListener('change', () => lvlIn.blur());
   lvl.append('Stufe neuer Gegner', lvlVal, lvlIn);
   add(lvl);
 

@@ -49,3 +49,12 @@ Aufruf: `?labor=1` (optional `&ort=<id>`). Nur PC/Tastatur (Touch: Streitpunkt 2
 - Die Anzeige zeigt Höhe, Steigung in Laufrichtung, gemessenes Tempo sowie Richtung und Entfernung zum Gipfel.
 - **Bekannt:** keine Sicht- und Fog-Regeln im Labor; Gegner kennen keine Höhe; Spielerdaten (Aussehen) kommen vom
   zuletzt gespielten Helden.
+
+### Feedback 2026-11-21 (Alex) und Umsetzung
+
+- Schnee wackelte mit der Kamera → Flocken entstehen jetzt in Weltkoordinaten über dem Ausschnitt.
+- Nach dem Einstellen eines Reglers ließ sich die Figur nicht mehr steuern (Fokus blieb im Regler) → Regler und
+  Auswahl geben den Fokus zurück (auch in der Kampf-Arena).
+- Weg zum Gipfel nicht erkennbar → Wegweiser alle 16 Kacheln entlang eines begehbaren Wegs (`trail` in `places.ts`).
+- Höhen in der Draufsicht nicht lesbar, Nebel ohne erkennbaren Höhenbezug, Bewertung ohne Perspektive nicht
+  möglich → Laborphase 2 (Perspektive) ist der nächste Schritt; Höhendarstellung wird dort mitgeprüft.

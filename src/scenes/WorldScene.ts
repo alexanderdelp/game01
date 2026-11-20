@@ -1,3 +1,4 @@
+import { townStart } from '../world/start';
 import Phaser from 'phaser';
 import { buildCharacter, preloadCharacter, preloadWardrobe } from '../character/CharacterFactory';
 import { DEFAULT_APPEARANCE, type Appearance } from '../character/lpc';
@@ -100,6 +101,7 @@ export class WorldScene extends Phaser.Scene {
     createDecorAtlas(this);
     createCreatureAtlas(this);
     this.chunks = new ChunkManager(this, this.world.seedName);
+    if (!on('obelisks')) this.chunks.hidden.add('obelisk');
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.chunks.destroy());
 
     this.state = new WorldState(this.world.seedName, new LocalWorldStore(), Date.now(), playerId());
@@ -116,8 +118,10 @@ export class WorldScene extends Phaser.Scene {
     // Gespeicherte Position nur, wenn sie aus derselben Weltversion stammt und begehbar ist
     let saved = load<SavedPlayer>(this.saveKey);
     if (saved && (saved.v !== WORLD_VERSION || !this.world.isWalkable(Math.floor(saved.x / TILE_PX), Math.floor((saved.y - 1) / TILE_PX)))) saved = null;
-    const startX = saved?.x ?? spawn.tx * TILE_PX + TILE_PX / 2;
-    const startY = saved?.y ?? spawn.ty * TILE_PX + TILE_PX - 1;
+    // Kernmodus: Start am Rand des nächsten Orts statt in der Wildnis (Gegnerstufen rechnen weiter ab `spawn`)
+    const home = (!on('wildstart') && townStart(this.world, spawn)) || spawn;
+    const startX = saved?.x ?? home.tx * TILE_PX + TILE_PX / 2;
+    const startY = saved?.y ?? home.ty * TILE_PX + TILE_PX - 1;
     const savedHero = load<{ appearance?: Appearance; equipped?: Partial<Record<Slot, Item>> }>(`hero:${this.world.seedName}`);
     this.player = new Actor(this, startX, startY, buildCharacter(this, dress({ ...DEFAULT_APPEARANCE, ...savedHero?.appearance }, savedHero?.equipped ?? {})));
 
@@ -127,7 +131,7 @@ export class WorldScene extends Phaser.Scene {
       const t = this.player.tile;
       this.state.record({ t: Date.now(), by: this.heroName, type: 'death', tx: t.tx, ty: t.ty });
       this.signs.refresh();
-      this.player.setPosition(spawn.tx * TILE_PX + TILE_PX / 2, spawn.ty * TILE_PX + TILE_PX - 1);
+      this.player.setPosition(home.tx * TILE_PX + TILE_PX / 2, home.ty * TILE_PX + TILE_PX - 1);
     };
     this.combat = new PlayerCombat(this, this.player, this.enemies, this.chunks, respawn);
     this.hero = new HeroController(this, this.world.seedName, this.player, this.combat);
@@ -204,7 +208,7 @@ export class WorldScene extends Phaser.Scene {
     kb.on('keydown-J', () => this.attack());
     kb.on('keydown-K', () => this.cast());
     kb.on('keydown-Q', () => this.hero.drink());
-    kb.on('keydown-T', () => this.placeSign());
+    kb.on('keydown-T', () => on('signs') && this.placeSign());
     // Gamepad: Tasten lösen Aktionen aus, Stick/Steuerkreuz bewegt (siehe update)
     this.input.gamepad?.on('down', (_pad: Phaser.Input.Gamepad.Gamepad, button: Phaser.Input.Gamepad.Button) => {
       const ui = this.scene.get('ui') as unknown as { toggleMenu(): void; toggleMapPublic(): void };
@@ -219,7 +223,7 @@ export class WorldScene extends Phaser.Scene {
         case 'zoomOut': return this.zoom(-1);
       }
     });
-    kb.on('keydown-ENTER', () => this.chat());
+    kb.on('keydown-ENTER', () => on('chat') && this.chat());
     kb.on('keydown-F2', (e: KeyboardEvent) => {
       e.preventDefault();
       this.setGm(!this.gm);

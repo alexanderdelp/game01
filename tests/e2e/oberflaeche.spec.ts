@@ -28,9 +28,9 @@ test('Titel, neue Welt im Kernmodus, Hinweise, Minimap, zurück zum Titel, Weite
   // Zurück zum Titel: Welt steht unter "Weiterspielen"
   await page.keyboard.press('h');
   await expect.poll(() => G<boolean>(page, 'g.menuOpen')).toBe(true);
-  // Kernmodus: Menü ohne Quests und Neuigkeiten → Titelbildschirm ist Eintrag 9 statt 11
-  expect(await G<boolean>(page, "g.clickPanel('menu-11')")).toBe(false);
-  expect(await G<boolean>(page, "g.clickPanel('menu-9')")).toBe(true);
+  // Kernmodus: Menü ohne Quests, Chronik, Neuigkeiten, Schild und Chat → Titelbildschirm ist Eintrag 6 statt 11
+  expect(await G<boolean>(page, "g.clickPanel('menu-7')")).toBe(false);
+  expect(await G<boolean>(page, "g.clickPanel('menu-6')")).toBe(true);
   await expect.poll(() => G<string>(page, 'g.scene')).toBe('title');
   await shot(page, 'm13-title2');
   await G(page, "g.titleStart('titel-test')");

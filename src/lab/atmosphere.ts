@@ -27,9 +27,11 @@ export class Atmosphere {
       this.fog.push(f);
     }
     this.snow = scene.add.particles(0, 0, 'mood-flake', {
-      x: { onEmit: () => this.view().x + Math.random() * this.view().w },
-      y: { onEmit: () => this.view().y - 8 },
-      lifespan: 7000,
+      // In Weltkoordinaten über dem sichtbaren Ausschnitt (mit Rand gegen den Wind): Flocken bleiben in der Welt,
+      // statt mit der Kamera mitzuwackeln (Feedback M33)
+      x: { onEmit: () => this.world().x - 40 + Math.random() * (this.world().w + 80) },
+      y: { onEmit: () => this.world().y - 8 + Math.random() * this.world().h * (this.fresh ? 1 : 0.15) },
+      lifespan: 9000,
       speedY: { min: 28, max: 55 },
       speedX: { min: -22, max: 6 },
       alpha: { start: 0.95, end: 0.6 },
@@ -37,8 +39,17 @@ export class Atmosphere {
       frequency: -1,
       quantity: 1,
     });
-    this.snow.setScrollFactor(0).setDepth(1_399_000);
+    this.snow.setDepth(1_399_000);
   }
+
+  /** Sichtbarer Ausschnitt in Weltkoordinaten. */
+  private world(): { x: number; y: number; w: number; h: number } {
+    const v = this.scene.cameras.main.worldView;
+    return { x: v.x, y: v.y, w: v.width, h: v.height };
+  }
+
+  /** Beim Einsetzen des Schneefalls Flocken über das ganze Bild verteilen, danach nur oben. */
+  private fresh = true;
 
   /** Sichtbare Fläche in Koordinaten von Objekten mit Scroll-Faktor 0 (die Kamera zoomt um ihre Mitte). */
   private view(): { x: number; y: number; w: number; h: number } {
@@ -69,7 +80,11 @@ export class Atmosphere {
     this.snowRate = snow * cold;
     if (this.snowRate > 0.02) {
       this.snow.frequency = 1000 / (this.snowRate * 90);
-      if (!this.snow.emitting) this.snow.start();
+      if (!this.snow.emitting) {
+        this.fresh = true;
+        this.snow.start();
+        this.scene.time.delayedCall(1500, () => (this.fresh = false));
+      }
     } else if (this.snow.emitting) this.snow.stop();
   }
 

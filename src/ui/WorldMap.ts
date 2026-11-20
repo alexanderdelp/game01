@@ -1,3 +1,4 @@
+import { on } from '../game/features';
 import Phaser from 'phaser';
 import { debugState } from '../debug';
 import { TILE_PX } from '../render/chunkPixels';
@@ -453,7 +454,7 @@ export class WorldMap {
       layer.add(this.ui.add.triangle(p.x, p.y, 0, 8, 4, 0, 8, 8, looted ? 0x8a8aa0 : 0x3fc4d4).setStrokeStyle(1, 0x0b0b14));
     }
     const found = new Set(ws.hero.hero.chronicle ?? []);
-    for (const ob of meta.obelisks) {
+    for (const ob of on('obelisks') ? meta.obelisks : []) {
       const p = this.mapToScreen(ob.tx, ob.ty);
       if ((gm || found.has(ob.fragment ?? -1)) && inView(p.x, p.y)) layer.add(this.ui.add.star(p.x, p.y, 4, 2, 5, 0x9b6af0).setStrokeStyle(1, 0xffffff));
     }

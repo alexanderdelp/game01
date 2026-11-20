@@ -42,3 +42,13 @@ zuerst müssen Bewegen und Kämpfen Spaß machen. Alles andere wird vorübergehe
 - Tests: Unit `m32.test.ts` (R1); E2E `weltenbau` › M32 und `oberflaeche` › Titel im Kernmodus (R2); alle übrigen
   E2E-Tests laufen mit `?systeme=alle` (`open(page, seed, systeme)`) und sind grün (R3).
 - Systemkarte in `docs/PLAN-kern.md` gegen den Code geprüft (R4).
+
+## Feedback 2026-11-21 (Alex) und Umsetzung
+
+- **Start in der Pampa, Pfeil hinter dem Gebirge:** Im Kernmodus beginnt man am Rand des Orts, der dem Weltstart am
+  nächsten liegt, möglichst auf einem Trampelpfad (`src/world/start.ts`). Pfade verbinden jeden Ort mit seinen zwei
+  nächsten Nachbarn. Gegnerstufen rechnen weiter ab dem alten Startpunkt. Der alte Start ist das System `wildstart`.
+- **Weitere Systeme aus:** `creation` (ohne Erschaffung startet ein Standard-Held „Wanderer“), `signs` (Schild setzen),
+  `obelisks` (unsichtbar, nicht ansprechbar, nicht auf der Karte, Chronik aus dem Menü), `chat`, `barber`.
+- **Offen:** „Die Welt ist noch viel zu groß.“ Das gehört zur Weltgröße und zu „Der Berg im Spiel“ (M35), dort mit
+  einem begrenzten Gebiet.

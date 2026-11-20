@@ -111,6 +111,7 @@ export class LabScene extends Phaser.Scene {
       fireBolt: (x, y, vx, vy, d) => this.enemies.fireBolt(x, y, vx, vy, d),
     };
     if (p.summit) this.buildSummit(p.summit);
+    if (p.trail && p.summit) this.buildTrail(p.trail, p.summit);
     this.mood = new Atmosphere(this);
 
     const cam = this.cameras.main;
@@ -212,6 +213,24 @@ export class LabScene extends Phaser.Scene {
       blockers.push({ x: chx - 10, y: chy - 8, w: 20, h: 8 });
     }
     this.chunks.extraBlockers.set('labor', blockers);
+  }
+
+  /** Wegweiser zum Gipfel: Pfosten mit Brett, Pfeil zeigt zum nächsten Wegpunkt. */
+  private buildTrail(trail: [number, number][], summit: { tx: number; ty: number }): void {
+    const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+    trail.forEach(([tx, ty], i) => {
+      const [nx, ny] = trail[i + 1] ?? [summit.tx, summit.ty];
+      const arrow = arrows[(Math.round(Math.atan2(ny - ty, nx - tx) / (Math.PI / 4)) + 8) % 8];
+      // Neben dem Weg (zwei Kacheln nördlich), ohne Kollision
+      const x = tx * TILE_PX + TILE_PX / 2;
+      const y = (ty - 1) * TILE_PX;
+      const g = this.add.graphics().setDepth(y);
+      g.fillStyle(0x000000, 0.25).fillEllipse(x, y, 14, 5);
+      g.fillStyle(0x5a3a22, 1).fillRect(x - 2, y - 26, 4, 26);
+      g.fillStyle(0x8a5e34, 1).fillRect(x - 26, y - 35, 52, 15);
+      g.fillStyle(0x5a3a22, 1).fillRect(x - 26, y - 22, 52, 2);
+      this.add.text(x, y - 27, `${arrow} Gipfel`, { fontFamily: 'monospace', fontSize: '8px', color: '#fff4dc' }).setOrigin(0.5).setResolution(2).setDepth(y + 1);
+    });
   }
 
   /** Truhe der Schmuggler öffnen, wenn der Held davorsteht. */
