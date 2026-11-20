@@ -41,7 +41,7 @@ const EDGE_REACH = 2;
 /**
  * Rendert den Boden eines Chunks als RGBA-Pixel. Biomgrenzen werden auf einem 4-px-Raster mit
  * Rauschen verwirbelt, damit keine harten Kachelkanten entstehen. Keine Abhängigkeit von Phaser,
- * damit testbar und später in einen Worker verschiebbar.
+ * damit testbar; läuft im Web Worker (`chunkWorker.ts`).
  */
 export class ChunkPainter {
   private readonly patterns: Uint32Array[];

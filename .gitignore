@@ -10,3 +10,6 @@ data/
 _bmad/
 .claude/skills/bmad-*/
 .claude/skills/gds-*/
+
+# BMAD-Ergebnisse (lokal)
+_bmad-output/

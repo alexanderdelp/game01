@@ -43,8 +43,9 @@ Auch online: `https://welten.bytekaska.de/?arena=1`.
 - **`CombatTerrain`** (`Enemy.ts`): alles, was der Kampf vom Gelände braucht (`biomeAt`, `blocked`,
   `terrainBlocked`, `speedAt`, `isWalkable`). Welt: Chunks + Weltgenerator; Arena: flache Fläche mit Säulen.
 - **`CombatCtx`**: Gelände, Spielerfigur, Schaden an den Spieler (`hurtPlayer(…, source?)`, Angreifer für die Parade), Geschosse, Mitspieler.
-- **Ereignisse** der Szene: `player-attack`, `enemy-hit`, `damage`, `defeated`, `player-died`, `sfx` – die Welt
-  hängt daran EP, Beute, Quests, Klänge und Weltzustand. Namen und Daten nicht ohne Absprache ändern.
+- **Ereignisse** der Szene: `player-attack`, `enemy-hit`, `damage`, `defeated`, `player-died`, `player-respawned`,
+  `sfx` – die Welt hängt daran EP, Beute, Quests, Klänge und Weltzustand; `guard` (Block/Parade/Ausweichen) wertet nur
+  die Arena aus. Namen und Daten nicht ohne Absprache ändern.
 - `EnemyManager.add(spawn)` setzt Gegner direkt ein; mit `source` erscheinen sie seed-basiert mit den Chunks.
 
 ## Tests
