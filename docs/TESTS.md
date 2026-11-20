@@ -29,7 +29,14 @@
    E2E-Ablauf des Moduls (`tests/e2e/<modul>.spec.ts`), möglichst in einen bestehenden Test einfügen statt die Welt
    neu zu laden.
 
+## Umfang
+
+Stand 2026-11-20: **161 Unit-Tests** in 31 Dateien (je Meilenstein `mXX.test.ts`, dazu `world`, `env`, `sync-client`,
+`sync-url`) und **33 E2E-Tests** in 8 Specs.
+
 ## Laufzeit (lokal, 8 Kerne, Rechner durch andere Sessions belastet)
+
+Messung vom Test-Aufräumen (2026-11-01):
 
 | | E2E-Tests | Laufzeit | Unit |
 |---|---|---|---|
@@ -52,12 +59,12 @@
 
 | Datei | Abläufe |
 |---|---|
-| `welt.spec.ts` | Laden, Laufen, Zoom, Karte · Wasser-Grenze, Position + Fog nach Neuladen · Klippe + Sichtschatten |
+| `welt.spec.ts` | Laden, Laufen, Zoom, Karte · Wasser-Grenze, Position + Fog nach Neuladen · Klippe + Sichtschatten · Spielleiter-Modus (M29) |
 | `weltenbau.spec.ts` | NPCs · Hauptstadt/Treueschwur/Händler/Rivale · Truhe/Obelisk/Chronik · Wohlstand/Rabatt/Schnellreise · Karawane · Neuigkeiten |
 | `inhalte.spec.ts` | Quest annehmen/abgeben/Neuladen · Questpfeil |
 | `figur.spec.ts` | Erschaffung · Heldenfenster/Kleidung/Trank/Barbier/Speichern · Beute |
-| `oberflaeche.spec.ts` | Titel/Hinweise/Minimap · Weltkarte zoomen · Handy (Stick, Menü, Ton, Minimap) |
-| `netz.spec.ts` | Link teilen · Abgleich über Server · Live-Spiel |
+| `oberflaeche.spec.ts` | Titel/Hinweise/Minimap · Weltkarte zoomen · Spielleiter-Karte (M29) · Handy (Stick, Menü, Ton, Minimap) |
+| `netz.spec.ts` | Link teilen · Abgleich über Server · Live-Spiel (Server per `syncServer()`, mit `SYNC_URL` ein externer) |
 | `kampf.spec.ts` | Hieb + Spielgefühl · Sterben · Splitterblitz · Ruine · Touch-Angriff |
 | `arena.spec.ts` | Kampf-Arena: Grundfunktionen, Aufbauten, Umweg, Waffen, Gegner setzen, Diagonal (M28), Block/Parade/Ausweichen (M31) |
 
@@ -95,3 +102,7 @@ Unit = `tests/unit/mXX.test.ts` (M1: `world.test.ts`). „Sicht“ = nur per Scr
 | M26 Kanten | R1, R3 | R2 Sicht · R4 = ganze Suite |
 | M27 Fester Ausschnitt | Zoom-Grenzen | `welt` 1 (Zoom 2 bei 1280 × 720) |
 | M28 Acht Richtungen | R1 | R1–R3 `arena` M28 · R4 `kampf` |
+| M29 Spielleiter | – | R1/R2/R4 `welt` M29 · R3 `oberflaeche` M29 |
+| M30 Oberweite | R1, R2 (Regler, Verformung, keine Lücken) | R1/R3 `figur` Erschaffung + Heldenfenster · R2 Screenshot-Bogen |
+| M31 Block/Ausweichen | R1, R2 | R1–R3 `arena` M31 · R4 `kampf` |
+| Cloudflare / Sync | `env` (Umgebung, Versionszeile), `sync-url` (Sync-Adresse), `sync-client` (Abruf ab Cursor) | `netz` · Server: `node server/cloudflare/smoke.mjs <URL>` |

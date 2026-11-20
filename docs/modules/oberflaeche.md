@@ -19,8 +19,11 @@ Musik und Klänge (M13, M16, M22).
 ## Schnittstellen
 
 - Liest die Welt-Szene nur lesend (`ws.hero`, `ws.state`, `ws.fog`, `ws.npcs` …) und ruft Aktionen
-  (`interact`, `choose`, `travel`, `attack` …). Ereignisse von der Welt: `talk`, `banner`, `float`, `damage`,
-  `quests-changed`, `hero-changed`, `news-summary`, `player-died`.
+  (`interact`, `choose`, `travel`, `attack` …). Ereignisse von der Welt (`ws.events`): `talk`, `banner`, `float`,
+  `damage`, `quests-changed`, `hero-changed`, `level-up`, `news-summary`, `player-died`, `player-respawned`,
+  `gm-changed`, `chronicle-changed`, `sfx`, `player-attack` (die letzten beiden für Klänge). Die UI sendet selbst nur
+  `quests-changed` (nach Abbrechen einer Quest).
+- Ausnahme vom „nur lesend“: `HeroPanel` nutzt `iconFor` aus `entities/HeroController.ts`.
 - Test-Schnittstelle: `clickPanel(name)` – Elemente mit `setName(…)` benennen, damit Tests sie finden.
 
 ## Tests
