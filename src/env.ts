@@ -45,7 +45,7 @@ export const build = {
   },
 };
 
-/** Text unten am Rand: Version, außerhalb der Produktion zusätzlich Branch und Commit. */
+/** Text unten rechts (links liegt die Steuerungsleiste): Version, außerhalb der Produktion zusätzlich Branch und Commit. */
 export function versionText(b: { version: string; branch: string; commit: string; stage: Stage }): string {
   return b.stage === 'release' ? `v${b.version}` : `v${b.version} · ${b.branch} · ${b.commit}`;
 }
@@ -64,6 +64,6 @@ export function mountBuildInfo(doc: Document = document): void {
   ver.id = 'build-version';
   ver.textContent = versionText(build);
   ver.title = build.time;
-  ver.style.cssText = 'position:fixed;bottom:2px;left:4px;z-index:10;pointer-events:none;font:10px monospace;color:#8a8aa0;opacity:.6';
+  ver.style.cssText = 'position:fixed;bottom:2px;right:4px;z-index:10;pointer-events:none;font:10px monospace;color:#8a8aa0;opacity:.6';
   doc.body.appendChild(ver);
 }
