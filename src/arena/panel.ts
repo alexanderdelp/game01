@@ -33,6 +33,16 @@ export function buildPanel(scene: ArenaScene, changed: () => void): HTMLElement 
   root.id = 'arena-panel';
   // Tastendrücke in Eingabefeldern nicht ans Spiel weiterreichen
   root.addEventListener('keydown', (e) => e.stopPropagation());
+  // Regler und Auswahl geben den Fokus nach dem Einstellen zurück ans Spiel (sonst schlucken sie die Lauftasten)
+  // Auch ein Klick ohne Verschieben soll den Regler nicht festhalten
+  root.addEventListener('pointerup', (e) => {
+    const t = e.target;
+    if (t instanceof HTMLInputElement && t.type === 'range') setTimeout(() => t.blur(), 0);
+  });
+  root.addEventListener('change', (e) => {
+    const t = e.target;
+    if ((t instanceof HTMLInputElement && t.type === 'range') || t instanceof HTMLSelectElement) t.blur();
+  });
   const h = (text: string) => root.appendChild(Object.assign(document.createElement('h3'), { textContent: text }));
   const button = (text: string, fn: () => void, alt = false) => {
     const b = Object.assign(document.createElement('button'), { textContent: text });

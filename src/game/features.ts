@@ -3,7 +3,11 @@
  * Standard ist der Kernmodus: Systeme, die nicht zu Bewegen, Kämpfen und Erkunden gehören, sind aus.
  * `?systeme=alle` schaltet alles ein, `?systeme=quests,news` nur die genannten.
  */
-export const FEATURES = ['quests', 'pledge', 'caravans', 'invasions', 'news', 'renown'] as const;
+export const FEATURES = [
+  'quests', 'pledge', 'caravans', 'invasions', 'news', 'renown',
+  // Feedback zu M32: Charakter-Erschaffung, Schilder, Obelisken (mit Chronik), Chat, Barbier, alter Start in der Wildnis
+  'creation', 'signs', 'obelisks', 'chat', 'barber', 'wildstart',
+] as const;
 export type Feature = (typeof FEATURES)[number];
 
 /** Eingeschaltete Systeme aus dem URL-Parameter `systeme`. */

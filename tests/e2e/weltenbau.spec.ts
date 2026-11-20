@@ -67,6 +67,10 @@ test('M32: Kernmodus – Herrscher ohne Schwur, keine Aufträge, keine Karawanen
   expect(await G<string[]>(page, 'g.features')).toEqual([]);
   expect(await G<string[]>(page, 'g.caravans')).toEqual([]);
   const towns = await G<Town[]>(page, 'g.meta.settlements');
+  // Start am Ortsrand statt in der Wildnis, ohne Erschaffungsbildschirm (Feedback M32)
+  const pl = await G<{ x: number; y: number }>(page, '({ ...g.player })');
+  expect(Math.min(...towns.map((t) => Math.hypot(t.tx - pl.x / 32, t.ty - pl.y / 32)))).toBeLessThan(40);
+  expect(await G<string>(page, 'g.hero.name')).toBe('Wanderer');
   const cap = towns.find((t) => t.capital)!;
   await tp(page, cap.tx + 1, cap.ty + 1);
   await expect.poll(() => G<string>(page, 'g.town'), { timeout: 30_000 }).toBe(cap.name);
@@ -79,6 +83,8 @@ test('M32: Kernmodus – Herrscher ohne Schwur, keine Aufträge, keine Karawanen
   expect(v.choices).toBeUndefined();
   expect(await G<number>(page, 'g.quests.active.length')).toBe(0);
   expect(await G<string>(page, 'g.questPointer')).not.toBe('npc');
+  // Kein Barbier im Ort
+  expect(await G<number>(page, "g.npcs.filter((n) => n.role === 'barber').length")).toBe(0);
   expect(errors).toEqual([]);
 });
 

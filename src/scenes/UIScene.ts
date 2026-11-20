@@ -105,7 +105,7 @@ export class UIScene extends Phaser.Scene {
     });
     kb.on('keydown-C', () => this.togglePanel());
     kb.on('keydown-L', () => on('quests') && this.toggleQuestLog());
-    kb.on('keydown-B', () => this.toggleChronicle());
+    kb.on('keydown-B', () => on('obelisks') && this.toggleChronicle());
     kb.on('keydown-U', () => on('news') && this.toggleNews());
     kb.on('keydown-G', () => this.toggleShare());
     kb.on('keydown-H', () => this.toggleMenu());
@@ -274,12 +274,12 @@ export class UIScene extends Phaser.Scene {
     const entries: [string, () => void][] = [
       ['Held (C)', close(() => this.togglePanel())],
       ...(on('quests') ? [['Quests (L)', close(() => this.toggleQuestLog())] as [string, () => void]] : []),
-      ['Chronik (B)', close(() => this.toggleChronicle())],
+      ...(on('obelisks') ? [['Chronik (B)', close(() => this.toggleChronicle())] as [string, () => void]] : []),
       ...(on('news') ? [['Neuigkeiten (U)', close(() => this.toggleNews())] as [string, () => void]] : []),
       ['Karte (M)', close(() => this.worldMap.toggle())],
       ['Teilen (G)', close(() => this.toggleShare())],
-      ['Schild (T)', close(() => ws.placeSign())],
-      ['Chat (Enter)', close(() => ws.chat())],
+      ...(on('signs') ? [['Schild (T)', close(() => ws.placeSign())] as [string, () => void]] : []),
+      ...(on('chat') ? [['Chat (Enter)', close(() => ws.chat())] as [string, () => void]] : []),
       ['Zoom +', () => ws.zoom(1)],
       ['Zoom −', () => ws.zoom(-1)],
       [`Musik: ${audio.enabled ? 'an' : 'aus'}`, close(() => audio.toggle())],

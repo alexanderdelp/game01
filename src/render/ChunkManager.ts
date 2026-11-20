@@ -42,6 +42,8 @@ export class ChunkManager {
   /** Gebaute Objekte nach Kachel, um sie später umzuschalten. */
   readonly builtImages = new Map<string, Phaser.GameObjects.Image>();
   readonly onUnload: ((cx: number, cy: number) => void)[] = [];
+  /** Dekor-Arten, die nicht gezeigt werden und nicht blockieren (Kernmodus, z. B. Obelisken). */
+  readonly hidden = new Set<string>();
 
   constructor(private readonly scene: Phaser.Scene, seed: string) {
     const n = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
@@ -201,9 +203,10 @@ export class ChunkManager {
     this.scene.textures.addCanvas(texKey, canvas);
     const ground = this.scene.add.image(r.cx * CHUNK_PX, r.cy * CHUNK_PX, texKey).setOrigin(0, 0).setDepth(-1_000_000);
     // Flache Dekorationen und Schatten sind bereits ins Bodenbild gebacken
-    const objects = r.decorations.filter((d) => !FLAT_DECOR.has(d.kind)).map((d) => this.decoration(d));
+    const decos = this.hidden.size ? r.decorations.filter((d) => !this.hidden.has(d.kind)) : r.decorations;
+    const objects = decos.filter((d) => !FLAT_DECOR.has(d.kind)).map((d) => this.decoration(d));
     const blockers: Box[] = [];
-    for (const d of r.decorations) {
+    for (const d of decos) {
       const size = DECOR_BLOCK[d.kind];
       if (!size) continue;
       const p = BUILT.has(d.kind) ? { x: d.tx * TILE_PX + TILE_PX / 2, y: d.ty * TILE_PX + TILE_PX } : decorPos(d);

@@ -31,7 +31,7 @@
 
 ## Umfang
 
-Stand 2026-11-20: **168 Unit-Tests** in 33 Dateien (je Meilenstein `mXX.test.ts`, dazu `world`, `env`, `sync-client`,
+Stand 2026-11-20: **169 Unit-Tests** in 33 Dateien (je Meilenstein `mXX.test.ts`, dazu `world`, `env`, `sync-client`,
 `sync-url`) und **36 E2E-Tests** in 9 Specs. Seit M32 öffnen die Tests Welten mit `?systeme=alle`; den Kernmodus prüfen eigene Tests.
 
 ## Laufzeit (lokal, 8 Kerne, Rechner durch andere Sessions belastet)

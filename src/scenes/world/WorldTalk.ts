@@ -216,7 +216,7 @@ export class WorldTalk {
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
         const p = this.ws.world.meta.poiAt(tx + dx, ty + dy);
-        if (!p) continue;
+        if (!p || (p.kind === 'obelisk' && !on('obelisks'))) continue;
         const dist = Math.hypot(p.tx * TILE_PX + TILE_PX / 2 - this.ws.player.x, p.ty * TILE_PX + TILE_PX - this.ws.player.y);
         if (dist < 56 && (!best || dist < best.dist)) best = { poi: p, dist };
       }
