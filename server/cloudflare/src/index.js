@@ -1,7 +1,7 @@
 /**
  * Sync-Server für geteilte Welten auf Cloudflare (Worker + Durable Object je Welt).
  * Gleiche Schnittstelle wie der Referenz-Server `server/sync-server.mjs`:
- *   GET  /worlds/:seed/events          → { events }
+ *   GET  /worlds/:seed/events?since=N  → { events, cursor } – nur Ereignisse nach Cursor N (ohne since: alle)
  *   POST /worlds/:seed/events {events} → führt zusammen (Duplikate werden erkannt) → { count, added }
  *   GET  /worlds/:seed/live            → WebSocket (bevorzugt) oder Server-Sent Events
  *   POST /worlds/:seed/live {msg}      → an alle verbundenen Spieler der Welt weiterleiten
@@ -57,7 +57,7 @@ export class World extends DurableObject {
   async fetch(req) {
     const route = new URL(req.url).pathname.endsWith('/live') ? 'live' : 'events';
     if (route === 'events') {
-      if (req.method === 'GET') return this.getEvents();
+      if (req.method === 'GET') return this.getEvents(new URL(req.url).searchParams.get('since'));
       if (req.method === 'POST') return this.postEvents(req);
       return json({ error: 'method' }, 405);
     }
@@ -76,10 +76,19 @@ export class World extends DurableObject {
     return json({ error: 'method' }, 405);
   }
 
-  getEvents() {
-    const rows = this.ctx.storage.sql.exec('SELECT e FROM events ORDER BY t').toArray();
+  /** Cursor = rowid (Einfügereihenfolge, es wird nie gelöscht): Wer `since` mitschickt, liest nur neue Zeilen. */
+  getEvents(since) {
+    const sql = this.ctx.storage.sql;
+    const from = Math.max(0, Math.floor(Number(since)) || 0);
+    const rows = sql.exec('SELECT rowid AS c, e FROM events WHERE rowid > ? ORDER BY rowid', from).toArray();
+    const cursor = rows.length ? rows[rows.length - 1].c : this.lastRowid();
     // Rohes JSON zusammensetzen, statt jedes Ereignis zu parsen
-    return new Response(`{"events":[${rows.map((r) => r.e).join(',')}]}`, { headers: { 'content-type': 'application/json', ...CORS } });
+    return new Response(`{"cursor":${cursor},"events":[${rows.map((r) => r.e).join(',')}]}`, { headers: { 'content-type': 'application/json', ...CORS } });
+  }
+
+  /** Höchste rowid – liest nur eine Zeile (statt COUNT(*) über alle) und ist ohne Löschen zugleich die Anzahl. */
+  lastRowid() {
+    return this.ctx.storage.sql.exec('SELECT COALESCE(MAX(rowid), 0) AS n FROM events').one().n;
   }
 
   async postEvents(req) {
@@ -92,7 +101,7 @@ export class World extends DurableObject {
       return json({ error: 'bad json' }, 400);
     }
     const sql = this.ctx.storage.sql;
-    let count = sql.exec('SELECT COUNT(*) AS n FROM events').one().n;
+    let count = this.lastRowid();
     let added = 0;
     for (const e of Array.isArray(events) ? events : []) {
       if (count >= MAX_EVENTS) break;
