@@ -81,6 +81,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-11-01 – **Zusätzlicher Meilenstein 29 „Spielleiter-Modus“** (Nutzerwunsch): fliegen, Teleport über die Karte.
 - 2026-11-01 – **Zusätzliche Meilensteine 30 „Oberweite-Regler“ und 31 „Blocken & Ausweichen“** (Nutzerwünsche); dazu Prototyp „schräge Perspektive“ auf eigenem Branch `prototyp/perspektive` (nicht auf main).
 - 2026-11-09 – Prototyp **Vorgeschichte** (Branch `prototyp/vorgeschichte`, nicht auf main) wird auf GitHub Pages unter `/game01/vorgeschichte/` mitveröffentlicht (Nutzerwunsch). → 2026-11-20: als Cloudflare-Vorschau des Branches unter https://prototyp-vorgeschichte.welten.bytekaska.de.
+- 2026-11-20 – **Neuplanung „Kern geradeziehen“** (Nutzerwunsch, `docs/PLAN-kern.md`): zu viele unfertige Systeme, Zusammenspiel inkonsistent. Feature-Freeze; M32 Aufräumen (Kernmodus, Systemkarte), M33 Bewegungslabor (Perspektive, Sprung-Varianten, Testszene „Der Berg“), M34 Kampf im Gelände, M35 „Der Berg“ im Spiel, ab M36 Systeme einzeln zurückholen. Jedes System braucht Abnahme durch Alex.
 
 ## Auslieferung (Cloudflare Workers, wie konjugi)
 
@@ -131,7 +132,7 @@ Format: Datum – Entscheidung (Begründung).
 ### Organisatorisch
 - 2026-10-30 – Commits als `alexanderdelp` mit GitHub-noreply-Adresse, direkt auf `main` (mit Nutzer abgestimmt; ein Entwickler, keine Reviews nötig). → 2026-11-20: Feature-Branches + PR nach `main`, Release per PR `main` → `release` (s. „Auslieferung“).
 - 2026-10-30 – Spielsprache Deutsch, Texte so gehalten, dass Übersetzung nachrüstbar ist (mit Nutzer abgestimmt).
-- 2026-10-30 – Nach jedem Meilenstein Kurz-Update an den Nutzer (Link, 1–4 Screenshots, 3 Punkte) (Nutzerwunsch).
+- 2026-10-30 – Nach jedem Meilenstein Kurz-Update an den Nutzer (Link, 1–4 Screenshots, 3 Punkte) (Nutzerwunsch). → 2026-11-20: **Briefing** bei jedem Meilenstein und jeder Laborphase: Stand, Link, was prüfen, worauf achten, was entscheiden, Bilder (Format in `docs/PLAN-kern.md`).
 - 2026-10-30 – Arbeitstitel „Game01“; ein Name entsteht mit dem World Building (M8). → 2026-10-31: Name **„Splitterwelten“** (Repo bleibt `game01`).
 - 2026-10-30 – Code unter MIT-Lizenz; externe Assets behalten ihre Lizenz und stehen in `CREDITS.md`.
 - 2026-10-30 – Dokumentation: `docs/DESIGN.md` (Gesamtdesign) und `docs/milestones/Mxx-*.md` (Anforderungen + Ergebnis je Meilenstein).
