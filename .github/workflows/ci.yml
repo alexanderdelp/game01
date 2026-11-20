@@ -1,0 +1,39 @@
+name: CI
+
+# Tests für main, release und jeden PR. Ausgeliefert wird über Cloudflare Workers Builds (siehe wrangler.jsonc).
+on:
+  push:
+    branches: [main, release]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+
+  # `release` ist Produktion: PRs dorthin nur aus `main` (Integration), nie direkt aus Feature-Branches.
+  release-source:
+    if: github.event_name == 'pull_request' && github.base_ref == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR nach release kommt aus main
+        run: |
+          if [ "${{ github.head_ref }}" != "main" ]; then
+            echo "::error::PRs nach 'release' nur aus 'main' (gerade: ${{ github.head_ref }})."
+            exit 1
+          fi

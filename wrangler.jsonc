@@ -1,0 +1,23 @@
+// Cloudflare Workers (statische Assets): liefert den Vite-Build aus dist/ aus (wie konjugi).
+// "name" muss dem Worker-Namen in Cloudflare entsprechen.
+// Umgebungen (Workers Builds, Produktions-Branch = `release`):
+//   release → Produktion (wrangler deploy)          https://welten.bytekaska.de
+//   main    → Integration (wrangler preview)        https://main.welten.bytekaska.de
+//   feat/*  → Abnahme (wrangler preview pro Branch) https://<branch>.welten.bytekaska.de ("/" wird "-")
+// Zusätzlich: game01.alexanderdelp.workers.dev und <branch>-game01.alexanderdelp.workers.dev.
+// Domain wechseln: nur "pattern" unten ändern (Spielstände im Browser hängen an der Domain!).
+// Der Sync-Server ist ein eigener Worker (server/cloudflare, game01-sync) und von der Domain unabhängig.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "game01",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": true,
+  // Wrangler baut selbst vor jedem Deploy/Preview – unabhängig vom Build-Feld in Workers Builds
+  "build": { "command": "npm run build" },
+  // Pflicht für `npx wrangler preview` (Vorschau pro Branch); darf leer sein
+  "previews": {},
+  "assets": { "directory": "./dist" },
+  // Eigene Domain für Produktion und Vorschauen; Cloudflare legt DNS-Einträge und Zertifikate selbst an
+  "routes": [{ "pattern": "welten.bytekaska.de", "custom_domain": true, "previews_enabled": true }],
+}
