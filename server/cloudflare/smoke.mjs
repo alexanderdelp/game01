@@ -11,7 +11,12 @@ const e1 = { t: 1, by: 'Ada', pid: 'a', type: 'sign', tx: 1, ty: 2, text: 'Hallo
 let r = await (await fetch(ev, { method: 'POST', body: JSON.stringify({ events: [e1, e1, { bad: 1 }] }) })).json();
 ok(r.added === 1 && r.count === 1, `Ereignis gespeichert, Duplikat erkannt (${JSON.stringify(r)})`);
 r = await (await fetch(ev)).json();
-ok(r.events.length === 1 && r.events[0].text === 'Hallo', 'Ereignis zurückgelesen');
+ok(r.events.length === 1 && r.events[0].text === 'Hallo' && r.cursor === 1, 'Ereignis zurückgelesen');
+r = await (await fetch(`${ev}?since=1`)).json();
+ok(r.events.length === 0 && r.cursor === 1, 'Abruf ab Cursor: nichts Neues');
+await fetch(ev, { method: 'POST', body: JSON.stringify({ events: [{ ...e1, t: 2 }] }) });
+r = await (await fetch(`${ev}?since=1`)).json();
+ok(r.events.length === 1 && r.events[0].t === 2 && r.cursor === 2, 'Abruf ab Cursor: nur das neue Ereignis');
 
 const open = (n) => new Promise((res, rej) => { const w = new WebSocket(live.replace(/^http/, 'ws')); w.got = []; w.onmessage = (m) => w.got.push(m.data); w.onopen = () => res(w); w.onerror = () => rej(new Error(`ws ${n}`)); });
 const a = await open('a'), b = await open('b');
