@@ -233,7 +233,10 @@ export function steepness(w: WorldGen, tx: number, ty: number): number {
   return Math.hypot(gx, gy) / 2;
 }
 
-/** Tempofaktor am Hang: steile Hänge bremsen bis −35 %. */
+/** Hangbremse (M33: im Bewegungslabor per Regler einstellbar): ab `from` Steilheit bremst es, ab `from + range` voll um `max`. */
+export const SLOPE = { max: 0.35, from: 0.3, range: 1.2 };
+
+/** Tempofaktor am Hang: steile Hänge bremsen bis −35 % (Standard). */
 export function slopeSpeed(steep: number): number {
-  return 1 - 0.35 * Math.min(1, Math.max(0, steep - 0.3) / 1.2);
+  return 1 - SLOPE.max * Math.min(1, Math.max(0, steep - SLOPE.from) / SLOPE.range);
 }

@@ -61,6 +61,10 @@ export const debugState = {
   guard: null as null | { blocking: boolean; blockFor: number; dodging: boolean; dodgeReady: boolean; last: string; blocks: number; parries: number; dodges: number; evaded: number },
   /** Weltpunkt → Bildschirmpunkt (für Klicks in Tests) */
   arenaToScreen: (_x: number, _y: number): { x: number; y: number } => ({ x: 0, y: 0 }),
+  /** M33: Bewegungslabor */
+  labor: null as null | { place: string; altar: { tx: number; ty: number } | null; chest: { open: boolean } | null; height: number; grade: number; speed: number; fog: number; snow: number },
+  laborSetPlace: (_id: string): void => {},
+  laborOpenChest: (): boolean => false,
   bannerTitle: '',
   titleStart: (_seed: string): void => {},
   lastShareLink: '',
