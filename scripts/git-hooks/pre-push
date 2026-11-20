@@ -1,0 +1,11 @@
+#!/bin/sh
+# Schutz für den Produktions-Branch `release`: nie direkt pushen (auch nicht löschen).
+# `release` ändert sich nur über einen gemergten PR `main` → `release` auf GitHub, nach Freigabe durch Alex.
+# Aktivieren (einmal pro Klon): git config core.hooksPath scripts/git-hooks
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$remote_ref" = "refs/heads/release" ]; then
+    echo "Direkter Push nach 'release' ist gesperrt. Release nur per PR main → release (nach Freigabe durch Alex)." >&2
+    exit 1
+  fi
+done
+exit 0

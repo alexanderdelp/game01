@@ -8,6 +8,7 @@ import { WorldScene } from './scenes/WorldScene';
 import { ArenaScene } from './arena/ArenaScene';
 import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
+import { mountBuildInfo } from './env';
 
 const params = new URLSearchParams(location.search);
 // Ohne Seed in der Adresse startet der Titelbildschirm (Weltauswahl)
@@ -37,3 +38,4 @@ game.scene.add('create', CreateScene, !arena && !!seed && !hasHero, { seed });
 game.scene.add('title', TitleScene, !arena && !seed);
 game.scene.add('arena', ArenaScene, arena);
 document.title = GAME_TITLE;
+mountBuildInfo();
