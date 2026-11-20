@@ -1,6 +1,7 @@
 import { debugState } from '../../debug';
 import type { Npc } from '../../entities/NpcManager';
 import { MAX_ACTIVE, accept, isReady, offerFor, onTalk, progressText, turnIn, type Quest } from '../../quests/quests';
+import { on } from '../../game/features';
 import { TILE_PX } from '../../render/chunkPixels';
 import { reputationRank } from '../../state/worldState';
 import { FACTIONS, type Poi } from '../../world/meta';
@@ -36,14 +37,14 @@ export class WorldTalk {
     const now = Date.now();
     const say = (text: string, choices?: [string, () => void][]) => this.say(npc.spawn.name, npc.role.name, text, choices);
     // 1. Botengang an diesen NPC
-    const delivered = onTalk(log, npc.spawn.id);
+    const delivered = on('quests') ? onTalk(log, npc.spawn.id) : null;
     if (delivered) {
       const r = turnIn(log, delivered.id, now);
       this.recordQuest(delivered.giverTx, delivered.giverTy);
       return say(`Ein Brief von ${delivered.giverName}? Danke! (${r ? this.ws.hero.reward(r) : ''})`);
     }
     // 2. Herrscher: Treueschwur (M15)
-    if (npc.spawn.role === 'ruler') return this.rulerTalk(npc.spawn.name, npc.spawn.tx, npc.spawn.ty);
+    if (npc.spawn.role === 'ruler' && on('pledge')) return this.rulerTalk(npc.spawn.name, npc.spawn.tx, npc.spawn.ty);
     // 3. Barbier: Aussehen ändern gegen Splitter (Feedback: nicht einfach im Heldenfenster)
     if (npc.spawn.role === 'barber') {
       const h = this.ws.hero.hero;
@@ -56,7 +57,7 @@ export class WorldTalk {
     // 3. Händler (Rivalen des eigenen Reichs verweigern den Handel)
     if (npc.spawn.role === 'merchant') {
       const realm = this.ws.world.meta.realmAt(npc.spawn.tx, npc.spawn.ty);
-      const mine = this.myPledge();
+      const mine = on('pledge') ? this.myPledge() : null;
       if (mine !== null && this.ws.world.meta.rivals[mine] === realm.id) {
         return say(`Du hast ${this.ws.world.meta.realms[mine].name} die Treue geschworen. Gefolgsleute unserer Feinde bedienen wir nicht!`);
       }
@@ -64,7 +65,7 @@ export class WorldTalk {
       return this.trade(npc.spawn.name, bonus ? `Willkommen, Gefolgsmann von ${realm.name}! ` : '', Math.min(0.45, this.rankAt(npc.spawn.tx, npc.spawn.ty).discount + bonus));
     }
     // 3. Eigene Quest abgeben bzw. daran erinnern
-    const own = log.active.find((q) => q.giverId === npc.spawn.id);
+    const own = !on('quests') ? undefined : log.active.find((q) => q.giverId === npc.spawn.id);
     if (own && isReady(own)) {
       const r = turnIn(log, own.id, now)!;
       this.recordQuest(own.giverTx, own.giverTy);
@@ -72,7 +73,7 @@ export class WorldTalk {
     }
     if (own) return say(`${own.text} (${progressText(own)})`);
     // 4. Neues Angebot
-    const offer = this.cachedOffer(npc.spawn, now);
+    const offer = on('quests') ? this.cachedOffer(npc.spawn, now) : null;
     if (offer && log.active.length < MAX_ACTIVE) {
       return say(`${offer.title} – ${offer.text}`, [
         ['Annehmen', () => this.acceptOffer(offer)],
@@ -94,7 +95,7 @@ export class WorldTalk {
     const before = town ? (this.ws.state.d.prosperity.get(town.id) ?? 0) : 0;
     this.ws.state.record({ t: Date.now(), by: this.ws.heroName, type: 'quest', town: town?.id ?? null, realm: m.realmAt(tx, ty).id });
     this.ws.events.emit('sfx', 'quest');
-    if (town) {
+    if (town && on('renown')) {
       this.ws.towns.refresh(town.id);
       const lv = (n: number) => (n >= 10 ? 3 : n >= 5 ? 2 : n >= 2 ? 1 : 0);
       if (lv(before + 1) > lv(before)) {
@@ -108,7 +109,7 @@ export class WorldTalk {
   /** Ansehen beim Reich an einer Position. */
   rankAt(tx: number, ty: number) {
     const realm = this.ws.world.meta.realmAt(tx, ty);
-    return { realm, ...reputationRank(this.ws.state.d.reputation.get(realm.id) ?? 0) };
+    return { realm, ...reputationRank(on('renown') ? (this.ws.state.d.reputation.get(realm.id) ?? 0) : 0) };
   }
 
   /** Setzt Orts- und Reichsnamen in NPC-Sätze ein. */
@@ -312,14 +313,16 @@ export class WorldTalk {
 
   updateMarkers(): void {
     this.markers.clear();
+    if (!on('quests') && !on('pledge')) return;
     const log = this.ws.hero.quests;
     const now = Date.now();
     for (const n of this.ws.npcs.npcs.values()) {
       const id = n.spawn.id;
       if (n.spawn.role === 'ruler') {
-        if (this.myPledge() !== this.ws.world.meta.realmAt(n.spawn.tx, n.spawn.ty).id) this.markers.set(id, '!');
+        if (on('pledge') && this.myPledge() !== this.ws.world.meta.realmAt(n.spawn.tx, n.spawn.ty).id) this.markers.set(id, '!');
         continue;
       }
+      if (!on('quests')) continue;
       const service = n.spawn.role === 'merchant' || n.spawn.role === 'barber';
       if (service && !log.active.some((q) => q.objective.type === 'deliver' && q.objective.npcId === id)) continue;
       const own = log.active.find((q) => q.giverId === id);

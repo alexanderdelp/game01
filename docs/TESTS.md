@@ -31,8 +31,8 @@
 
 ## Umfang
 
-Stand 2026-11-20: **161 Unit-Tests** in 31 Dateien (je Meilenstein `mXX.test.ts`, dazu `world`, `env`, `sync-client`,
-`sync-url`) und **33 E2E-Tests** in 8 Specs.
+Stand 2026-11-20: **164 Unit-Tests** in 32 Dateien (je Meilenstein `mXX.test.ts`, dazu `world`, `env`, `sync-client`,
+`sync-url`) und **35 E2E-Tests** in 8 Specs. Seit M32 öffnen die Tests Welten mit `?systeme=alle`; den Kernmodus prüfen eigene Tests.
 
 ## Laufzeit (lokal, 8 Kerne, Rechner durch andere Sessions belastet)
 
@@ -106,3 +106,4 @@ Unit = `tests/unit/mXX.test.ts` (M1: `world.test.ts`). „Sicht“ = nur per Scr
 | M30 Oberweite | R1, R2 (Regler, Verformung, keine Lücken) | R1/R3 `figur` Erschaffung + Heldenfenster · R2 Screenshot-Bogen |
 | M31 Block/Ausweichen | R1, R2 | R1–R3 `arena` M31 · R4 `kampf` |
 | Cloudflare / Sync | `env` (Umgebung, Versionszeile), `sync-url` (Sync-Adresse), `sync-client` (Abruf ab Cursor) | `netz` · Server: `node server/cloudflare/smoke.mjs <URL>` |
+| M32 Kernmodus | R1 (Schalter) | R2 `weltenbau` M32 + `oberflaeche` Titel · R3 = ganze Suite mit `systeme=alle` |

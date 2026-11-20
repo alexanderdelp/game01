@@ -9,7 +9,7 @@ const look = (page: Page) => G<Look>(page, '({ ...g.createLook() })');
 
 test('Erschaffung: Völker, Merkmale, Frisur, Name; nach Neuladen direkt ins Spiel (M6 R3–R6, M18 R4/R5, M23 R3/R4)', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto('/?seed=create-test&test=1');
+  await page.goto('/?seed=create-test&test=1&systeme=alle');
   await waitCreate(page);
   await shot(page, 'm18-human');
   // Weiblich, Pferdeschwanz (Zeile 1 Körper, Zeile 3 Frisur)
@@ -68,7 +68,7 @@ test('Heldenfenster, Kleidung, Trank, Barbier, Speichern (M5 R5/R7/R8, M18 R5, M
   // Niedriges Laptop-Fenster: „Anlegen“ muss trotzdem im Heldenfenster sichtbar sein
   await page.setViewportSize({ width: 1280, height: 560 });
   const errors = watchErrors(page);
-  await page.goto('/?seed=barbier-test&test=1');
+  await page.goto('/?seed=barbier-test&test=1&systeme=alle');
   await waitCreate(page);
   // Menschenfrau mit größter Oberweite (Zeile 1 Körper, Zeile 6 Oberweite)
   await G(page, 'g.createChange(1, 1)');

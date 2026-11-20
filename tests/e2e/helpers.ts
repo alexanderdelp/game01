@@ -28,9 +28,10 @@ export function watchErrors(page: Page) {
   return errors;
 }
 
-export async function open(page: Page, seed: string) {
+/** Öffnet eine Welt im Testmodus; standardmäßig mit allen Systemen (`systeme=''` = Kernmodus, M32). */
+export async function open(page: Page, seed: string, systeme = 'alle') {
   const errors = watchErrors(page);
-  await page.goto(`/?seed=${seed}&test=1`);
+  await page.goto(`/?seed=${seed}&test=1${systeme ? `&systeme=${systeme}` : ''}`);
   await skipCreation(page);
   await waitReady(page);
   return errors;

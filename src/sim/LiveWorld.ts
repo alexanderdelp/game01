@@ -1,4 +1,5 @@
 import { debugState } from '../debug';
+import { on } from '../game/features';
 import type { NpcManager, Npc } from '../entities/NpcManager';
 import type { ChunkManager } from '../render/ChunkManager';
 import { TILE_PX } from '../render/chunkPixels';
@@ -24,7 +25,7 @@ export class LiveWorld {
     private readonly npcs: NpcManager,
     private readonly state: WorldState,
   ) {
-    this.caravans = caravans(world.meta, (x, y) => world.biomeAt(x, y), world.seed);
+    this.caravans = on('caravans') ? caravans(world.meta, (x, y) => world.biomeAt(x, y), world.seed) : [];
     this.tick(true);
   }
 
@@ -36,9 +37,10 @@ export class LiveWorld {
   private tick(force = false): boolean {
     const now = worldNow();
     const m = this.world.meta;
-    const pledge = pledgeInfluence(this.state.d, m.realms.length, m.rivals);
-    m.powers = m.realms.map((r) => Math.max(0.5, realmPower(this.world.seed, r.id, now, this.state.d.reputation.get(r.id) ?? 0) + pledge[r.id]));
-    const inv = debugState.calm ? null : invasionAt(this.world.seed, m.realms, now);
+    const pledge = on('pledge') ? pledgeInfluence(this.state.d, m.realms.length, m.rivals) : m.realms.map(() => 0);
+    const rep = (id: number) => (on('renown') ? (this.state.d.reputation.get(id) ?? 0) : 0);
+    m.powers = m.realms.map((r) => Math.max(0.5, realmPower(this.world.seed, r.id, now, rep(r.id)) + pledge[r.id]));
+    const inv = debugState.calm || !on('invasions') ? null : invasionAt(this.world.seed, m.realms, now);
     const changed = force || inv?.realm !== this.invasion?.realm || inv?.kind !== this.invasion?.kind;
     this.invasion = inv;
     return changed;

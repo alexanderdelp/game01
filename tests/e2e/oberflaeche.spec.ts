@@ -4,7 +4,7 @@ import { G, frames, open, shot, skipCreation, state, waitReady, watchErrors } fr
 // Modul Oberfläche: Titel, Hinweise, Menüs, Karte, Minimap, Handy-Bedienung.
 // Banner-Warteschlange (≥ 5 s, Reihenfolge), Zielgebiet und Musik prüfen die Unit-Tests m13 und m16.
 
-test('Titel, neue Welt, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13 R2/R4, M16 R1/R4)', async ({ page }) => {
+test('Titel, neue Welt im Kernmodus, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13 R2/R4, M16 R1/R4, M32 R2)', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/');
   await expect.poll(() => G<string>(page, 'g.scene'), { timeout: 60_000 }).toBe('title');
@@ -14,19 +14,23 @@ test('Titel, neue Welt, Hinweise, Minimap, zurück zum Titel, Weiterspielen (M13
   await skipCreation(page);
   await waitReady(page);
   expect(page.url()).toContain('seed=titel-test');
+  // M32: ohne ?systeme startet der Kernmodus
+  expect(await G<string[]>(page, 'g.features')).toEqual([]);
 
   // Erster Hinweis bleibt bis zum Klick stehen, dann kommt der nächste
   await expect.poll(() => G<string>(page, 'g.bannerTitle'), { timeout: 60_000 }).toContain('Willkommen');
   expect(await G<number>(page, 'g.tipsShown')).toBeGreaterThanOrEqual(1);
   await shot(page, 'm13-tips');
   await page.mouse.click(400, 300);
-  await expect.poll(() => G<string>(page, 'g.bannerTitle')).toContain('Gelbes !');
+  await expect.poll(() => G<string>(page, 'g.bannerTitle')).toContain('gelben Pfeil');
   await expect.poll(() => G<boolean>(page, 'g.minimap'), { timeout: 20_000 }).toBe(true);
 
   // Zurück zum Titel: Welt steht unter "Weiterspielen"
   await page.keyboard.press('h');
   await expect.poll(() => G<boolean>(page, 'g.menuOpen')).toBe(true);
-  expect(await G<boolean>(page, "g.clickPanel('menu-11')")).toBe(true);
+  // Kernmodus: Menü ohne Quests und Neuigkeiten → Titelbildschirm ist Eintrag 9 statt 11
+  expect(await G<boolean>(page, "g.clickPanel('menu-11')")).toBe(false);
+  expect(await G<boolean>(page, "g.clickPanel('menu-9')")).toBe(true);
   await expect.poll(() => G<string>(page, 'g.scene')).toBe('title');
   await shot(page, 'm13-title2');
   await G(page, "g.titleStart('titel-test')");
@@ -74,7 +78,7 @@ test('M22: Weltkarte zoomen und verschieben, feiner Ausschnitt ab 4× (R1, R2)',
 test('M29: Spielleiter-Karte ohne Nebel, Klick teleportiert, Fog bleibt (R3)', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   const errors = watchErrors(page);
-  await page.goto('/?seed=gm-karte&test=1&gm=1');
+  await page.goto('/?seed=gm-karte&test=1&systeme=alle&gm=1');
   await skipCreation(page);
   await waitReady(page);
   // Menüeintrag schaltet den Modus (nur mit ?gm=1 vorhanden), Abzeichen im HUD
