@@ -9,6 +9,7 @@ import { ArenaScene } from './arena/ArenaScene';
 import { PerspectiveScene } from './prototype/PerspectiveScene';
 import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
+import { mountBuildInfo } from './env';
 
 const params = new URLSearchParams(location.search);
 // Ohne Seed in der Adresse startet der Titelbildschirm (Weltauswahl)
@@ -43,3 +44,4 @@ game.scene.add('title', TitleScene, !arena && !seed);
 game.scene.add('arena', ArenaScene, arena && !perspektive);
 game.scene.add('perspektive', PerspectiveScene, perspektive);
 document.title = GAME_TITLE;
+mountBuildInfo();

@@ -34,6 +34,8 @@ export class Actor {
   diagonalFacing: 'side' | 'vertical' | 'default' = 'default';
   /** Loslass-Toleranz der Diagonale (s), siehe `nextAim`. */
   private aimHeld = 0;
+  /** Laufen ändert Zielrichtung und Blickrichtung nicht (Blocken mit Schild vorn, M31). */
+  holdAim = false;
   moving = false;
   baseSpeed = 150;
 
@@ -75,7 +77,9 @@ export class Actor {
       this.y = moved.y + FOOT_H;
       // Während einer Aktion bleiben Blickrichtung und Animation (der Hieb geht dorthin, wohin man beim Drücken sah).
       if (!this.busy) {
-        if (this.diagonalFacing !== 'default') {
+        if (this.holdAim) {
+          // Richtung bleibt
+        } else if (this.diagonalFacing !== 'default') {
           ({ aim: this.aim, held: this.aimHeld } = nextAim(this.aim, aimFrom(nx, ny), this.aimHeld, dt));
           this.facing = facingForAim(this.aim, this.diagonalFacing);
         } else {

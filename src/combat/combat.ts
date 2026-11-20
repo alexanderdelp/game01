@@ -256,3 +256,113 @@ export function facingForAim(aim: Vec, diagonal: 'side' | 'vertical' = 'side'): 
 export function facingVector(f: Facing): { x: number; y: number } {
   return { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } }[f];
 }
+
+/**
+ * Blocken und Parieren (M31): Block-Taste halten. Schaden von vorn wird stark verringert, von hinten nicht.
+ * Wer den Block erst kurz vor dem Treffer hebt, pariert: kein Schaden, der Angreifer wankt.
+ */
+export const PLAYER_BLOCK = {
+  /** Anteil des Schadens, der von vorn durch den Block kommt */
+  damageFactor: 0.2,
+  /** Halber Abwehrwinkel um die Zielrichtung (Grad): 70° = vorn und schräg vorn, nicht seitlich */
+  halfAngle: 70,
+  /** Parade: Block höchstens so lange vor dem Treffer gehoben (s) */
+  parryWindow: 0.18,
+  /** Tempo beim Blocken relativ zum Laufen */
+  moveFactor: 0.5,
+  /** Rückstoß bei geblocktem Treffer relativ zum normalen */
+  knockFactor: 0.35,
+  /** Wie lange ein parierter Gegner wankt (s) */
+  stagger: 0.8,
+  /** 1 = beim Blocken bleibt die Zielrichtung (rückwärts gehen mit Schild vorn), 0 = Schild folgt der Eingabe */
+  holdAim: 1,
+};
+
+/** Ausweichen (M31): kurzer schneller Sprung, anfangs unverwundbar, danach Abklingzeit. */
+export const PLAYER_DODGE = {
+  /** Tempo des Sprungs (px/s); Weg = Tempo × Dauer */
+  speed: 400,
+  /** Dauer des Sprungs (s) */
+  duration: 0.18,
+  /** Unverwundbar ab Beginn des Sprungs für … s */
+  invuln: 0.15,
+  /** Abklingzeit nach dem Sprung (s) */
+  cooldown: 0.35,
+};
+
+export type GuardKind = 'hit' | 'block' | 'parry';
+
+/** Liegt der Angreifer (from) vor der Figur (p, Zielrichtung aim) – innerhalb des Abwehrwinkels? */
+export function inFront(aim: Vec, px: number, py: number, fromX: number, fromY: number, halfAngle = PLAYER_BLOCK.halfAngle): boolean {
+  const dx = fromX - px;
+  const dy = fromY - py;
+  const len = Math.hypot(dx, dy);
+  const al = Math.hypot(aim.x, aim.y);
+  if (len < 1e-6 || al < 1e-6) return false;
+  const cos = (dx * aim.x + dy * aim.y) / (len * al);
+  return cos >= Math.cos((halfAngle * Math.PI) / 180) - 1e-9;
+}
+
+/**
+ * Ergebnis eines Treffers gegen eine (ggf.) blockende Figur. `blockFor` = wie lange der Block schon gehoben ist (s),
+ * `null` = blockt nicht. Liefert Schadens- und Rückstoß-Faktor.
+ */
+export function guardAgainst(
+  aim: Vec,
+  px: number,
+  py: number,
+  fromX: number,
+  fromY: number,
+  blockFor: number | null,
+  b = PLAYER_BLOCK,
+): { kind: GuardKind; damageFactor: number; knockFactor: number } {
+  if (blockFor === null || !inFront(aim, px, py, fromX, fromY, b.halfAngle)) return { kind: 'hit', damageFactor: 1, knockFactor: 1 };
+  if (blockFor <= b.parryWindow) return { kind: 'parry', damageFactor: 0, knockFactor: 0 };
+  return { kind: 'block', damageFactor: b.damageFactor, knockFactor: b.knockFactor };
+}
+
+/** Ausweich-Sprung als reiner Zustand (Phaser-frei): Weg je Schritt, Unverwundbarkeit, Abklingzeit. */
+export class Dodge {
+  /** Zeit seit Beginn des Sprungs (s), < 0 = kein Sprung */
+  t = -1;
+  /** Restliche Abklingzeit (s) */
+  cd = 0;
+  dir: Vec = { x: 0, y: 1 };
+
+  get active(): boolean {
+    return this.t >= 0;
+  }
+
+  get ready(): boolean {
+    return !this.active && this.cd <= 0;
+  }
+
+  invulnerable(d = PLAYER_DODGE): boolean {
+    return this.active && this.t < d.invuln;
+  }
+
+  /** Startet den Sprung in Richtung `dir` (wird normiert); false, wenn gerade nicht möglich. */
+  start(dir: Vec, d = PLAYER_DODGE): boolean {
+    const len = Math.hypot(dir.x, dir.y);
+    if (!this.ready || len < 1e-6 || d.duration <= 0) return false;
+    this.dir = { x: dir.x / len, y: dir.y / len };
+    this.t = 0;
+    return true;
+  }
+
+  /** Schreitet um `dt` voran; liefert den Weg (px) für diesen Schritt. */
+  step(dt: number, d = PLAYER_DODGE): Vec {
+    if (!this.active) {
+      this.cd = this.cd - dt > 1e-9 ? this.cd - dt : 0;
+      return { x: 0, y: 0 };
+    }
+    const t1 = Math.min(this.t + dt, d.duration);
+    const s = Math.max(0, t1 - this.t) * d.speed;
+    this.t = t1;
+    if (t1 >= d.duration) {
+      this.t = -1;
+      this.cd = d.cooldown;
+    }
+    return { x: this.dir.x * s, y: this.dir.y * s };
+  }
+}

@@ -33,8 +33,8 @@ export interface CombatCtx {
   playerAlive: boolean;
   /** Live-Mitspieler (M12): Gegner verfolgen den nächsten Spieler. */
   others: { x: number; y: number }[];
-  /** Fügt dem Spieler Schaden zu (berücksichtigt Unverwundbarkeit). */
-  hurtPlayer(amount: number, fromX: number, fromY: number): void;
+  /** Fügt dem Spieler Schaden zu (berücksichtigt Unverwundbarkeit); `source` = angreifender Gegner (Parade, M31). */
+  hurtPlayer(amount: number, fromX: number, fromY: number, source?: Enemy): void;
   fireBolt(x: number, y: number, vx: number, vy: number, damage: number): void;
 }
 
@@ -46,7 +46,8 @@ export const BANDIT_LOOKS: Appearance[] = [
   { ...DEFAULT_APPEARANCE, body: 'female', skin: 'light', hair: 'long', hairColor: 'dark_gray', torso: 'leather', legsColor: 'slate', feetColor: 'black' },
 ];
 
-type State = 'wander' | 'chase' | 'windup' | 'attack' | 'return' | 'dead';
+/** `stagger` = wankt nach einer Parade (M31), tut nichts. */
+type State = 'wander' | 'chase' | 'windup' | 'attack' | 'return' | 'stagger' | 'dead';
 
 /** Ein Gegner. Räuber nutzen eine LPC-Figur, Kreaturen ein animiertes Sprite. */
 export class Enemy {
@@ -136,6 +137,16 @@ export class Enemy {
     return false;
   }
 
+  /** Pariert (M31): wankt `seconds` lang, unterbricht Ausholen und Angriff, wird ein Stück zurückgestoßen. */
+  stagger(seconds: number, fromX: number, fromY: number): void {
+    if (!this.alive || seconds <= 0) return;
+    const k = knockback(fromX, fromY, this.x, this.y, 26);
+    this.knock = { x: k.x, y: k.y, t: 0.15 };
+    this.vel = { x: 0, y: 0 };
+    this.cooldown = Math.max(this.cooldown, 0.3);
+    this.enter('stagger', seconds);
+  }
+
   private enter(s: State, timer = 0): void {
     this.state = s;
     this.timer = timer;
@@ -189,7 +200,7 @@ export class Enemy {
       this.knock.t -= dt;
       this.move((this.knock.x * dt) / 0.15, (this.knock.y * dt) / 0.15, ctx);
     } else {
-      if (this.state !== 'return' && fromHome > LEASH) this.enter('return');
+      if (this.state !== 'return' && this.state !== 'stagger' && fromHome > LEASH) this.enter('return');
       switch (this.state) {
         case 'wander': {
           if (targetAlive && dist < this.def.aggro) {
@@ -278,19 +289,23 @@ export class Enemy {
             if (!this.hitThisAttack && this.timer < 0.22) {
               this.hitThisAttack = true;
               const box = attackBox(this.x, this.y, this.actor!.facing);
-              if (local && overlaps(box, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y);
+              if (local && overlaps(box, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y, this);
             }
           } else {
             this.move(this.vel.x * dt, this.vel.y * dt, ctx);
             if (!this.hitThisAttack && local && overlaps(this.body, { x: p.x - 10, y: p.y - 40, w: 20, h: 40 })) {
               this.hitThisAttack = true;
-              ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y);
+              ctx.hurtPlayer(rollDamage(this.stats.attack, 0, this.rnd), this.x, this.y, this);
             }
           }
           if (this.timer <= 0) {
             this.cooldown = this.def.kind === 'bandit' ? 0.9 : 1.4;
             this.enter('chase');
           }
+          break;
+        }
+        case 'stagger': {
+          if (this.timer <= 0) this.enter('chase');
           break;
         }
         case 'return': {
@@ -326,14 +341,18 @@ export class Enemy {
   private sync(): void {
     const lift = this.def.flying ? 14 + Math.sin(this.bob * 3) * 3 : 0;
     const windup = this.state === 'windup' && !this.actor;
-    const jx = windup ? (Math.random() - 0.5) * 2 : 0;
+    const staggered = this.state === 'stagger';
+    // Wanken: deutliches Hin-und-her-Schwanken statt Zittern
+    const jx = windup ? (Math.random() - 0.5) * 2 : staggered ? Math.round(Math.sin(this.timer * 28) * 3) : 0;
     if (!this.actor) {
       this.sprite.setPosition(Math.round(this.x + jx), Math.round(this.y - lift)).setDepth(this.y);
       this.shadow.setPosition(Math.round(this.x), Math.round(this.y - 1));
     } else {
       this.actor.setPosition(this.x, this.y);
+      if (jx) this.sprite.x += jx;
     }
     if (this.flash > 0) this.sprite.setTintFill(0xffffff);
+    else if (staggered) this.sprite.setTint(0x8890ff);
     else if (windup) this.sprite.setTint(0xffa0a0);
     else if (this.spawn.elite) this.sprite.setTint(0xfff0b0);
     else this.sprite.clearTint();

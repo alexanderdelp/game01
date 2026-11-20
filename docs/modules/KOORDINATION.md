@@ -54,7 +54,7 @@ Branch: modul/<name>-<thema>. Nicht auf main, nicht pushen. Ende mit Übergabe (
 - **Ein Modul, ein Agent.** Überschneiden sich Dateien, nacheinander statt parallel.
 - **Schnittstellen sind Verträge.** Ändert ein Auftrag eine Schnittstelle, kommt er zuerst; abhängige Aufträge
   starten erst nach dem Merge (vom neuen `main`).
-- **Gesamttests vor jedem Push.** CI deployt nur bei grünen Tests auf GitHub Pages.
+- **Gesamttests vor jedem Push.** CI prüft jeden PR; ausgeliefert wird über Cloudflare (siehe `CLAUDE.md`, „Auslieferung“).
 - Der Testbrowser ist gedrosselt (~10 FPS): Abläufe am Spielzustand (`window.__game`) prüfen, nicht an der Uhr.
 - Telegram bleibt der Hauptkanal zum Nutzer (`tools/telegram.mjs`, Zugangsdaten nur in
   `~/.config/game01/telegram.env`, nie committen). Beim Start der Session den Posteingang lesen

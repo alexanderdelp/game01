@@ -22,7 +22,7 @@ test('Kampf-Arena: startet ohne Welt, Gegner per Knopf, Werte live einstellbar',
   await frames(page, 10);
   await page.keyboard.up('a');
   expect(await G<number>(page, 'g.player.x')).toBeLessThan(x0);
-  await page.keyboard.press('Space');
+  await page.keyboard.press('j');
   await expect.poll(() => G<number>(page, 'g.attacks')).toBe(1);
   // Werte kopieren zeigt den Code-Ausschnitt
   await page.getByRole('button', { name: 'Werte kopieren' }).click();
@@ -211,7 +211,7 @@ test('M28: diagonal zielen – Hieb und Splitterblitz treffen diagonal, Schwung-
   const side = hp0.find((e) => e.x < 20 * 32 + 16)!;
   const hpOf = (id: string) => G<number>(page, `(g.enemies.find((e) => e.id === '${id}') || { hp: -1 }).hp`);
   const arcs0 = await G<number>(page, 'g.arcs');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('j');
   // R3: Schwung-Bogen erscheint – Bildschirmfoto mitten im Hieb
   await expect.poll(() => G<number>(page, 'g.arcs')).toBe(arcs0 + 1);
   if (process.env.SHOTS) await page.screenshot({ path: 'screenshots/m28-schwung-diagonal.png' }); // mitten im Hieb, ohne Wartezeit
@@ -239,8 +239,95 @@ test('M28: diagonal zielen – Hieb und Splitterblitz treffen diagonal, Schwung-
   await G(page, 'g.teleport(20, 10)');
   await expect.poll(() => G<boolean>(page, '!g.swinging && !g.player.moving')).toBe(true);
   const arcs1 = await G<number>(page, 'g.arcs');
-  await page.keyboard.press('Space');
+  await page.keyboard.press('j');
   await expect.poll(() => G<number>(page, 'g.arcs')).toBe(arcs1 + 1);
   if (process.env.SHOTS) await page.screenshot({ path: 'screenshots/m28-schwung-diagonal-vorderansicht.png' });
+  expect(errors).toEqual([]);
+});
+
+test('M31: Blocken (vorn ja, hinten nein), Parade lässt den Gegner wanken, Ausweichen bewegt, schützt, nicht durch Wände', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/?arena=1');
+  await ready(page);
+  await G(page, "g.arenaSetLayout('choke')");
+  await expect.poll(() => G<string>(page, 'g.ready && g.arenaLayout'), { timeout: 30_000 }).toBe('choke');
+  await page.getByRole('checkbox', { name: 'Gegner eingefroren' }).check();
+  await page.getByRole('checkbox', { name: 'Besiegte kommen wieder' }).uncheck();
+  await page.getByRole('button', { name: 'Alle entfernen' }).click();
+  await G(page, 'g.teleport(20, 10)');
+  // Blick nach unten, keine Regeneration während der Messung (Abstände in Bildern, nicht in Zeit)
+  await page.keyboard.press('s');
+  await expect.poll(() => G<boolean>(page, '!g.player.moving')).toBe(true);
+  const hp = () => G<number>(page, 'g.hp');
+  // Ohne Block: voller Schaden
+  let before = await hp();
+  await G(page, 'g.arenaHit(40, 0, 40)');
+  const full = before - (await hp());
+  expect(full).toBeGreaterThan(20);
+  // R1: Block halten (über das Parier-Fenster hinaus) – von vorn stark verringert, von hinten voll
+  await page.keyboard.down('l');
+  await expect.poll(() => G<number>(page, 'g.guard.blockFor')).toBeGreaterThan(0.2);
+  before = await hp();
+  await G(page, 'g.arenaHit(40, 0, 40)');
+  expect(await G<string>(page, 'g.guard.last')).toBe('block');
+  const blocked = before - (await hp());
+  expect(blocked).toBeLessThan(full / 2);
+  before = await hp();
+  await G(page, 'g.arenaHit(40, 0, -60)');
+  expect(await G<string>(page, 'g.guard.last')).toBe('hit');
+  expect(before - (await hp())).toBeGreaterThan(20);
+  await page.keyboard.up('l');
+  await expect.poll(() => G<boolean>(page, 'g.guard.blocking')).toBe(false);
+  // Parade: Fenster für den gedrosselten Testbrowser weit stellen; Räuber vorn wankt, kein Schaden
+  await G(page, "g.arenaTune('block.parryWindow', 0.5)");
+  await G(page, "g.arenaSpawnAt('bandit', 20, 13)");
+  await expect.poll(() => G<number>(page, 'g.enemies.length')).toBe(1);
+  const bandit = await G<string>(page, 'g.enemies[0].id');
+  await page.keyboard.down('l');
+  await expect.poll(() => G<boolean>(page, 'g.guard.blocking')).toBe(true);
+  before = await hp();
+  await G(page, `g.arenaHit(40, 0, 60, '${bandit}')`);
+  expect(await G<string>(page, 'g.guard.last')).toBe('parry');
+  expect(await hp()).toBe(before);
+  expect(await G<string>(page, 'g.enemies[0].state')).toBe('stagger');
+  await shot(page, 'm31-parade');
+  if (process.env.SHOTS) await page.screenshot({ path: 'screenshots/m31-block.png' });
+  await page.keyboard.up('l');
+  await page.getByRole('button', { name: 'Alle entfernen' }).click();
+  // R2: Ausweichen nach links (frei) bewegt schnell; lange Unverwundbarkeit (gedrosselter Browser) schützt vor einem Treffer
+  await G(page, "g.arenaTune('dodge.duration', 0.6)");
+  await G(page, "g.arenaTune('dodge.invuln', 0.6)");
+  await G(page, 'g.teleport(20, 10)');
+  const x0 = await G<number>(page, 'g.player.x');
+  await page.keyboard.down('a');
+  await page.keyboard.press('Space');
+  await page.keyboard.up('a');
+  await expect.poll(() => G<boolean>(page, 'g.guard.dodging')).toBe(true);
+  before = await hp();
+  await G(page, 'g.arenaHit(40, 40, 0)');
+  expect(await G<string>(page, 'g.guard.last')).toBe('evaded');
+  expect(await hp()).toBe(before);
+  if (process.env.SHOTS) await page.screenshot({ path: 'screenshots/m31-ausweichen.png' }); // im Sprung (Nachbilder)
+  await expect.poll(() => G<boolean>(page, 'g.guard.dodging')).toBe(false);
+  expect(x0 - (await G<number>(page, 'g.player.x'))).toBeGreaterThan(150); // 400 px/s × 0,6 s
+  // Nicht durch Wände: nach oben gegen die Deckungsmauer (Reihe 7)
+  await expect.poll(() => G<boolean>(page, 'g.guard.dodgeReady')).toBe(true);
+  await G(page, 'g.teleport(20, 10)');
+  await page.keyboard.down('w');
+  await page.keyboard.press('Space');
+  await page.keyboard.up('w');
+  await expect.poll(() => G<number>(page, 'g.guard.dodges')).toBe(2);
+  await expect.poll(() => G<boolean>(page, 'g.guard.dodging')).toBe(false);
+  const y = await G<number>(page, 'g.player.y');
+  expect(y).toBeGreaterThanOrEqual(8 * 32);
+  expect(y).toBeLessThan(9 * 32);
+  // R3: Statistik, Regler gespeichert und im kopierten Code
+  await expect(page.locator('#arena-stats')).toContainText('Blocks 1  Paraden 1  Ausweichen 2 (ausgewichen 1)');
+  await page.getByRole('button', { name: 'Werte kopieren' }).click();
+  await expect(page.locator('#arena-code')).toContainText('parryWindow: 0.5');
+  await expect(page.locator('#arena-code')).toContainText('export const PLAYER_DODGE');
+  await page.reload();
+  await ready(page);
+  await expect(page.locator('#arena-panel input[data-id="dodge.invuln"]')).toHaveValue('0.6');
   expect(errors).toEqual([]);
 });

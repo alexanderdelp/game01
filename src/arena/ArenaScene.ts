@@ -122,9 +122,9 @@ export class ArenaScene extends Phaser.Scene {
       player: this.player,
       playerAlive: true,
       others: [],
-      hurtPlayer: (a, x, y) => {
+      hurtPlayer: (a, x, y, source) => {
         const before = this.combat.stats.hp;
-        this.combat.hurt(a, x, y);
+        this.combat.hurt(a, x, y, false, source);
         this.stats.taken += before - this.combat.stats.hp;
       },
       fireBolt: (x, y, vx, vy, d) => this.enemies.fireBolt(x, y, vx, vy, d),
@@ -152,11 +152,26 @@ export class ArenaScene extends Phaser.Scene {
 
     const kb = this.input.keyboard!;
     this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
-    kb.on('keydown-SPACE', () => this.combat.attack());
+    // M31: rechte Hand J/K/L = Hieb/Zauber/Block, linker Daumen Leertaste = Ausweichen (siehe M31-Ergebnis)
+    this.combat.guardEnabled = true;
     kb.on('keydown-J', () => this.combat.attack());
     kb.on('keydown-K', () => this.combat.cast());
+    kb.on('keydown-L', () => this.combat.setBlock(true));
+    kb.on('keyup-L', () => this.combat.setBlock(false));
+    kb.on('keydown-SPACE', () => {
+      const d = this.inputDir();
+      this.combat.dodgeStart(d.x, d.y);
+    });
+    // Fenster verliert den Fokus: Block nicht „hängen“ lassen
+    const blur = () => this.combat.setBlock(false);
+    this.game.events.on(Phaser.Core.Events.BLUR, blur);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(Phaser.Core.Events.BLUR, blur));
 
     this.events.on('damage', (d: { x: number; y: number; amount: number; color: string }) => this.floatText(d.x, d.y, String(d.amount), d.color));
+    this.events.on('guard', (d: { kind: string; x: number; y: number }) => {
+      if (d.kind === 'parry') this.floatText(d.x, d.y - 8, 'Parade!', '#ffd84a');
+      else if (d.kind === 'evaded') this.floatText(d.x, d.y, 'ausgewichen', '#7ff0ff');
+    });
     this.events.on('enemy-hit', (h: { dmg: number }) => {
       this.stats.hits++;
       this.stats.damage += h.dmg;
@@ -174,7 +189,7 @@ export class ArenaScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       panel.remove();
       // Szenen-Ereignisse überleben einen Neustart (Aufbau-Wechsel) – sonst zählte alles doppelt
-      for (const ev of ['damage', 'enemy-hit', 'defeated']) this.events.off(ev);
+      for (const ev of ['damage', 'enemy-hit', 'defeated', 'guard']) this.events.off(ev);
     });
     this.spawnGroup(['slime']);
 
@@ -192,6 +207,11 @@ export class ArenaScene extends Phaser.Scene {
     debugState.arenaSpawnAt = (kind, tx, ty) => this.spawnGroup([kind as EnemyKind], { tx, ty });
     debugState.arenaDiagonal = (m) => {
       this.player.diagonalFacing = m === 'vertical' ? 'vertical' : 'side';
+    };
+    debugState.arenaHit = (dmg, dx, dy, enemyId) => {
+      // Testtreffer: Schonzeit früherer Treffer zählt nicht
+      this.combat.clearInvuln();
+      this.ctx.hurtPlayer(dmg, this.player.x + dx, this.player.y + dy, enemyId ? this.enemies.enemies.get(enemyId) : undefined);
     };
     debugState.teleport = (tx, ty) => this.player.setPosition(tx * TILE_PX + TILE_PX / 2, ty * TILE_PX + TILE_PX - 2);
     debugState.arenaToScreen = (x, y) => {
@@ -300,6 +320,7 @@ export class ArenaScene extends Phaser.Scene {
   resetStats(): void {
     this.stats = { hits: 0, damage: 0, kills: 0, taken: 0, log: [] };
     this.combat.attacks = 0;
+    Object.assign(this.combat.guardStats, { blocks: 0, parries: 0, dodges: 0, evaded: 0 });
   }
 
   /** Regler geändert: Werte merken und auf laufende Objekte anwenden. */
@@ -388,14 +409,22 @@ export class ArenaScene extends Phaser.Scene {
     this.tweens.add({ targets: t, y: t.y - 18, alpha: 0, duration: 650, onComplete: () => t.destroy() });
   }
 
+  /** Richtungstasten als Vektor (−1…1). */
+  private inputDir(): { x: number; y: number } {
+    const k = this.keys;
+    return {
+      x: (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0),
+      y: (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0),
+    };
+  }
+
   update(_t: number, delta: number): void {
     const dt = Math.min(0.05, delta / 1000);
     const k = this.keys;
-    const dx = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
-    const dy = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);
-    this.player.baseSpeed = PLAYER_MOVE.speed * this.speedFactor;
+    const { x: dx, y: dy } = this.inputDir();
+    this.player.baseSpeed = PLAYER_MOVE.speed * this.speedFactor * this.combat.moveFactor;
     if (this.combat.locked) this.player.update(0, 0, false, dt, this.ctx.terrain);
-    else this.player.update(dx, dy, k.SHIFT.isDown, dt, this.ctx.terrain);
+    else this.player.update(dx, dy, k.SHIFT.isDown && !this.combat.blocking, dt, this.ctx.terrain);
     this.combat.update(dt);
     this.ctx.playerAlive = this.combat.alive;
     if (!this.frozen) this.enemies.update(dt, this.ctx);
@@ -406,6 +435,7 @@ export class ArenaScene extends Phaser.Scene {
     this.stats.log = this.stats.log.filter((l) => now - l.t < 5000);
     const dps = this.stats.log.reduce((s, l) => s + l.dmg, 0) / 5;
     const s = this.combat.stats;
+    const gs = this.combat.guardStats;
     if (this.hud && now - this.hudAt > 200) {
       this.hudAt = now;
       this.hud.textContent = [
@@ -413,9 +443,10 @@ export class ArenaScene extends Phaser.Scene {
         `LP ${Math.ceil(s.hp)}/${s.maxHp}  Angriff ${s.attack}`,
         `Gegner ${this.enemies.enemies.size}  Hiebe ${this.combat.attacks}  Treffer ${this.stats.hits}  Besiegt ${this.stats.kills}`,
         `Schaden/s (5 s) ${dps.toFixed(1)}  erlitten ${Math.round(this.stats.taken)}`,
+        `Blocks ${gs.blocks}  Paraden ${gs.parries}  Ausweichen ${gs.dodges} (ausgewichen ${gs.evaded})`,
         `Hieb-Zyklus ${(swingCycle() * 1000).toFixed(0)} ms`,
         this.place === 'click' ? `Klick in die Arena setzt ein: ${this.armed === 'wave' ? 'Welle' : ENEMIES[this.armed].name}` : '',
-        'WASD laufen · Leertaste Hieb · K Zauber · Mausrad Zoom',
+        'WASD laufen · J Hieb · K Zauber · L halten Block (kurz vorher = Parade) · Leertaste Ausweichen · Mausrad Zoom',
       ].filter(Boolean).join('\n');
     }
     debugState.player = { x: this.player.x, y: this.player.y, facing: this.player.facing, moving: this.player.moving, aim: { ...this.player.aim } };
@@ -424,5 +455,13 @@ export class ArenaScene extends Phaser.Scene {
     debugState.swinging = this.combat.swinging;
     debugState.enemies = [...this.enemies.enemies.values()].map((e) => ({ id: e.spawn.id, kind: e.def.kind, x: e.x, y: e.y, hp: e.stats.hp, state: e.state }));
     debugState.hp = s.hp;
+    debugState.guard = {
+      blocking: this.combat.blocking,
+      blockFor: this.combat.blockFor ?? -1,
+      dodging: this.combat.dodge.active,
+      dodgeReady: this.combat.dodge.ready,
+      last: this.combat.lastGuard ?? '',
+      ...gs,
+    };
   }
 }

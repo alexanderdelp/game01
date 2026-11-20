@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { buildCharacter, preloadAllParts } from '../character/CharacterFactory';
-import { DEFAULT_APPEARANCE, EYE_COLORS, GLOW_COLORS, HAIR_STYLES, normalizeAppearance, type Appearance, type HairStyle, type Race } from '../character/lpc';
+import { BUST_MAX, DEFAULT_APPEARANCE, EYE_COLORS, bustAllowed, GLOW_COLORS, HAIR_STYLES, normalizeAppearance, type Appearance, type HairStyle, type Race } from '../character/lpc';
 import { dress } from '../character/outfit';
 import { starterKit, type Item, type Slot } from '../rpg/items';
 import { debugState } from '../debug';
@@ -16,6 +16,7 @@ const HAIR_NAMES: Record<string, string> = {
   plain: 'Kurz', long: 'Lang', bob: 'Bob', spiked: 'Stachelig', messy1: 'Zerzaust', pixie: 'Pixie',
   ponytail: 'Pferdeschwanz', braid: 'Zopf', bangs_bun: 'Dutt', pigtails: 'Zöpfe', none: 'Glatze',
 };
+const BUST_NAMES = ['klein', 'mittel', 'groß', 'sehr groß'];
 const COLOR_NAMES: Record<string, string> = { blue: 'blau', green: 'grün', purple: 'violett', red: 'rot', orange: 'orange', yellow: 'gelb', brown: 'braun', gray: 'grau' };
 
 interface Row {
@@ -28,7 +29,7 @@ interface Row {
   change: (dir: number) => void;
 }
 
-/** Erschaffungsbildschirm: Volk, Körper, Haut, Haare, Kleidung, Name. Beim Barbier nur Haare und Kleidung (gegen Splitter). */
+/** Erschaffungsbildschirm: Volk, Körper, Haut, Haare, Merkmal, Oberweite (Mensch, weiblich), Name. Beim Barbier nur Haare und Kleidung (gegen Splitter). */
 export class CreateScene extends Phaser.Scene {
   private seed = '';
   private edit = false;
@@ -103,6 +104,14 @@ export class CreateScene extends Phaser.Scene {
           if (synth()) this.look.glow = cycle(GLOW_COLORS, this.look.glow ?? GLOW_COLORS[0], d);
           else this.look.eyes = cycle(EYE_COLORS, this.look.eyes ?? EYE_COLORS[0], d);
         },
+      },
+      {
+        // M30: nur Mensch mit weiblichem Körper; Teil des Körpers, daher nach der Erschaffung fest
+        label: 'Oberweite',
+        fixed: true,
+        hidden: () => !bustAllowed(this.look),
+        value: () => BUST_NAMES[this.look.bust ?? 0],
+        change: (d) => (this.look.bust = ((this.look.bust ?? 0) + d + BUST_MAX + 1) % (BUST_MAX + 1)),
       },
     ];
     this.rows = this.cost ? all.filter((r) => !r.fixed) : all;

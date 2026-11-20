@@ -53,6 +53,10 @@ export const debugState = {
   arenaSpawnAt: (_kind: string, _tx: number, _ty: number): void => {},
   /** M28: Blickrichtung des Helden bei diagonalem Zielen (Vergleich 'side' / 'vertical') */
   arenaDiagonal: (_mode: string): void => {},
+  /** M31: Treffer am Helden aus Richtung (dx, dy) relativ zu ihm, optional von einem Gegner (Parade → wankt) */
+  arenaHit: (_dmg: number, _dx: number, _dy: number, _enemyId?: string): void => {},
+  /** M31: Block/Ausweichen des Helden (Arena) */
+  guard: null as null | { blocking: boolean; blockFor: number; dodging: boolean; dodgeReady: boolean; last: string; blocks: number; parries: number; dodges: number; evaded: number },
   /** Weltpunkt → Bildschirmpunkt (für Klicks in Tests) */
   arenaToScreen: (_x: number, _y: number): { x: number; y: number } => ({ x: 0, y: 0 }),
   bannerTitle: '',
