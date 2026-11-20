@@ -1,6 +1,6 @@
 /**
  * Referenz-Server für geteilte Welten (M11). Ohne Abhängigkeiten, Node ≥ 18.
- *   GET  /worlds/:seed/events          → { events }
+ *   GET  /worlds/:seed/events?since=N  → { events, cursor } – nur Ereignisse nach Cursor N (ohne since: alle)
  *   POST /worlds/:seed/events {events} → führt zusammen (Duplikate werden erkannt) → { count }
  *   GET  /worlds/:seed/live            → WebSocket oder Server-Sent Events: Live-Nachrichten der anderen Spieler (M12)
  *   POST /worlds/:seed/live {msg}      → an alle verbundenen Spieler der Welt weiterleiten
@@ -26,6 +26,7 @@ function world(seed) {
   if (!worlds.has(seed)) {
     const file = join(dir, `${safe(seed)}.json`);
     const events = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : [];
+    // Map behält die Einfügereihenfolge: Cursor = Anzahl bereits gelieferter Ereignisse
     worlds.set(seed, new Map(events.map((e) => [key(e), e])));
   }
   return worlds.get(seed);
@@ -114,7 +115,10 @@ const server = createServer((req, res) => {
   if (!m) return send(res, 404, { error: 'not found' });
   const seed = decodeURIComponent(m[1]);
   const w = world(seed);
-  if (req.method === 'GET') return send(res, 200, { events: [...w.values()].sort((a, b) => a.t - b.t) });
+  if (req.method === 'GET') {
+    const since = Math.max(0, Math.floor(Number(new URL(req.url, 'http://x').searchParams.get('since'))) || 0);
+    return send(res, 200, { cursor: w.size, events: [...w.values()].slice(since) });
+  }
   if (req.method !== 'POST') return send(res, 405, { error: 'method' });
   let body = '';
   req.on('data', (c) => {

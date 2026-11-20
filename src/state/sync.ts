@@ -34,6 +34,8 @@ export class SyncClient {
   lastSync = 0;
   /** Ereignisse, die der Server schon hat – nur neue werden gesendet */
   private readonly known = new Set<string>();
+  /** Stand beim Server: Beim Abruf kommen nur Ereignisse danach (spart gelesene Zeilen im kostenlosen Tarif) */
+  private cursor = 0;
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -54,9 +56,11 @@ export class SyncClient {
         if (!post.ok) throw new Error(`sync ${post.status}`);
         for (const e of outgoing) this.known.add(eventKey(e));
       }
-      const res = await fetch(this.endpoint);
+      const res = await fetch(`${this.endpoint}?since=${this.cursor}`);
       if (!res.ok) throw new Error(`sync ${res.status}`);
-      const { events } = (await res.json()) as { events: WorldEvent[] };
+      const { events, cursor } = (await res.json()) as { events: WorldEvent[]; cursor?: number };
+      // Server ohne Cursor (alt) liefert immer alles; ist der Cursor kleiner geworden (Server neu), beim nächsten Mal alles holen
+      if (typeof cursor === 'number') this.cursor = cursor < this.cursor ? 0 : cursor;
       for (const e of events) this.known.add(eventKey(e));
       const fresh = this.state.mergeIn(events);
       if (fresh.length) this.onMerged(fresh);

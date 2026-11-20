@@ -5,3 +5,8 @@ playwright-report/
 screenshots/
 data/
 .wrangler/
+
+# BMAD (lokal installiert, nicht im Repo)
+_bmad/
+.claude/skills/bmad-*/
+.claude/skills/gds-*/

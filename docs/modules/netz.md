@@ -22,7 +22,11 @@ node server/cloudflare/smoke.mjs [URL] # Rauchtest gegen einen laufenden Server 
 - Live-Kanal per **WebSocket** (Hibernation: 20 Nachrichten zählen wie eine Anfrage), SSE + POST bleibt als
   Ausweichweg. Präsenz nur bei Änderung, sonst alle 2 s; Abgleich sendet nur Ereignisse, die der Server noch nicht hat.
   Grund: Der kostenlose Tarif erlaubt 100 000 Anfragen pro Tag.
-- Deploy: `cd server/cloudflare && set -a && . ~/.config/game01/cloudflare.env && set +a && npx wrangler deploy`
+- Abgleich (alle 10 s) holt nur **Ereignisse ab Cursor** (`GET …/events?since=N` → `{ events, cursor }`, Cursor =
+  Einfügereihenfolge/rowid). Ohne Cursor würde jeder Abruf das ganze Protokoll lesen; der kostenlose Tarif erlaubt
+  5 Mio. gelesene Zeilen pro Tag (bei 1 000 Ereignissen wären das nur ~14 Spielstunden). Ohne `since` kommt weiter alles.
+- Deploy: `cd server/cloudflare && set -a && . ~/.config/game01/cloudflare.env && set +a && npx wrangler deploy -c wrangler.toml`
+  (`-c` nötig, sonst greift Wrangler teils die `wrangler.jsonc` des Spiels im Hauptordner)
   (Token liegt außerhalb des Repos, nie committen). `CLOUDFLARE_BUILDS_API_TOKEN` dabei nicht setzen.
 - E2E-Tests gegen einen laufenden Server: `SYNC_URL=<URL> npx playwright test tests/e2e/netz.spec.ts`.
 
