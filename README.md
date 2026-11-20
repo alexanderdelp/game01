@@ -3,10 +3,11 @@
 Ein Action-RPG in Pixel-Art mit prozedural generierter, lebendiger Welt – High-Fantasy trifft Cyberpunk.
 Komplett von Claude Code entwickelt.
 
-**Spielen:** https://alexanderdelp.github.io/game01/ (Titelbildschirm mit Weltauswahl; direkt: `?seed=mein-seed`)
+**Spielen:** https://welten.bytekaska.de (Titelbildschirm mit Weltauswahl; direkt: `?seed=mein-seed`)
 
-**Prototyp Vorgeschichte** (Branch `prototyp/vorgeschichte`): https://alexanderdelp.github.io/game01/vorgeschichte/?legends=1&seed=nebel-kristall-427
-– wird bei jedem Deploy von `main` mitgebaut; nach Änderungen nur am Branch: `gh workflow run pages.yml --ref main`.
+Umgebungen (Cloudflare Workers): `release` → https://welten.bytekaska.de · `main` → https://main.welten.bytekaska.de ·
+jeder andere Branch → `https://<branch>.welten.bytekaska.de` („/“ wird „-“), z. B. der
+**Prototyp Vorgeschichte**: https://prototyp-vorgeschichte.welten.bytekaska.de/?legends=1&seed=nebel-kristall-427
 
 Steuerung: WASD/Pfeile laufen · Leertaste angreifen · K Zauber · E reden/benutzen · Q Trank · M Karte · H Menü (Held, Quests,
 Chronik, Neuigkeiten, Teilen, Schild, Chat, Musik). Am Handy: Ziehen = laufen, Knöpfe ⚔ / E / ♥ und ☰.

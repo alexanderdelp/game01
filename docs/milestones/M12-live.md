@@ -39,7 +39,7 @@ Referenz-Server (`tests/e2e/m12-live.spec.ts`).
 
 ### So spielt man live zusammen
 Server starten (`node server/sync-server.mjs 8787`, öffentlich per HTTPS erreichbar) und alle öffnen
-`https://alexanderdelp.github.io/game01/?seed=<gemeinsame-welt>&sync=https://<server>`. Enter = Chat.
+`https://welten.bytekaska.de/?seed=<gemeinsame-welt>&sync=https://<server>`. Enter = Chat.
 
 Anpassungen während der Umsetzung:
 - Präsenz wird höchstens 10×/s gesendet; liegt eine Sendung noch in der Leitung, wird nur der neueste Zustand nachgeschickt.
