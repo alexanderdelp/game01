@@ -8,7 +8,7 @@ type State = { prosperity: Record<string, number> };
 type R = { name: string; x: number; chat: string };
 
 test('M11: Welt per Link teilen – Freund sieht Taten, Botschaft und Namen (R2, R3, R5)', async ({ browser }) => {
-  const a = await player(browser, '/?seed=share-test&test=1', 'Ada');
+  const a = await player(browser, '/?seed=share-test&test=1&systeme=alle', 'Ada');
   await G(a.page, "g.placeSign('Hallo von Ada!')");
   const town = await G<{ tx: number; ty: number }>(a.page, 'g.meta.settlements[0]');
   for (let i = 0; i < 10; i++) await G(a.page, `g.recordQuest(${town.tx}, ${town.ty})`);
@@ -40,7 +40,7 @@ test('M11: Welt per Link teilen – Freund sieht Taten, Botschaft und Namen (R2,
 test('M11: Automatischer Abgleich über den Referenz-Server (R4)', async ({ browser }) => {
   const server = await syncServer();
   try {
-    const url = `/?seed=sync-test&test=1&sync=${server.url}`;
+    const url = `/?seed=sync-test&test=1&systeme=alle&sync=${server.url}`;
     const a = await player(browser, url, 'Ada');
     await G(a.page, "g.placeSign('Ada war hier')");
     await G(a.page, 'g.syncNow()');
@@ -66,7 +66,7 @@ test('M11: Automatischer Abgleich über den Referenz-Server (R4)', async ({ brow
 test('M12: Live – sehen, chatten, gemeinsam kämpfen (R2–R4)', async ({ browser }) => {
   const server = await syncServer();
   try {
-    const url = `/?seed=live-test&test=1&sync=${server.url}`;
+    const url = `/?seed=live-test&test=1&systeme=alle&sync=${server.url}`;
     const a = await player(browser, url, 'Ada');
     const b = await player(browser, url, 'Bo');
     await expect.poll(() => G<boolean>(a.page, 'g.liveConnected()')).toBe(true);

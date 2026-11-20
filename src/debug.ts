@@ -4,6 +4,8 @@ export const debugState = {
   timeOffset: 0,
   /** Testmodus: keine Invasionen */
   calm: false,
+  /** Eingeschaltete Systeme (M32 Kernmodus) */
+  features: [] as string[],
   scene: '',
   createChange: (_row: number, _dir: number): void => {},
   createConfirm: (_name?: string): void => {},

@@ -7,6 +7,7 @@ import { load, save } from '../game/save';
 import { ATLAS } from '../render/textures';
 import { generateItem, rollDrops, starterKit, type Drop, type Item, type Slot } from '../rpg/items';
 import { newQuestLog, onCollect, onKill, questDropFor, type Quest, type QuestLog } from '../quests/quests';
+import { on } from '../game/features';
 import {
   addItem, discard, drinkPotion, equip, finalStats, gainXp, newHero, spendTalent, unequip, xpForKill,
   type Hero, type Talent,
@@ -118,8 +119,8 @@ export class HeroController {
     const rnd = mulberry32(hash2(Date.now() >>> 0, this.drops++, e.spawn.level, 5));
     const drops = rollDrops(e.spawn.level, rnd);
     if (e.spawn.elite) drops.push({ type: 'item', item: generateItem(e.spawn.level, rnd, undefined, 'rare') });
-    if (onKill(this.quests, e.def.kind).length) this.scene.events.emit('quests-changed');
-    const qd = questDropFor(this.quests, e.def.kind, rnd());
+    if (on('quests') && onKill(this.quests, e.def.kind).length) this.scene.events.emit('quests-changed');
+    const qd = on('quests') ? questDropFor(this.quests, e.def.kind, rnd()) : null;
     if (qd && qd.objective.type === 'collect') drops.push({ type: 'quest', questId: qd.id, name: qd.objective.item });
     drops.forEach((d, i) => this.spawnPickup(e.x + (i - 1) * 14 + (rnd() - 0.5) * 8, e.y - 2 + (rnd() - 0.5) * 8, d));
     this.dirty = true;

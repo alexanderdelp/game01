@@ -62,6 +62,26 @@ test('M8/M15: Hauptstadt ohne Gegner, Treueschwur, Händler mit Gruß, Rivale ve
   expect(errors).toEqual([]);
 });
 
+test('M32: Kernmodus – Herrscher ohne Schwur, keine Aufträge, keine Karawanen, Pfeil zum nächsten Ort (R2)', async ({ page }) => {
+  const errors = await open(page, 'test', '');
+  expect(await G<string[]>(page, 'g.features')).toEqual([]);
+  expect(await G<string[]>(page, 'g.caravans')).toEqual([]);
+  const towns = await G<Town[]>(page, 'g.meta.settlements');
+  const cap = towns.find((t) => t.capital)!;
+  await tp(page, cap.tx + 1, cap.ty + 1);
+  await expect.poll(() => G<string>(page, 'g.town'), { timeout: 30_000 }).toBe(cap.name);
+  // Herrscher plaudert nur, kein Schwur
+  const d = await talkTo(page, { role: 'ruler' });
+  expect(d.choices).toBeUndefined();
+  await page.keyboard.press('e');
+  // Gewöhnliche Bewohner bieten keine Aufträge an, Wegweiser statt Questpfeil
+  const v = await talkTo(page, { role: 'villager' });
+  expect(v.choices).toBeUndefined();
+  expect(await G<number>(page, 'g.quests.active.length')).toBe(0);
+  expect(await G<string>(page, 'g.questPointer')).not.toBe('npc');
+  expect(errors).toEqual([]);
+});
+
 test('M8: Truhe öffnen, Obelisk lesen, Chronik (R4)', async ({ page }) => {
   const errors = await open(page, 'test');
   const chest = await G<{ id: string; tx: number; ty: number }>(
@@ -152,7 +172,7 @@ test('M10: Nach Abwesenheit erscheinen Neuigkeiten (R6)', async ({ page }) => {
   const seen = EPOCH + 1000 * DAY + DAY / 2 - 6 * 3_600_000;
   await page.addInitScript((t) => localStorage.setItem('game01:seen:news-test', JSON.stringify(t)), seen);
   const errors = watchErrors(page);
-  await page.goto('/?seed=news-test&test=1');
+  await page.goto('/?seed=news-test&test=1&systeme=alle');
   await skipCreation(page);
   await waitReady(page);
   await expect.poll(() => G<boolean>(page, 'g.newsOpen'), { timeout: 30_000 }).toBe(true);

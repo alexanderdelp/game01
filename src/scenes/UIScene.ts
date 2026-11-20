@@ -4,6 +4,7 @@ import { TILE_PX } from '../render/chunkPixels';
 import { touchInput } from '../game/input';
 import { xpToNext } from '../rpg/progression';
 import { MAX_ACTIVE, abandon, areaText, isReady, progressText, questTarget, type QuestTarget } from '../quests/quests';
+import { on } from '../game/features';
 import { BannerQueue, type BannerItem } from '../ui/bannerQueue';
 import { WorldMap } from '../ui/WorldMap';
 import { HeroPanel } from '../ui/HeroPanel';
@@ -103,9 +104,9 @@ export class UIScene extends Phaser.Scene {
       ws.events.off('hero-changed', onHero);
     });
     kb.on('keydown-C', () => this.togglePanel());
-    kb.on('keydown-L', () => this.toggleQuestLog());
+    kb.on('keydown-L', () => on('quests') && this.toggleQuestLog());
     kb.on('keydown-B', () => this.toggleChronicle());
-    kb.on('keydown-U', () => this.toggleNews());
+    kb.on('keydown-U', () => on('news') && this.toggleNews());
     kb.on('keydown-G', () => this.toggleShare());
     kb.on('keydown-H', () => this.toggleMenu());
     const onSummary = (d: { hours: number; news: News[]; title?: string }) => this.showNews(d.title ?? `Während du weg warst (${d.hours} Std.) …`, d.news);
@@ -272,9 +273,9 @@ export class UIScene extends Phaser.Scene {
     };
     const entries: [string, () => void][] = [
       ['Held (C)', close(() => this.togglePanel())],
-      ['Quests (L)', close(() => this.toggleQuestLog())],
+      ...(on('quests') ? [['Quests (L)', close(() => this.toggleQuestLog())] as [string, () => void]] : []),
       ['Chronik (B)', close(() => this.toggleChronicle())],
-      ['Neuigkeiten (U)', close(() => this.toggleNews())],
+      ...(on('news') ? [['Neuigkeiten (U)', close(() => this.toggleNews())] as [string, () => void]] : []),
       ['Karte (M)', close(() => this.worldMap.toggle())],
       ['Teilen (G)', close(() => this.toggleShare())],
       ['Schild (T)', close(() => ws.placeSign())],
@@ -391,8 +392,12 @@ export class UIScene extends Phaser.Scene {
     const touch = this.sys.game.device.input.touch;
     const tips: [string, string][] = [
       [`Willkommen in ${ws.world.meta.lore.worldName}!`, touch ? 'Ziehen = laufen · ⚔ = angreifen · E = reden/benutzen' : 'WASD = laufen · Leertaste = angreifen · E = reden/benutzen'],
-      ['Gelbes ! über einem Kopf', 'Diese Person hat einen Auftrag für dich.'],
-      ['Folge dem gelben Pfeil', 'Er führt zu Quests und Orten. Gelbe Kreise auf der Minimap: ungefähres Gebiet.'],
+      ...(on('quests')
+        ? ([
+            ['Gelbes ! über einem Kopf', 'Diese Person hat einen Auftrag für dich.'],
+            ['Folge dem gelben Pfeil', 'Er führt zu Quests und Orten. Gelbe Kreise auf der Minimap: ungefähres Gebiet.'],
+          ] as [string, string][])
+        : ([['Folge dem gelben Pfeil', 'Er führt zum nächsten unentdeckten Ort.']] as [string, string][])),
       ['Alles wird gespeichert', `Kurz spielen, jederzeit aufhören. ${touch ? '☰' : 'H'} öffnet das Menü.`],
     ];
     debugState.tipsShown = 0;
@@ -680,7 +685,7 @@ export class UIScene extends Phaser.Scene {
   /** Tracker (oben rechts), Richtungspfeil zum Questziel und !/? über NPCs. */
   private drawQuests(ws: WorldScene): void {
     const log = ws.hero.quests;
-    const q = log.active.find((a) => isReady(a)) ?? log.active[0];
+    const q = on('quests') ? (log.active.find((a) => isReady(a)) ?? log.active[0]) : undefined;
     const cam = ws.cameras.main;
     const top = this.worldMap.miniBottom() + 6;
     this.tracker.setPosition(this.scale.width - 8, top).setVisible(!!q && !this.panel && !this.questLog);

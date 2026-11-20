@@ -15,6 +15,7 @@ import { createCreatureAtlas, createDecorAtlas } from '../render/textures';
 import type { Item, Slot } from '../rpg/items';
 import { dress } from '../character/outfit';
 import { isReady, onPosition, progressText } from '../quests/quests';
+import { on } from '../game/features';
 import { FACTIONS } from '../world/meta';
 import { LocalWorldStore, WorldState, isDefeated } from '../state/worldState';
 import { TownDecor } from '../render/TownDecor';
@@ -247,7 +248,7 @@ export class WorldScene extends Phaser.Scene {
     debugState.news = this.news.map((n) => n.text);
     const foreign = lastSeen ? foreignNews(this.state.events.filter((e) => e.pid !== this.state.pid && e.t > lastSeen), this.world.meta.settlements, this.world.meta.realms) : [];
     if (foreign.length) this.news.push(...foreign);
-    if (lastSeen && (now - lastSeen > TICK_MS || foreign.length)) {
+    if (on('news') && lastSeen && (now - lastSeen > TICK_MS || foreign.length)) {
       const missed = [...newsBetween(this.world.meta, this.world.seed, lastSeen, now, this.live.caravans), ...foreign];
       if (missed.length) this.time.delayedCall(800, () => this.events.emit('news-summary', { hours: Math.round((now - lastSeen) / TICK_MS), news: missed }));
     }
@@ -442,7 +443,7 @@ export class WorldScene extends Phaser.Scene {
     if (this.markerTimer <= 0 && !this.gm) {
       this.markerTimer = 0.5;
       const t = this.player.tile;
-      const visited = onPosition(this.hero.quests, t.tx, t.ty);
+      const visited = on('quests') ? onPosition(this.hero.quests, t.tx, t.ty) : null;
       if (visited) {
         this.events.emit('float', { x: this.player.x, y: this.player.y - 50, text: `Gefunden: ${progressText(visited)}`, color: '#ffd84a' });
         this.events.emit('quests-changed');

@@ -9,8 +9,10 @@ import { ArenaScene } from './arena/ArenaScene';
 import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
 import { mountBuildInfo } from './env';
+import { enabledFeatures } from './game/features';
 
 const params = new URLSearchParams(location.search);
+debugState.features = enabledFeatures();
 // Ohne Seed in der Adresse startet der Titelbildschirm (Weltauswahl)
 const seed = params.get('seed')?.trim() ?? '';
 // Testmodus: feste Weltzeit (Mittag) und keine Invasionen → reproduzierbare automatische Tests

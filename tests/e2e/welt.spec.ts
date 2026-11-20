@@ -95,7 +95,7 @@ test('M29: Spielleiter-Modus – nur mit ?gm=1, fliegt über Wasser, hinterläss
   expect(await G<boolean>(page, 'g.gm')).toBe(false);
   expect(await G<boolean>(page, 'g.gmTeleport(10, 10)')).toBe(false);
 
-  await page.goto('/?seed=gm-test&test=1&gm=1');
+  await page.goto('/?seed=gm-test&test=1&systeme=alle&gm=1');
   await skipCreation(page);
   await waitReady(page);
   await page.keyboard.press('F2');

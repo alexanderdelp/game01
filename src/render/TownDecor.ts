@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { prosperityLevel, topContributor, type WorldState } from '../state/worldState';
+import { on } from '../game/features';
 import { BIOMES } from '../world/biomes';
 import type { Box } from '../world/collision';
 import { hash2, mulberry32 } from '../world/rng';
@@ -55,6 +56,7 @@ export class TownDecor {
   }
 
   level(id: number): number {
+    if (!on('renown')) return 0;
     return prosperityLevel(Math.max(0, (this.state.d.prosperity.get(id) ?? 0) + this.drift(id)));
   }
 
