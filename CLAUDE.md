@@ -98,7 +98,7 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - **Release:** PR `main` → `release`, **nur nach Freigabe durch Alex**. `release` nie direkt pushen oder löschen –
   GitHub-Branch-Schutz, lokaler `pre-push`-Hook (`git config core.hooksPath scripts/git-hooks`) und CI-Job `release-source`.
 - **Version** in `package.json` (`npm version <x.y.z> --no-git-tag-version`), in jedem Feature-Branch vor dem PR
-  hochzählen: neues Feature Minor, Fix/Text dritte Stelle. Unten links im Spiel sichtbar (außerhalb der Produktion mit
+  hochzählen: neues Feature Minor, Fix/Text dritte Stelle. Unten rechts im Spiel sichtbar (außerhalb der Produktion mit
   Branch und Commit, `src/env.ts`).
 - **Domain wechseln:** nur `pattern` in `wrangler.jsonc`. Achtung: Spielstände (Held, Fog of War) liegen im
   Browserspeicher der Domain und gehen beim Wechsel verloren; die geteilte Welt liegt auf dem Sync-Server und bleibt.
