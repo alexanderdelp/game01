@@ -155,7 +155,9 @@ async function freePort(): Promise<number> {
 }
 
 /** Startet den Referenz-Server auf einem freien Port mit leerem Datenordner und wartet, bis er antwortet. */
+/** Sync-Server für einen Test: eigener Referenz-Server, oder mit SYNC_URL ein laufender (z. B. `wrangler dev`). */
 export async function syncServer(): Promise<{ url: string; stop: () => void }> {
+  if (process.env.SYNC_URL) return { url: process.env.SYNC_URL, stop: () => {} };
   const port = await freePort();
   const proc: ChildProcess = spawn('node', ['server/sync-server.mjs', String(port)], { env: { ...process.env, DATA_DIR: mkdtempSync(join(tmpdir(), 'sync-')) }, stdio: 'ignore' });
   const url = `http://localhost:${port}`;

@@ -75,12 +75,30 @@ export function smoothStep(r: Remote, dt: number): void {
   r.y += (r.ty - r.y) * k;
 }
 
-/** Verbindung zum Live-Kanal des Sync-Servers. */
+/** Gleiche Nachricht wie zuletzt gesendet (ohne Zeitstempel)? Dann kann sie entfallen. */
+function sameState(a: LiveMsg | null, b: LiveMsg): boolean {
+  if (!a || a.type !== 'state' || b.type !== 'state') return false;
+  return a.x === b.x && a.y === b.y && a.facing === b.facing && a.moving === b.moving && a.hp === b.hp && a.maxHp === b.maxHp && a.name === b.name;
+}
+
+/** Unveränderte Präsenz höchstens so oft wiederholen (bleibt unter STALE_MS). */
+export const HEARTBEAT_MS = 2000;
+
+/**
+ * Verbindung zum Live-Kanal des Sync-Servers: bevorzugt WebSocket (Cloudflare-Server), sonst Server-Sent Events + POST
+ * (Referenz-Server `server/sync-server.mjs`).
+ */
 export class LiveSession {
   private es?: EventSource;
+  private ws?: WebSocket;
+  private mode: 'ws' | 'sse' = 'ws';
+  private stopped = false;
+  private retry?: ReturnType<typeof setTimeout>;
   connected = false;
   private queue: LiveMsg | null = null;
   private sending = false;
+  private lastState: LiveMsg | null = null;
+  private lastStateAt = 0;
 
   constructor(
     private readonly url: string,
@@ -92,26 +110,66 @@ export class LiveSession {
     return `${this.url.replace(/\/$/, '')}/worlds/${encodeURIComponent(this.seed)}/live`;
   }
 
+  private receive(data: unknown): void {
+    if (typeof data !== 'string') return;
+    try {
+      this.onMsg(JSON.parse(data) as LiveMsg);
+    } catch {
+      // fehlerhafte Nachricht ignorieren
+    }
+  }
+
   start(): void {
+    if (this.mode === 'ws' && typeof WebSocket !== 'undefined') this.startWs();
+    else this.startSse();
+  }
+
+  private startWs(): void {
+    let opened = false;
+    const ws = new WebSocket(this.endpoint.replace(/^http/, 'ws'));
+    this.ws = ws;
+    ws.onopen = () => {
+      opened = true;
+      this.connected = true;
+    };
+    ws.onmessage = (ev) => this.receive(ev.data);
+    ws.onclose = () => {
+      this.connected = false;
+      if (this.stopped || this.ws !== ws) return;
+      this.ws = undefined;
+      // Nie verbunden → Server kann kein WebSocket (Referenz-Server): auf SSE ausweichen; sonst neu verbinden
+      if (!opened) this.mode = 'sse';
+      this.retry = setTimeout(() => this.start(), opened ? 2000 : 0);
+    };
+  }
+
+  private startSse(): void {
     this.es = new EventSource(this.endpoint);
     this.es.onopen = () => (this.connected = true);
     this.es.onerror = () => (this.connected = false);
-    this.es.onmessage = (ev) => {
-      try {
-        this.onMsg(JSON.parse(ev.data) as LiveMsg);
-      } catch {
-        // fehlerhafte Nachricht ignorieren
-      }
-    };
+    this.es.onmessage = (ev) => this.receive(ev.data);
   }
 
   /** Sofort senden (Treffer, Chat). */
   send(msg: LiveMsg): void {
+    if (this.ws) {
+      if (this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
+      return;
+    }
     void fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(msg), keepalive: true }).catch(() => {});
   }
 
-  /** Präsenz senden; überholte Zustände werden verworfen, solange noch gesendet wird. */
+  /** Präsenz senden: unverändert nur alle HEARTBEAT_MS; per POST werden überholte Zustände verworfen. */
   sendState(msg: LiveMsg): void {
+    const now = Date.now();
+    if (sameState(this.lastState, msg) && now - this.lastStateAt < HEARTBEAT_MS) return;
+    this.lastState = msg;
+    this.lastStateAt = now;
+    if (this.ws) return this.send(msg);
+    this.post(msg);
+  }
+
+  private post(msg: LiveMsg): void {
     this.queue = msg;
     if (this.sending) return;
     const next = this.queue;
@@ -121,11 +179,14 @@ export class LiveSession {
       .catch(() => {})
       .finally(() => {
         this.sending = false;
-        if (this.queue) this.sendState(this.queue);
+        if (this.queue) this.post(this.queue);
       });
   }
 
   stop(): void {
+    this.stopped = true;
+    if (this.retry) clearTimeout(this.retry);
+    this.ws?.close();
     this.es?.close();
   }
 }

@@ -1,0 +1,13 @@
+name = "game01-sync"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "WORLD"
+class_name = "World"
+
+# SQLite-Speicher ist im kostenlosen Tarif nötig
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["World"]

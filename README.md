@@ -3,7 +3,11 @@
 Ein Action-RPG in Pixel-Art mit prozedural generierter, lebendiger Welt – High-Fantasy trifft Cyberpunk.
 Komplett von Claude Code entwickelt.
 
-**Spielen:** https://alexanderdelp.github.io/game01/ (Titelbildschirm mit Weltauswahl; direkt: `?seed=mein-seed`)
+**Spielen:** https://welten.bytekaska.de (Titelbildschirm mit Weltauswahl; direkt: `?seed=mein-seed`)
+
+Umgebungen (Cloudflare Workers): `release` → https://welten.bytekaska.de · `main` → https://main.welten.bytekaska.de ·
+jeder andere Branch → `https://<branch>.welten.bytekaska.de` („/“ wird „-“), z. B. der
+**Prototyp Vorgeschichte**: https://prototyp-vorgeschichte.welten.bytekaska.de/?legends=1&seed=nebel-kristall-427
 
 Steuerung: WASD/Pfeile laufen · Leertaste angreifen · K Zauber · E reden/benutzen · Q Trank · M Karte · H Menü (Held, Quests,
 Chronik, Neuigkeiten, Teilen, Schild, Chat, Musik). Am Handy: Ziehen = laufen, Knöpfe ⚔ / E / ♥ und ☰.
@@ -28,9 +32,12 @@ Werkzeuge: `npx vite-node tools/preview-map.ts <seed> out.png` (Weltkarte), `too
 ## Gemeinsam spielen
 
 - **Per Link:** Im Spiel `G` (Teilen) → „Link kopieren“ und an Freunde schicken. Die Weltdaten stecken im Link-Anker.
-- **Automatisch und live über einen eigenen Server:** `node server/sync-server.mjs 8787` betreiben (HTTPS) und das Spiel mit
-  `?seed=<welt>&sync=https://<dein-server>` öffnen. Dann seht ihr euch live, kämpft gemeinsam und chattet (Enter)
-  – siehe [M11](docs/milestones/M11-geteilte-welt.md) und [M12](docs/milestones/M12-live.md).
+- **Automatisch und live:** Das veröffentlichte Spiel gleicht jede Welt mit dem öffentlichen Sync-Server
+  (`https://game01-sync.alexanderdelp.workers.dev`, Cloudflare) ab. Wer dieselbe Welt (Seed) spielt, sieht die Taten der
+  anderen, und wer gleichzeitig spielt, sieht sich live, kämpft gemeinsam und chattet (Enter) – siehe
+  [M11](docs/milestones/M11-geteilte-welt.md) und [M12](docs/milestones/M12-live.md).
+  `?sync=off` schaltet den Abgleich ab, `?sync=on` wieder ein, `?sync=<URL>` nutzt einen eigenen Server
+  (`node server/sync-server.mjs 8787` hinter HTTPS).
 
 ## Lizenzen & Credits
 

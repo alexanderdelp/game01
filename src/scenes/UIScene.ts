@@ -523,7 +523,7 @@ export class UIScene extends Phaser.Scene {
     y += 36;
     if (note) y += txt(y, note, '#4cb53e').height + 6;
     const liveN = ws.remote.remotes.size;
-    const st = ws.sync ? `Automatischer Abgleich: ${ws.sync.status} (${ws.sync.url}) · Live: ${ws.live2?.connected ? `verbunden, ${liveN} Mitspieler online` : 'getrennt'}` : 'Automatischer Abgleich: aus (mit ?sync=<Server> aktivierbar, siehe server/sync-server.mjs)';
+    const st = ws.sync ? `Automatischer Abgleich: ${ws.sync.status} (${ws.sync.url}) · Live: ${ws.live2?.connected ? `verbunden, ${liveN} Mitspieler online` : 'getrennt'}` : 'Automatischer Abgleich: aus (mit ?sync=on wieder einschalten, ?sync=<Server> für einen eigenen)';
     y += txt(y, st, ws.sync?.status === 'verbunden' ? '#2fe0d8' : '#8a8aa0', 11).height + 10;
     txt(y, 'Spieler in dieser Welt:', '#f4f0e8', 13);
     y += 20;

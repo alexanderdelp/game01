@@ -12,7 +12,7 @@ Vorrang vor Komplexität (Wünsche: „casual“, „einfache, spaßige Action�
 npm run arena          # Entwicklungsserver, öffnet http://localhost:5173/?arena=1
 ```
 
-Auch online: `https://alexanderdelp.github.io/game01/?arena=1`.
+Auch online: `https://welten.bytekaska.de/?arena=1`.
 
 - **Gelände** (M25): Offen, Säulen, Wald & Felsen, Engpässe, Sumpf (`src/arena/layouts.ts`, Daten → `blocked`/`speedAt`).
 - **Waffe** (M25): ohne / Alter Dolch / Dolch gewöhnlich, selten, episch mit Stufe; Werte wie im Spiel (`finalStats`).

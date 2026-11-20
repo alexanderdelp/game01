@@ -1,26 +1,39 @@
 import { load, save } from '../game/save';
-import type { WorldEvent, WorldState } from './worldState';
+import { eventKey, type WorldEvent, type WorldState } from './worldState';
 
 export type SyncStatus = 'aus' | 'verbinde' | 'verbunden' | 'fehler';
 
-/** Sync-Adresse aus der URL (?sync=…) übernehmen bzw. gespeicherte verwenden; ?sync=off schaltet ab. */
-export function syncUrlFromLocation(): string | null {
-  const p = new URLSearchParams(location.search).get('sync');
+/** Öffentlicher Sync-Server (Cloudflare, `server/cloudflare/`), mit dem veröffentlichte Spiele standardmäßig abgleichen. */
+export const DEFAULT_SYNC_URL = 'https://game01-sync.alexanderdelp.workers.dev';
+
+/**
+ * Sync-Adresse: ?sync=<URL> übernimmt und merkt sie, ?sync=off schaltet dauerhaft ab, ?sync=on zurück zum Standard.
+ * Ohne Angabe gilt die gemerkte Wahl, sonst der öffentliche Server – außer im Testmodus und lokal (Entwicklung, Vorschau, automatische Tests).
+ */
+export function syncUrlFromLocation(search = location.search, useDefault = import.meta.env.PROD && !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname)): string | null {
+  const params = new URLSearchParams(search);
+  const p = params.get('sync');
   if (p === 'off') {
-    save('sync:url', null);
+    save('sync:url', 'off');
     return null;
   }
-  if (p) {
+  if (p === 'on') save('sync:url', null);
+  else if (p) {
     save('sync:url', p);
     return p;
   }
-  return load<string>('sync:url');
+  const stored = load<string>('sync:url');
+  if (stored === 'off') return null;
+  if (stored) return stored;
+  return useDefault && params.get('test') !== '1' ? DEFAULT_SYNC_URL : null;
 }
 
 /** Gleicht das Ereignisprotokoll regelmäßig mit einem Sync-Server ab (siehe server/sync-server.mjs). */
 export class SyncClient {
   status: SyncStatus = 'verbinde';
   lastSync = 0;
+  /** Ereignisse, die der Server schon hat – nur neue werden gesendet */
+  private readonly known = new Set<string>();
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(
@@ -35,9 +48,16 @@ export class SyncClient {
 
   async sync(): Promise<void> {
     try {
-      await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ events: this.state.events }) });
+      const outgoing = this.state.events.filter((e) => !this.known.has(eventKey(e)));
+      if (outgoing.length) {
+        const post = await fetch(this.endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ events: outgoing }) });
+        if (!post.ok) throw new Error(`sync ${post.status}`);
+        for (const e of outgoing) this.known.add(eventKey(e));
+      }
       const res = await fetch(this.endpoint);
+      if (!res.ok) throw new Error(`sync ${res.status}`);
       const { events } = (await res.json()) as { events: WorldEvent[] };
+      for (const e of events) this.known.add(eventKey(e));
       const fresh = this.state.mergeIn(events);
       if (fresh.length) this.onMerged(fresh);
       this.status = 'verbunden';

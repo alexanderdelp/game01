@@ -80,6 +80,31 @@ Erfülle einen technischen Meilenstein nach dem anderen. Sollte es gute Gründe 
 - 2026-11-01 – **Zusätzlicher Meilenstein 28 „Kampf in 8 Richtungen“** (Nutzerwunsch): Zielen und Schlagen diagonal.
 - 2026-11-01 – **Zusätzlicher Meilenstein 29 „Spielleiter-Modus“** (Nutzerwunsch): fliegen, Teleport über die Karte.
 - 2026-11-01 – **Zusätzliche Meilensteine 30 „Oberweite-Regler“ und 31 „Blocken & Ausweichen“** (Nutzerwünsche); dazu Prototyp „schräge Perspektive“ auf eigenem Branch `prototyp/perspektive` (nicht auf main).
+- 2026-11-09 – Prototyp **Vorgeschichte** (Branch `prototyp/vorgeschichte`, nicht auf main) wird auf GitHub Pages unter `/game01/vorgeschichte/` mitveröffentlicht (Nutzerwunsch). → 2026-11-20: als Cloudflare-Vorschau des Branches unter https://prototyp-vorgeschichte.welten.bytekaska.de.
+
+## Auslieferung (Cloudflare Workers, wie konjugi)
+
+| Branch | Umgebung | Adresse | Abzeichen im Spiel |
+|---|---|---|---|
+| `release` | Produktion | https://welten.bytekaska.de | keins, unten nur Version |
+| `main` | Integration | https://main.welten.bytekaska.de | „Integration“ |
+| `feat/…`, `fix/…`, `prototyp/…` | Abnahme | `https://<branch>.welten.bytekaska.de` („/“ → „-“) | „Abnahme: <branch>“ |
+
+- Worker `game01` (statische Assets, `wrangler.jsonc`), gebaut von **Cloudflare Workers Builds** aus GitHub:
+  `release` → `npx wrangler deploy`, alle anderen Branches → `npx wrangler preview`. Der Sync-Server ist ein eigener
+  Worker (`game01-sync`, `server/cloudflare/`) und wird von Hand deployt (`docs/modules/netz.md`).
+- **Arbeitsweise:** Feature-Branch von `main` → PR nach `main`. Gemergt wird, wenn CI („check“) und die
+  Cloudflare-Vorschau grün sind (Claude darf selbst mergen). Mehrere Agenten: siehe unten, Integration ebenfalls per PR.
+- **Release:** PR `main` → `release`, **nur nach Freigabe durch Alex**. `release` nie direkt pushen oder löschen –
+  GitHub-Branch-Schutz, lokaler `pre-push`-Hook (`git config core.hooksPath scripts/git-hooks`) und CI-Job `release-source`.
+- **Version** in `package.json` (`npm version <x.y.z> --no-git-tag-version`), in jedem Feature-Branch vor dem PR
+  hochzählen: neues Feature Minor, Fix/Text dritte Stelle. Unten links im Spiel sichtbar (außerhalb der Produktion mit
+  Branch und Commit, `src/env.ts`).
+- **Domain wechseln:** nur `pattern` in `wrangler.jsonc`. Achtung: Spielstände (Held, Fog of War) liegen im
+  Browserspeicher der Domain und gehen beim Wechsel verloren; die geteilte Welt liegt auf dem Sync-Server und bleibt.
+- **Zugang:** `~/.config/game01/cloudflare.env` – `CLOUDFLARE_API_TOKEN` (Account-Token: Workers, Zone) und
+  `CLOUDFLARE_BUILDS_API_TOKEN` (Benutzer-Token, nur für die Workers-Builds-API `/builds/...`: Trigger, Build-Logs).
+  Nie ausgeben oder committen.
 
 ## Mehrere Agenten
 
@@ -90,7 +115,7 @@ Eine neue Session, die koordinieren soll, liest zuerst diese beiden Dateien.
 ## Vorgehen
 
 1. Hole Dir alles, was Du voraussichtlich von mir brauchst, zu Beginn einer Session.
-2. Nutze GitHub & GitHub Pages.
+2. Nutze GitHub & Cloudflare (Workers; vorher GitHub Pages, umgestellt 2026-11-20 auf Nutzerwunsch).
 3. Nutze für die technischen Meilensteine so lange es geht eine rein lokale Datenhaltung (bspw. Browser Cache).
 4. Du hast den Auftrag, Pakete, Erweiterungen usw., die Du für die Entwicklung benötigst, eigenständig zu installieren.
 5. Nutze ein explizites Terminal, in dem ich Dir sudo Rechte gebe, falls Du sie benötigst
@@ -104,7 +129,7 @@ Eine neue Session, die koordinieren soll, liest zuerst diese beiden Dateien.
 Format: Datum – Entscheidung (Begründung).
 
 ### Organisatorisch
-- 2026-10-30 – Commits als `alexanderdelp` mit GitHub-noreply-Adresse, direkt auf `main` (mit Nutzer abgestimmt; ein Entwickler, keine Reviews nötig).
+- 2026-10-30 – Commits als `alexanderdelp` mit GitHub-noreply-Adresse, direkt auf `main` (mit Nutzer abgestimmt; ein Entwickler, keine Reviews nötig). → 2026-11-20: Feature-Branches + PR nach `main`, Release per PR `main` → `release` (s. „Auslieferung“).
 - 2026-10-30 – Spielsprache Deutsch, Texte so gehalten, dass Übersetzung nachrüstbar ist (mit Nutzer abgestimmt).
 - 2026-10-30 – Nach jedem Meilenstein Kurz-Update an den Nutzer (Link, 1–4 Screenshots, 3 Punkte) (Nutzerwunsch).
 - 2026-10-30 – Arbeitstitel „Game01“; ein Name entsteht mit dem World Building (M8). → 2026-10-31: Name **„Splitterwelten“** (Repo bleibt `game01`).
@@ -114,7 +139,7 @@ Format: Datum – Entscheidung (Begründung).
 ### Technik
 - 2026-10-30 – Phaser 3.87, TypeScript 5.7, Vite 6, Vitest 2, Playwright 1.49 (Versionen fest, stabil und bekannt).
 - 2026-10-30 – Weltlogik (`src/world`) ohne Phaser-Abhängigkeit → mit Unit-Tests ohne Browser prüfbar.
-- 2026-10-30 – CI (GitHub Actions) führt Unit- und Akzeptanztests aus und deployt nur bei Erfolg auf GitHub Pages.
+- 2026-10-30 – CI (GitHub Actions) führt Unit- und Akzeptanztests aus und deployt nur bei Erfolg auf GitHub Pages. → 2026-11-20: Auslieferung über Cloudflare Workers Builds, CI prüft nur noch (s. „Auslieferung“).
 - 2026-10-30 – Chunk-Generierung in Web Workern (ein Chunk braucht ~50 ms; im Haupt-Thread würde das ruckeln).
 
 ### Welt
@@ -165,6 +190,8 @@ Format: Datum – Entscheidung (Begründung).
 - 2026-11-01 – (M29) Spielleiter-Modus nur mit `?gm=1` (F2 / Menü): fliegen ohne Kollision, unverwundbar, Karte ohne Nebel mit Klick-Teleport; hinterlässt keine Spuren (kein Fog, keine Entdeckungen, Position nicht gespeichert).
 - 2026-11-01 – (M30) Oberweite als Regler (4 Stufen) nur für Mensch + weiblich, prozedurale Verformung von Körper und Oberteilen; nach der Erschaffung fest wie Volk/Körper.
 - 2026-11-01 – (M31) Blocken (L halten, Parieren kurz vor dem Treffer) und Ausweichen (Leertaste) vorerst nur in der Arena; ins Spiel nach Freigabe des Nutzers.
+- 2026-11-20 – **Auslieferung über Cloudflare statt GitHub Pages** (Nutzerwunsch, wie die anderen Projekte des Nutzers): Produktion https://welten.bytekaska.de aus `release`, Integration aus `main`, Abnahme pro Branch; GitHub Pages abgeschaltet. Lokale Spielstände von github.io werden nicht übernommen (Tech-Demo, wie bei früheren Umbauten).
+- 2026-11-20 – **Öffentlicher Sync-Server auf Cloudflare** (Nutzerwunsch, Token vom Nutzer): Worker + Durable Object je Welt unter `https://game01-sync.alexanderdelp.workers.dev` (`server/cloudflare/`). Veröffentlichte Spiele gleichen standardmäßig damit ab (`?sync=off` schaltet ab; nicht im Testmodus und nicht auf localhost). Live per WebSocket statt SSE + POST, Präsenz nur bei Änderung und Abgleich nur neuer Ereignisse – sonst wäre der kostenlose Tarif (100 000 Anfragen/Tag) nach ~3 h Spielzeit erschöpft. Referenz-Server kann jetzt auch WebSocket.
 - 2026-10-31 – (M21) Kampf über `CombatTerrain` entkoppelt; Kampf-Arena `?arena=1`; Module mit eigener Anleitung, `CLAUDE.md` im Ordner und Skill (`/kampf`); parallele Agenten in eigenen Git-Worktrees, Integration auf `main` durch einen Integrator.
 
 ### Offene Aufgaben (mit dem Nutzer zu klären)
@@ -172,5 +199,5 @@ Format: Datum – Entscheidung (Begründung).
 - **Ideen für später** (vom Nutzer als Idee vorgemerkt): Spielweise je Volk, Reaktionen der Fraktionen auf Völker, Rüstungsgrenzen je Volk, Umfärben beim Schneider.
 
 ### Ausblick (Annahmen für spätere Meilensteine)
-- Dauerhaft automatisch geteilte Welt und Live-Multiplayer (M12) brauchen einen öffentlich erreichbaren Server mit HTTPS. Den muss der Nutzer bereitstellen (Konto bei einem Hoster); der Referenz-Server liegt bereit.
+- ~~Öffentlicher Server für geteilte Welt und Live-Multiplayer~~ → seit 2026-11-20 auf Cloudflare (s. o.). Zugangsdaten: `~/.config/game01/cloudflare.env`.
 
