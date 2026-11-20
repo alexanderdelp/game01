@@ -12,6 +12,9 @@ jeder andere Branch → `https://<branch>.welten.bytekaska.de` („/“ wird „
 Kernmodus: Aufträge, Treueschwur, Karawanen, Invasionen, Neuigkeiten und Ansehen sind vorerst abgeschaltet
 (`docs/PLAN-kern.md`); `?systeme=alle` schaltet sie ein.
 
+Labore: `?arena=1` Kampf-Arena · `?labor=1` Bewegungslabor im echten Gelände mit der Testszene „Der Berg“
+(`docs/milestones/M33-bewegungslabor.md`).
+
 Steuerung: WASD/Pfeile laufen · Leertaste angreifen · K Zauber · E reden/benutzen · Q Trank · M Karte · H Menü (Held, Quests,
 Chronik, Neuigkeiten, Teilen, Schild, Chat, Musik). Am Handy: Ziehen = laufen, Knöpfe ⚔ / E / ♥ und ☰.
 Gamepad: Stick laufen, A Angriff, RT Zauber, X Reden, Y Trank, Start Menü, Select Karte.

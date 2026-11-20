@@ -6,6 +6,7 @@ import { GAME_TITLE, TitleScene } from './scenes/TitleScene';
 import { UIScene } from './scenes/UIScene';
 import { WorldScene } from './scenes/WorldScene';
 import { ArenaScene } from './arena/ArenaScene';
+import { LabScene } from './lab/LabScene';
 import { debugState } from './debug';
 import { DAY_MS, EPOCH } from './sim/simulation';
 import { mountBuildInfo } from './env';
@@ -32,12 +33,15 @@ const game = new Phaser.Game({
 });
 
 // Kampf-Arena: nur der Kampf, ohne Welt (zum Ausprobieren von Steuerung und Kampfgefühl)
-const arena = params.get('arena') === '1';
+// Bewegungslabor (M33): Ausschnitt der echten Welt ohne Weltsysteme
+const labor = params.get('labor') === '1';
+const arena = params.get('arena') === '1' || labor;
 const hasHero = !!seed && !!load<Hero>(`hero:${seed}`)?.appearance;
 game.scene.add('world', WorldScene, !arena && !!seed && hasHero, { seed });
 game.scene.add('ui', UIScene, false);
 game.scene.add('create', CreateScene, !arena && !!seed && !hasHero, { seed });
 game.scene.add('title', TitleScene, !arena && !seed);
-game.scene.add('arena', ArenaScene, arena);
+game.scene.add('arena', ArenaScene, arena && !labor);
+game.scene.add('labor', LabScene, labor);
 document.title = GAME_TITLE;
 mountBuildInfo();
