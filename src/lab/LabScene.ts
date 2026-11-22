@@ -19,9 +19,10 @@ import type { Box } from '../world/collision';
 import { tileHeight } from '../world/terrain';
 import { CHUNK_TILES, WORLD_TILES, WorldGen } from '../world/WorldGen';
 import { Atmosphere } from './atmosphere';
-import { LAB_DEFAULTS, LAB_MOOD, LAB_TUNABLES, applyLabSnapshot, exportLabCode, gradeFactor, labSnapshot, smoothDir } from './labTuning';
+import { LAB_DEFAULTS, LAB_MOOD, LAB_TUNABLES, LAB_VIEW, applyLabSnapshot, exportLabCode, gradeFactor, labSnapshot, smoothDir } from './labTuning';
 import { buildLabPanel } from './labPanel';
 import { PLACES, parsePlace, type LabPlace } from './places';
+import { PerspectiveView } from './view3d/PerspectiveView';
 
 const WAVE: EnemyKind[] = ['slime', 'slime', 'bandit', 'bandit', 'drone', 'wisp'];
 
@@ -51,6 +52,10 @@ export class LabScene extends Phaser.Scene {
   /** gemessenes Tempo (px/s, geglättet) */
   private speed = 0;
   private panel?: HTMLElement;
+  /** Perspektive (Laborphase 2), sonst Draufsicht */
+  view?: PerspectiveView;
+  /** Hinweis, falls die Perspektive nicht startet (kein WebGL2) */
+  viewNote = '';
 
   constructor() {
     super('labor');
@@ -121,6 +126,15 @@ export class LabScene extends Phaser.Scene {
     cam.setZoom(LAB_MOOD.zoom);
     cam.startFollow(this.player.sprite, true, 0.15, 0.15, 0, 20);
     cam.centerOn(start.x, start.y);
+    this.view = undefined;
+    this.viewNote = '';
+    if (LAB_VIEW.on) {
+      this.view = PerspectiveView.create(this, this.world, this.chunks);
+      if (this.view) {
+        const v = this.view;
+        this.mood.viewOverride = () => v.worldView();
+      } else this.viewNote = 'Perspektive: WebGL2 fehlt, Draufsicht';
+    }
 
     const kb = this.input.keyboard!;
     this.keys = kb.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,SHIFT') as Record<string, Phaser.Input.Keyboard.Key>;
@@ -151,6 +165,7 @@ export class LabScene extends Phaser.Scene {
     debugState.arenaTune = (id: string, v: number) => this.tune(id, v);
     debugState.teleport = (tx, ty) => this.player.setPosition(at(tx, ty).x, at(tx, ty).y);
     debugState.laborSetPlace = (id: string) => this.setPlace(id);
+    debugState.laborSetView = (on: boolean) => this.setView(on);
     debugState.laborOpenChest = () => {
       if (this.chest) this.player.setPosition(this.chest.x, this.chest.y + 20);
       return this.openChest();
@@ -198,13 +213,13 @@ export class LabScene extends Phaser.Scene {
     if (cave) {
       const cx = cave.tx * TILE_PX + TILE_PX / 2;
       const by = (cave.ty + 1) * TILE_PX;
-      const g = this.add.graphics().setDepth(by);
-      // Felshügel mit dunklem Bogen
-      g.fillStyle(0x5c5a66, 1).fillRoundedRect(cx - 52, by - 58, 104, 58, { tl: 26, tr: 30, bl: 4, br: 4 });
-      g.fillStyle(0x76747f, 1).fillRoundedRect(cx - 44, by - 56, 70, 18, 9);
-      g.fillStyle(0xe8eef4, 1).fillRoundedRect(cx - 40, by - 60, 46, 8, 4).fillRoundedRect(cx + 8, by - 56, 30, 6, 3);
-      g.fillStyle(0x0a0910, 1).fillRoundedRect(cx - 16, by - 34, 32, 34, { tl: 15, tr: 15, bl: 0, br: 0 });
-      g.fillStyle(0x3a3844, 1).fillRect(cx - 18, by - 2, 36, 2);
+      // Felshügel mit dunklem Bogen (Grafik am Fußpunkt, damit die Perspektive sie aufrecht hinstellt)
+      const g = this.add.graphics({ x: cx, y: by }).setDepth(by).setData('upright', true);
+      g.fillStyle(0x5c5a66, 1).fillRoundedRect(-52, -58, 104, 58, { tl: 26, tr: 30, bl: 4, br: 4 });
+      g.fillStyle(0x76747f, 1).fillRoundedRect(-44, -56, 70, 18, 9);
+      g.fillStyle(0xe8eef4, 1).fillRoundedRect(-40, -60, 46, 8, 4).fillRoundedRect(8, -56, 30, 6, 3);
+      g.fillStyle(0x0a0910, 1).fillRoundedRect(-16, -34, 32, 34, { tl: 15, tr: 15, bl: 0, br: 0 });
+      g.fillStyle(0x3a3844, 1).fillRect(-18, -2, 36, 2);
       blockers.push({ x: cx - 52, y: by - 40, w: 104, h: 40 });
       const chx = cx + 26;
       const chy = by + TILE_PX - 4;
@@ -224,12 +239,12 @@ export class LabScene extends Phaser.Scene {
       // Neben dem Weg (zwei Kacheln nördlich), ohne Kollision
       const x = tx * TILE_PX + TILE_PX / 2;
       const y = (ty - 1) * TILE_PX;
-      const g = this.add.graphics().setDepth(y);
-      g.fillStyle(0x000000, 0.25).fillEllipse(x, y, 14, 5);
-      g.fillStyle(0x5a3a22, 1).fillRect(x - 2, y - 26, 4, 26);
-      g.fillStyle(0x8a5e34, 1).fillRect(x - 26, y - 35, 52, 15);
-      g.fillStyle(0x5a3a22, 1).fillRect(x - 26, y - 22, 52, 2);
-      this.add.text(x, y - 27, `${arrow} Gipfel`, { fontFamily: 'monospace', fontSize: '8px', color: '#fff4dc' }).setOrigin(0.5).setResolution(2).setDepth(y + 1);
+      const g = this.add.graphics({ x, y }).setDepth(y).setData('upright', true);
+      g.fillStyle(0x000000, 0.25).fillEllipse(0, 0, 14, 5);
+      g.fillStyle(0x5a3a22, 1).fillRect(-2, -26, 4, 26);
+      g.fillStyle(0x8a5e34, 1).fillRect(-26, -35, 52, 15);
+      g.fillStyle(0x5a3a22, 1).fillRect(-26, -22, 52, 2);
+      this.add.text(x, y - 27, `${arrow} Gipfel`, { fontFamily: 'monospace', fontSize: '8px', color: '#fff4dc' }).setOrigin(0.5).setResolution(2).setDepth(y + 1).setData('foot', { x, y });
     });
   }
 
@@ -250,6 +265,13 @@ export class LabScene extends Phaser.Scene {
     const url = new URL(location.href);
     url.searchParams.delete('ort');
     history.replaceState(null, '', url);
+    this.scene.restart();
+  }
+
+  /** Perspektive an/aus (Neustart der Szene, Ort und Werte bleiben). */
+  setView(on: boolean): void {
+    LAB_VIEW.on = on ? 1 : 0;
+    this.saveTuning();
     this.scene.restart();
   }
 
@@ -321,8 +343,10 @@ export class LabScene extends Phaser.Scene {
   update(_t: number, delta: number): void {
     const dt = Math.min(0.05, delta / 1000);
     const cam = this.cameras.main;
-    if (cam.zoom !== LAB_MOOD.zoom) cam.setZoom(LAB_MOOD.zoom);
-    this.chunks.update(cam.worldView);
+    if (!this.view) {
+      if (cam.zoom !== LAB_MOOD.zoom) cam.setZoom(LAB_MOOD.zoom);
+      this.chunks.update(cam.worldView);
+    }
 
     // Laufen: geglättete Richtung, Steigung in Laufrichtung
     const target = this.inputDir();
@@ -349,6 +373,7 @@ export class LabScene extends Phaser.Scene {
     this.ctx.playerAlive = this.combat.alive;
     this.enemies.update(dt, this.ctx);
 
+    this.view?.frame(this.player.x, this.player.y, dt);
     const t = this.player.tile;
     const biome = this.chunks.biomeAt(t.tx, t.ty);
     this.mood.update(dt, LAB_MOOD.fog, h0, LAB_MOOD.snow, biome);
@@ -365,6 +390,7 @@ export class LabScene extends Phaser.Scene {
         `Höhe ${h0.toFixed(1)} · Steigung ${grade >= 0 ? '+' : ''}${grade.toFixed(2)}`,
         `Tempo ${Math.round(this.speed)} px/s (Grund ${PLAYER_MOVE.speed})`,
         `LP ${Math.ceil(s.hp)}/${s.maxHp} · Gegner ${this.enemies.enemies.size}`,
+        this.view ? `Perspektive ${LAB_VIEW.tilt}° · ${Math.round(this.game.loop.actualFps)} FPS · Objekte ${this.view.visible} (${this.view.hidden} verdeckt)` : this.viewNote || 'Draufsicht',
         this.altar ? `Gipfel (Altar): ${summitHint(t, this.altar)}` : '',
         near ? 'E: Truhe öffnen' : '',
         'WASD laufen · Umschalt rennen · J Hieb · K Zauber · L Block · Leertaste Ausweichen',
@@ -387,6 +413,7 @@ export class LabScene extends Phaser.Scene {
       speed: this.speed,
       fog: this.mood.fogAlpha,
       snow: this.mood.snowRate,
+      view: this.view ? { on: true, visible: this.view.visible, hidden: this.view.hidden, hero: this.view.screenOf(this.player.x, this.player.y) ?? null } : { on: false },
     };
     if (!debugState.ready && this.chunks.loadedCount > 0 && this.chunks.pendingCount === 0) debugState.ready = true;
   }

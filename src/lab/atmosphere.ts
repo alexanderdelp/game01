@@ -42,8 +42,12 @@ export class Atmosphere {
     this.snow.setDepth(1_399_000);
   }
 
+  /** Abweichender sichtbarer Weltausschnitt (Perspektive: Kamera steht fest) */
+  viewOverride?: () => { x: number; y: number; w: number; h: number };
+
   /** Sichtbarer Ausschnitt in Weltkoordinaten. */
   private world(): { x: number; y: number; w: number; h: number } {
+    if (this.viewOverride) return this.viewOverride();
     const v = this.scene.cameras.main.worldView;
     return { x: v.x, y: v.y, w: v.width, h: v.height };
   }
@@ -65,14 +69,14 @@ export class Atmosphere {
    */
   update(dt: number, fog: number, height: number, snow: number, biome: number | undefined): void {
     this.t += dt;
-    const cam = this.scene.cameras.main;
     const v = this.view();
+    const wv = this.world();
     // Nebel: im Tal ein Hauch, oben dicht
     const lift = Phaser.Math.Clamp(0.25 + height / 24, 0.25, 1);
     this.fogAlpha = fog * lift * 0.55;
     this.fog.forEach((f, i) => {
       f.setPosition(v.x + v.w / 2, v.y + v.h / 2).setSize(v.w + 4, v.h + 4);
-      f.setTilePosition(cam.scrollX * (0.6 + i * 0.3) + this.t * (10 + i * 7), cam.scrollY * (0.6 + i * 0.3) + this.t * (2 - i * 3));
+      f.setTilePosition(wv.x * (0.6 + i * 0.3) + this.t * (10 + i * 7), wv.y * (0.6 + i * 0.3) + this.t * (2 - i * 3));
       f.setAlpha(this.fogAlpha * (i ? 0.7 : 1));
     });
     // Schnee nur, wo es kalt ist

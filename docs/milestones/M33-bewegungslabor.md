@@ -58,3 +58,39 @@ Aufruf: `?labor=1` (optional `&ort=<id>`). Nur PC/Tastatur (Touch: Streitpunkt 2
 - Weg zum Gipfel nicht erkennbar → Wegweiser alle 16 Kacheln entlang eines begehbaren Wegs (`trail` in `places.ts`).
 - Höhen in der Draufsicht nicht lesbar, Nebel ohne erkennbaren Höhenbezug, Bewertung ohne Perspektive nicht
   möglich → Laborphase 2 (Perspektive) ist der nächste Schritt; Höhendarstellung wird dort mitgeprüft.
+
+## Anforderungen Laborphase 2 – Perspektive (2026-11-22)
+
+Ziel: Höhen und Wege beurteilbar machen. Alex wählt danach die Perspektive. Die Laufwerte bleiben einstellbar, weil er sie erst mit Perspektive festlegen will.
+
+- **P1 Boden mit echter Höhe:** Der Boden wird als Höhenfeld gezeichnet (WebGL-Raymarching, eigener Canvas unter Phaser), nicht als flache gekippte Ebene. Hänge, Felswände und Gipfel stehen sichtbar in die Höhe. Die gemalten Felswände der Draufsicht werden zu steilen Flächen.
+- **P2 Lesbare Höhe:** Licht von Nordwesten (Schattierung) und wahlweise Höhenlinien.
+- **P3 Figuren als Billboards:** Held, Gegner, Dekor, Altar, Höhle und Wegweiser stehen aufrecht. Sie stehen auf ihrer Geländehöhe, werden nach Tiefe skaliert und hinter Bergrücken ausgeblendet. Schatten und Schwung-Bögen liegen flach.
+- **P4 Regler:** Perspektive an/aus, Neigung, Blickwinkel, Zoom, Sichtweite, Höhenmaßstab, Schattierung, Höhenlinien und Bildpunktgröße. Die Werte werden gespeichert und mit „Werte kopieren“ ausgegeben.
+- **P5 Sicht und Nebel:** Die Sichtweite endet im Dunst. Der Stimmungsnebel wird mit der Höhe dichter, wie in Phase 1.
+- **P6 Laufen unverändert einstellbar:** Alle Regler aus Phase 1 gelten weiter. Die Steuerung bleibt (Kamera blickt immer nach Norden).
+- **P7 Abschaltbar:** Ohne Perspektive verhält sich das Labor wie in Phase 1 (zum Vergleich).
+
+## Ergebnis Laborphase 2 (0.36.0)
+
+- **Boden mit Höhe** (`src/lab/view3d/`):
+  - `heightfield.ts` berechnet die Höhe je 4-px-Zelle. Gemalte Felswände werden zu steilen Rampen.
+  - `terrainRenderer.ts` ist ein WebGL2-Raymarcher. Er nutzt eine Ringtextur aus Bodenbild (NEAREST) und Zellhöhen (R16F, linear).
+  - Licht kommt von Nordwesten, Höhenlinien sind wahlweise zuschaltbar, in der Ferne liegt Dunst.
+- **Billboards** (`PerspectiveView.ts`):
+  - Die Spiellogik bleibt in Weltkoordinaten. Nach jedem Update werden alle Weltobjekte projiziert und vor dem nächsten Update zurückgesetzt.
+  - Objekte stehen auf ihrer Geländehöhe, werden nach Tiefe skaliert und hinter Rücken verdeckt (Strahltest auf der CPU).
+  - Schatten und Schwung-Bögen liegen flach.
+- **Regler:**
+  - Perspektive an/aus (Neustart der Szene).
+  - Neigung, Blickwinkel, Sichtweite (bis 60 Kacheln, begrenzt durch die Ringtextur), Höhenmaßstab, Schattierung, Höhenlinien, Bodenpixel.
+  - Zoom bleibt unter „Stimmung & Kamera“.
+  - Alle Werte werden gespeichert und stehen in „Werte kopieren“.
+- **Laufwerte** aus Phase 1 bleiben unverändert einstellbar (Wunsch Alex: erst mit Perspektive festlegen).
+- **Bekannte Grenzen:**
+  - Grafiken in Weltkoordinaten werden nur um den Helden herum mitskaliert (Näherung), etwa Lebensbalken, Schild-Effekt und Schnee.
+  - Figuren werden ganz verdeckt oder gar nicht, nicht teilweise.
+  - Im Software-Rendering (CI, Headless) nur wenige Bilder je Sekunde. Mit Grafikkarte flüssig erwartet; sonst „Bodenpixel“ hochstellen.
+- **Tests:**
+  - `tests/unit/m33-perspektive.test.ts`: Projektion, Höhe im Bild, Verdeckung, Höhenfeld mit Rampen, Export.
+  - `labor.spec.ts` prüft Perspektive und Abschalten.

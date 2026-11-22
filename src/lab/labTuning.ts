@@ -27,6 +27,25 @@ export const LAB_MOOD = {
   zoom: 2,
 };
 
+/** Perspektive (Laborphase 2). `on` 0/1; Zoom ist `LAB_MOOD.zoom`. */
+export const LAB_VIEW = {
+  on: 1,
+  /** Neigung in Grad (0 = Draufsicht) */
+  tilt: 50,
+  /** vertikaler Blickwinkel in Grad (klein = fast parallel) */
+  fov: 35,
+  /** Sichtweite nach vorn in Kacheln */
+  sight: 45,
+  /** Bildpixel je Höheneinheit (16 = wie die Felswände der Draufsicht) */
+  hscale: 20,
+  /** Schattierung durch Licht von Nordwesten 0–1 */
+  shade: 0.7,
+  /** Höhenlinien je Stufe 0–1 */
+  contour: 0,
+  /** Bildschirmpixel je Bodenpixel */
+  pixel: 2,
+};
+
 const field = <T extends Record<string, number>>(prefix: string, obj: T, id: keyof T & string, label: string, min: number, max: number, step: number): Tunable => ({
   id: `${prefix}.${id}`, label, min, max, step, get: () => obj[id], set: (v) => ((obj as Record<string, number>)[id] = v),
 });
@@ -47,7 +66,20 @@ export const MOOD_TUNABLES: Tunable[] = [
   field('mood', LAB_MOOD, 'zoom', 'Zoom', 1, 3, 0.25),
 ];
 
-export const LAB_TUNABLES = [...MOVE_TUNABLES, ...MOOD_TUNABLES];
+export const VIEW_TUNABLES: Tunable[] = [
+  field('view', LAB_VIEW, 'tilt', 'Neigung (°)', 0, 75, 1),
+  field('view', LAB_VIEW, 'fov', 'Blickwinkel (°)', 10, 70, 1),
+  field('view', LAB_VIEW, 'sight', 'Sichtweite (Kacheln)', 15, 60, 1),
+  field('view', LAB_VIEW, 'hscale', 'Höhenmaßstab (px je Einheit)', 0, 48, 1),
+  field('view', LAB_VIEW, 'shade', 'Schattierung', 0, 1, 0.05),
+  field('view', LAB_VIEW, 'contour', 'Höhenlinien', 0, 1, 0.05),
+  field('view', LAB_VIEW, 'pixel', 'Bodenpixel (grob = schneller)', 1, 4, 1),
+];
+
+/** Perspektive an/aus (eigener Schalter im Bedienfeld, startet die Szene neu). */
+export const VIEW_ON: Tunable = field('view', LAB_VIEW, 'on', 'Perspektive', 0, 1, 1);
+
+export const LAB_TUNABLES = [...MOVE_TUNABLES, ...MOOD_TUNABLES, ...VIEW_TUNABLES, VIEW_ON];
 export const LAB_DEFAULTS: Record<string, number> = labSnapshot();
 
 export function labSnapshot(): Record<string, number> {
@@ -86,5 +118,5 @@ export function gradeFactor(grade: number, m = LAB_MOVE): number {
 /** Code-Ausschnitt zum Übernehmen der Laufwerte. */
 export function exportLabCode(): string {
   const fmt = (o: Record<string, number>) => Object.entries(o).map(([k, v]) => `  ${k}: ${+v.toFixed(3)},`).join('\n');
-  return `// src/combat/combat.ts\nexport const PLAYER_MOVE = {\n${fmt(PLAYER_MOVE)}\n};\n\n// src/world/terrain.ts\nexport const SLOPE = {\n${fmt(SLOPE)}\n};\n\n// src/lab/labTuning.ts (noch nicht im Spiel)\nexport const LAB_MOVE = {\n${fmt(LAB_MOVE)}\n};`;
+  return `// src/combat/combat.ts\nexport const PLAYER_MOVE = {\n${fmt(PLAYER_MOVE)}\n};\n\n// src/world/terrain.ts\nexport const SLOPE = {\n${fmt(SLOPE)}\n};\n\n// src/lab/labTuning.ts (noch nicht im Spiel)\nexport const LAB_MOVE = {\n${fmt(LAB_MOVE)}\n};\n\n// Perspektive (Laborphase 2), Zoom ${LAB_MOOD.zoom}\nexport const LAB_VIEW = {\n${fmt(LAB_VIEW)}\n};`;
 }

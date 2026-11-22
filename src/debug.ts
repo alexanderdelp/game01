@@ -62,8 +62,9 @@ export const debugState = {
   /** Weltpunkt → Bildschirmpunkt (für Klicks in Tests) */
   arenaToScreen: (_x: number, _y: number): { x: number; y: number } => ({ x: 0, y: 0 }),
   /** M33: Bewegungslabor */
-  labor: null as null | { place: string; altar: { tx: number; ty: number } | null; chest: { open: boolean } | null; height: number; grade: number; speed: number; fog: number; snow: number },
+  labor: null as null | { place: string; altar: { tx: number; ty: number } | null; chest: { open: boolean } | null; height: number; grade: number; speed: number; fog: number; snow: number; view: { on: boolean; visible?: number; hidden?: number; hero?: { sx: number; sy: number } | null } },
   laborSetPlace: (_id: string): void => {},
+  laborSetView: (_on: boolean): void => {},
   laborOpenChest: (): boolean => false,
   bannerTitle: '',
   titleStart: (_seed: string): void => {},

@@ -21,19 +21,22 @@ if (params.get('test') === '1') {
   debugState.calm = true;
 }
 
+// Bewegungslabor (M33): Ausschnitt der echten Welt ohne Weltsysteme; Perspektive zeichnet den Boden unter dem
+// dann durchsichtigen Phaser-Canvas
+const labor = params.get('labor') === '1';
+
 const game = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   pixelArt: true,
   input: { gamepad: true },
   backgroundColor: '#0b0b14',
+  transparent: labor,
   scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
   scene: [],
 });
 
 // Kampf-Arena: nur der Kampf, ohne Welt (zum Ausprobieren von Steuerung und Kampfgefühl)
-// Bewegungslabor (M33): Ausschnitt der echten Welt ohne Weltsysteme
-const labor = params.get('labor') === '1';
 const arena = params.get('arena') === '1' || labor;
 const hasHero = !!seed && !arena && ensureHero(seed);
 game.scene.add('world', WorldScene, !arena && !!seed && hasHero, { seed });
