@@ -56,6 +56,11 @@ export class ChunkManager {
     }
   }
 
+  /** Geladener Chunk (Bodentextur, Bodenbild, Stufen je Zelle) – für eigene Darstellungen wie die Perspektive (M33). */
+  chunkData(cx: number, cy: number): { key: string; ground: Phaser.GameObjects.Image; levels: Uint8Array } | undefined {
+    return this.loaded.get(key(cx, cy));
+  }
+
   get loadedCount(): number {
     return this.loaded.size;
   }

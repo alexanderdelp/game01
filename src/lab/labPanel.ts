@@ -2,7 +2,7 @@
 import { ENEMIES, type EnemyKind } from '../combat/enemies';
 import { TUNABLES, type Tunable } from '../combat/tuning';
 import type { LabScene } from './LabScene';
-import { MOOD_TUNABLES, MOVE_TUNABLES } from './labTuning';
+import { LAB_VIEW, MOOD_TUNABLES, MOVE_TUNABLES, VIEW_TUNABLES } from './labTuning';
 import { PLACES } from './places';
 
 const CSS = `
@@ -78,6 +78,18 @@ export function buildLabPanel(scene: LabScene): HTMLElement {
   own.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && /^[^,]+,\d+,\d+$/.test(own.value.trim())) scene.setPlace(own.value.trim());
   });
+
+  h('Perspektive');
+  const onL = document.createElement('label');
+  const on = Object.assign(document.createElement('input'), { type: 'checkbox', id: 'labor-view', checked: !!LAB_VIEW.on });
+  on.addEventListener('change', () => {
+    on.blur();
+    scene.setView(on.checked);
+  });
+  onL.append(on, ' Perspektive an (aus = Draufsicht)');
+  add(onL);
+  VIEW_TUNABLES.forEach((t) => slider(t));
+  add(Object.assign(document.createElement('p'), { textContent: 'Zoom: unter „Stimmung & Kamera“.', style: 'color:#8a8aa0;margin:4px 0' }));
 
   h('Laufen');
   MOVE_TUNABLES.forEach((t) => slider(t));
